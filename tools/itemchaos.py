@@ -51,7 +51,7 @@ class Player:
         try: return self.act(*a, **k)
         except RuntimeError as ex:
             note(f"{self.label} {a[0]} refused: {str(ex)[:90]}"); return None
-    def ents(self): return {e["net"]: e for e in self.s("mp entities 400")["entities"]}
+    def ents(self): return {e["net"]: e for e in self.s("mp entities 2500")["entities"]}
     def me(self): return self.s("mp entities")["me"]
     def members(self, car):
         try: return self.s(f"mp entitems {car}")["items"]
