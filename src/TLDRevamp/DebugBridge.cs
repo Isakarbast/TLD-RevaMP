@@ -923,6 +923,8 @@ namespace TLDRevamp
                         case "lookpick": return Net.Entities.LookPick(uint.Parse(ma[1]), ma.Length > 2 && ma[2] == "pick");
                         case "attachedparts": return Net.Entities.AttachedParts(uint.Parse(ma[1]));
                         case "carslots": return Net.Entities.CarSlots(uint.Parse(ma[1]));
+                        case "namecount": return Net.Entities.NameCount(ma[1]);
+                        case "gameoff": return Net.Entities.GameOff(ma[1]);
                         case "localoff": return Net.Entities.LocalOff(uint.Parse(ma[1]), int.Parse(ma[2]));
                         case "carparts": return Net.Entities.CarParts(uint.Parse(ma[1]));
                         case "caps": return Net.Entities.Caps(uint.Parse(ma[1]));

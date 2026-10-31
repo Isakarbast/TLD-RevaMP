@@ -330,6 +330,8 @@ namespace TLDRevamp.Net
             return order;
         }
 
+        public static long RagdollDeathsFailed;
+
         private static void RagdollTick(float dt)
         {
             if (RagdollCopies.Count == 0) return;
@@ -339,7 +341,18 @@ namespace TLDRevamp.Net
             {
                 var ls = e.Proxy && e.Root != null && e.Rag != null && e.Rag.Has ? Limbs(e) : null;
                 if (ls == null || ls.Length != e.Rag.TPos.Length) { _ragDrop.Add(e); continue; }
-                if (!Limp(e)) DieLikeTheOwner(e);
+                // a creature with a limb's body gone throws in the game's Die, every frame: the other creature copies stopped
+                // moving for as long as it lay there (itemchaos, 2725 errors in one session)
+                if (!Limp(e))
+                {
+                    try { DieLikeTheOwner(e); }
+                    catch (System.Exception ex)
+                    {
+                        RagdollDeathsFailed++;
+                        Plugin.Log.LogWarning("creature copy " + e.NetId + ": the game's death failed: " + ex.GetType().Name);
+                        _ragDrop.Add(e); continue;
+                    }
+                }
                 var g = e.Rag; var t = e.Root.transform; bool byBody = LimbsByBody(e);
                 var framePos = t.position; var frameRot = t.rotation;
                 if (RagdollOwnFrame && e.Root.car == null && g.FrameHas)

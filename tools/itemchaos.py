@@ -138,7 +138,8 @@ def differences(h, L, tracked, cars):
             if x.get("name") != y.get("name"): out[f"member {car}/{x['i']}"] = f"member {x['i']}: {x.get('name')} on the host, {y.get('name')} on the joiner"
             elif x.get("attached") != y.get("attached"): out[f"member-on {car}/{x['i']}"] = f"{x['name']} (member {x['i']}): attached {x['attached']} on the host, {y['attached']} on the joiner"
             elif x.get("on") != y.get("on") or x.get("onSlot") != y.get("onSlot"): out[f"member-slot {car}/{x['i']}"] = f"{x['name']} (member {x['i']}): on member {x.get('on')} slot {x.get('onSlot')} on the host, member {y.get('on')} slot {y.get('onSlot')} on the joiner"
-            elif x.get("attached") and x.get("lp") and y.get("lp") and math.dist(x["lp"], y["lp"]) > 0.15: out[f"member-place {car}/{x['i']}"] = f"{x['name']} (member {x['i']}): {math.dist(x['lp'], y['lp']):.2f} m apart in the car's frame ({x['lp']} / {y['lp']})"
+            # in the car's frame: a tyre on a wheel 170 m off the car is 3 m apart for a car turned 1 degree between the copies
+            elif x.get("attached") and x.get("lp") and y.get("lp") and math.hypot(*x["lp"]) < 30 and math.dist(x["lp"], y["lp"]) > 0.15: out[f"member-place {car}/{x['i']}"] = f"{x['name']} (member {x['i']}): {math.dist(x['lp'], y['lp']):.2f} m apart in the car's frame ({x['lp']} / {y['lp']})"
             elif x.get("phys") != y.get("phys"): out[f"member-lock {car}/{x['i']}"] = f"{x['name']} (member {x['i']}): container '{x.get('phys')}' on the host, '{y.get('phys')}' on the joiner"
     return out
 
@@ -520,6 +521,7 @@ def scripted(h, L, car, tracked, cars):
     if want("aud-near-pour") or want("aud-far-edit"):
         print("\n=== the host pours into a barrel the joiner owns (barrel fluids): beside it, and with its owner 3 km away", flush=True)
         n = barrel_of()
+        if n: print("     barrel clear of the car:", str(L.s(f"mp moveitem {n} 6 0"))[:90], flush=True); time.sleep(4)
         for far_ in (False, True) if n else ():
             if (far_ and not want("aud-far-edit")) or (not far_ and not want("aud-near-pour")): continue
             if far_:
@@ -530,7 +532,8 @@ def scripted(h, L, car, tracked, cars):
             a0 = litres(h, n); c0 = litres(h, can)
             print(f"     before: barrel host {a0}, joiner {litres(L, n) if not far_ else 'far'}, can {c0}, owner {h.ents()[n]['owner']}", flush=True)
             print("     fill as a player (can in hand, left mouse):", str(h.s(f"mp holdfill {can} {n} 0"))[:120], flush=True); time.sleep(10)
-            print("     status:", str(h.s("mp holdfill status"))[:200], flush=True)
+            st = h.s("mp holdfill status"); print("     status:", str(st)[:240], flush=True)
+            print("     apart:", round(math.dist(h.ents()[n]["pos"], L.ents()[n]["pos"]), 2) if not far_ else "far", "| BARRELs:", h.s("mp namecount BARREL 0"), flush=True)
             h.s("mp holdfill stop"); time.sleep(3)
             if h.held(): h("dropheld")
             time.sleep(1)
@@ -562,19 +565,74 @@ def scripted(h, L, car, tracked, cars):
                 print(f"     item {i} {a['itemName']} usables {a['usable']}/{b['usable']} round {rnd + 1}: {'same' if not bad else bad}"[:260], flush=True)
                 if bad: finding(f"aud-fight {a['itemName']} {rnd + 1}", f"different after 10 s: {str(bad)[:160]}")
     if want("aud-wheel-far"):
-        print("\n=== a tyre taken off a wheel carried 3 km from its car", flush=True)
-        beside(L, L.ents()[car]); w = next((m for m in bolted(L, car) if "Felni" in m["name"] and m.get("on") == 0), None)
-        known = set(L.ents()); L.act("detach", net=car, item=w["i"]); time.sleep(3)
-        wn = next((k for k, v in L.ents().items() if k not in known and "Felni" in v.get("name", "")), None); tracked.add(wn)
-        tyre = next((m for m in L.members(car) if m.get("on") == w["i"] and m.get("attached")), None)
-        note(f"wheel {wn}, tyre {tyre and tyre['name']}")
-        g = L("gpos"); print("     wheel moved:", str(L.s(f"mp moveitem {wn} 3000 0"))[:100], flush=True); L(f"tpground {g['gx'] + 3000} {g['gz']}"); h(f"tpground {g['gx'] + 3004} {g['gz']}"); time.sleep(14)
-        known = set(L.ents()); r = L.try_act("detach", net=car, item=tyre["i"]); time.sleep(4)
-        sh, sl = {x["i"]: x for x in h.members(car)}, {x["i"]: x for x in L.members(car)}
-        print(f"     tyre attached host {sh.get(tyre['i'], {}).get('attached')}, joiner {sl.get(tyre['i'], {}).get('attached')}, refusals {h(f'get {T_}.PartRejects').get('value')}", flush=True)
-        if sh.get(tyre["i"], {}).get("attached") != sl.get(tyre["i"], {}).get("attached"): finding("aud-wheel-far", "the tyre is off on the joiner only")
-        cars_ = cars
-        check(h, L, tracked, cars_, "aud-wheel-far")
+        print("\n=== a tyre unbolted from a wheel, beside its car and 3 km from it: the same on both?", flush=True)
+        def tyres(p): return p.s("mp namecount TireGumi 0")
+        if "--oldslot" in sys.argv: h(f"set {T_}.CarriedPartsShared false"); L(f"set {T_}.CarriedPartsShared false")
+        for dist, both in ((0, True), (100, True), (3000, True), (3000, False)):
+            if ("--far-only" in sys.argv and dist < 500) or ("--far-stay" in sys.argv and both): continue
+            print(f"     --- {dist} m, the host {'beside the wheel' if both else 'stays at the car'}", flush=True)
+            beside(L, L.ents()[car]); h(f"tpground {L('gpos')['gx'] + 6} {L('gpos')['gz']}"); time.sleep(3)
+            if L.ents()[car]["proxy"]: print("     joiner claims the car:", str(L.s(f"mp claim {car}"))[:60], flush=True); time.sleep(3)
+            w = next((m for m in bolted(L, car) if "Felni" in m["name"] and m.get("on") == 0), None)
+            if w is None: note("INVALID: no wheel left on the car (they came off in the teleport's fall)"); break
+            known = set(L.ents()); L.act("detach", net=car, item=w["i"]); time.sleep(3)
+            wn = next((k for k, v in L.ents().items() if k not in known and "Felni" in v.get("name", "")), None); tracked.add(wn)
+            if L.ents()[wn]["proxy"]: L.s(f"mp claim {wn}"); time.sleep(2)
+            print(f"     wheel {wn}, {dist} m from the car:", str(L.s(f"mp moveitem {wn} {dist + 5} 0"))[:60], flush=True); time.sleep(2)
+            g = L("gpos"); L(f"tpground {g['gx'] + dist + 3} {g['gz']}")
+            if both: h(f"tpground {g['gx'] + dist + 5} {g['gz'] + 3}")
+            time.sleep(14 if dist else 4)
+            e = L.ents().get(wn); print(f"     wheel owner {e and e['owner']}, car dormant here {L.ents()[car].get('dormant')}", flush=True)
+            if dist > 500:
+                # the ground there was not generated when it moved: it fell. Put it back beside the player, on the ground.
+                if L.ents()[wn]["proxy"]: L.s(f"mp claim {wn}"); time.sleep(2)
+                g2 = L("gpos"); wp = L.ents()[wn]["pos"]
+                print("     wheel fetched:", str(L.s(f"mp moveitem {wn} {g2['gx'] + 2 - wp[0]:.1f} {g2['gz'] - wp[2]:.1f} ground"))[:60], flush=True); time.sleep(4)
+            ctrs = "PartsReported CarriedOffSent CarriedOffApplied AutoDetachesIgnored SuppressedFallOff DetachReqsApplied PartOffRejected".split()
+            def cnt(p): return [p(f"get {T_}.{c}").get("value") for c in ctrs]
+            print(f"     owner of the car {L.ents()[car]['owner']}, before {ctrs}: joiner {cnt(L)}, host {cnt(h)}", flush=True)
+            near0 = lambda rows: sorted((r["on"], r["root"][:14]) for r in rows["items"] if r["d"] < 25)
+            print(f"     before: host {near0(tyres(h))}, joiner {near0(tyres(L))}", flush=True)
+            if L.ents()[wn]["proxy"]: print("     joiner claims the wheel:", L.s(f"mp claim {wn}"), flush=True); time.sleep(3)
+            try: print("     joiner unbolts the tyre:", L.s("mp gameoff TireGumi 0"), flush=True)
+            except RuntimeError as ex: note(f"could not unbolt: {ex}")
+            time.sleep(6)
+            print(f"     after: joiner {cnt(L)}, host {cnt(h)}, rejects: host {h(f'get {T_}.PartRejects').get('value')}, joiner {L(f'get {T_}.PartRejects').get('value')}", flush=True)
+            if not both: h(f"tpground {g['gx'] + dist + 5} {g['gz'] + 3}"); time.sleep(16)
+            th, tl = tyres(h), tyres(L)
+            near = lambda rows: sorted((r["on"], r["root"][:14]) for r in rows["items"] if r["d"] < 25)
+            print(f"     host {near(th)}\n     joiner {near(tl)}\n     refused {h('get ' + T_ + '.PartRejects').get('value')}", flush=True)
+            if near(th) != near(tl): finding(f"aud-wheel-far {dist}", f"the tyre: host {near(th)}, joiner {near(tl)}")
+            L(f"tpground {g['gx']} {g['gz']}"); h(f"tpground {g['gx'] + 3} {g['gz'] + 3}"); time.sleep(16 if dist else 4)
+            check(h, L, tracked, cars, f"aud-wheel-far {dist}")
+    if want("aud-share"):
+        print("\n=== an item spawned and deleted while the message about it is still on its way: left behind anywhere?", flush=True)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0))
+        for who, o, lag in ((h, L, 1000), (L, h, 1000), (h, L, 0)):
+            o(f"mp lag {lag}"); time.sleep(1)
+            c0 = o.s("mp namecount benzineskanna 0")["count"]; before = set(who.ents())
+            who(f"devspawn {LOOSE['jerry']}"); got = []
+            until(lambda: got.extend(k for k, v in who.ents().items() if k not in before and "benzineskanna" in v.get("name", "")) or got, 5)
+            print(f"     {who.label} deletes {got}:", str(who.s(f"deleteshare {got[0]}"))[:80] if got else "no item", flush=True)
+            o("mp lag 0"); time.sleep(6)
+            c1 = o.s("mp namecount benzineskanna 0")["count"]; left = got and got[0] in o.ents()
+            print(f"     cans on {o.label}: {c0} before, {c1} after, entity left {left}", flush=True)
+            if c1 != c0 or left: finding("aud-share", f"{o.label} keeps a can {who.label} deleted ({c0} -> {c1}, entity left {left})")
+    if want("aud-ghost"):
+        print("\n=== a car deleted while the other player is 3 km away: do its parts come back when they return?", flush=True)
+        if "--oldslot" in sys.argv: L(f"set {T_}.RemoveFarMembers false")
+        names = ("Car06PFRDoor", "Car06P(Clone)", "BARREL")
+        def counts(p): return {k: p.s(f"mp namecount {k} 0")["count"] for k in names}
+        beside(h, h.ents()[car]); time.sleep(2)
+        if h.ents()[car]["proxy"]: h.s(f"mp claim {car}"); time.sleep(3)
+        print(f"     before: host {counts(h)}, joiner {counts(L)}, entities {len(h.ents())}/{len(L.ents())}", flush=True)
+        g = L("gpos"); L(f"tpground {g['gx'] + 3000} {g['gz']}"); note("joiner 3 km away"); time.sleep(14)
+        print(f"     far: joiner {counts(L)}", flush=True)
+        print("     host deletes the car:", str(h.s(f"deleteshare {car}"))[:90], flush=True); time.sleep(5)
+        L(f"tpground {g['gx']} {g['gz']}"); note("joiner back"); time.sleep(20)
+        ch, cl = counts(h), counts(L); print(f"     after: host {ch}, joiner {cl}, entities {len(h.ents())}/{len(L.ents())}", flush=True)
+        if ch != cl: finding("aud-ghost", f"after the car was deleted: host {ch}, joiner {cl}")
+        tracked.clear(); cars = []
     if want("aud-break-far"):
         print("\n=== a window broken with the other player 3 km away", flush=True)
         beside(h, h.ents()[car]); time.sleep(1)
@@ -871,6 +929,7 @@ def monkey(h, L, car, tracked, cars, seed, steps):
                 if c:
                     n = rng.choice(c)
                     if not p.seated(): beside(p, e[n], (1.2, 0, 0))
+                    if p.held(): p("dropheld"); time.sleep(0.3)   # a second pick-up with full hands is no player's: the first item stays half in hand (lock, place findings)
                     try: note(f"{p.label} takes {n}: {str(p(f'mp holdnet {n}'))[:50]}")
                     except RuntimeError as ex: note(f"{p.label} holdnet {n}: {str(ex)[:80]}")
             elif op == "drop" and heldname: p("dropheld"); note(f"{p.label} let go")

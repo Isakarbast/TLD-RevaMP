@@ -145,7 +145,9 @@ namespace TLDRevamp.Net
         {
             var p = mainscript.s != null ? mainscript.s.player : null;
             if (p == null || _cap == null) return "{\"active\":false}";
-            return "{\"active\":true,\"selected\":" + Json.Str(p.selectedCap != null ? p.selectedCap.name : "") + ",\"lookDist\":" +
+            var cam = p.mainCam.transform;
+            var hit = Physics.Raycast(cam.position, cam.forward, out var h, p.FrayRange, p.useLayer) ? h.collider.transform.root.name + "/" + h.collider.name : "";
+            return "{\"active\":true,\"lookAt\":" + Json.Str(hit) + ",\"pointed\":" + (p.selectedCap == _cap ? "true" : "false") + ",\"selected\":" + Json.Str(p.selectedCap != null ? p.selectedCap.name : "") + ",\"lookDist\":" +
                    (p.lookPoint - _cap.transform.position).magnitude.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
                    ",\"valve\":" + _cap.valve + ",\"held\":" + Json.Str(p.pickedUp != null ? p.pickedUp.name : "") + "}";
         }

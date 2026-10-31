@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace TLDRevamp.Net
@@ -54,7 +55,7 @@ namespace TLDRevamp.Net
                 if (Finite(age)) reach = System.Math.Min(500, reach + cap * System.Math.Min(6, System.Math.Max(0, age)));
             }
             double dx = pos.x - car.Where.x, dy = pos.y - car.Where.y, dz = pos.z - car.Where.z;
-            if (!Finite(car.Where) || dx * dx + dy * dy + dz * dz > reach * reach) return "pose too far";
+            if ((!Finite(car.Where) || dx * dx + dy * dy + dz * dz > reach * reach) && !NearSplitPart(car, pos, reach)) return "pose too far";
             double q = (double)rot.x * rot.x + (double)rot.y * rot.y + (double)rot.z * rot.z + (double)rot.w * rot.w;
             if (q < 0.25 || q > 4) return "invalid rotation";
             var group = GroupRecord(car);
@@ -112,33 +113,94 @@ namespace TLDRevamp.Net
 
         public static float PartOffToldS = 30f;
         private static readonly System.Collections.Generic.Dictionary<(int, uint), float> _partOffToldAt = new System.Collections.Generic.Dictionary<(int, uint), float>();
+        /// The tyre on a wheel carried away from its car comes off where the wheel is, not where the car is.
+        private static bool NearSplitPart(SEnt car, Vector3d pos, double reach)
+        {
+            if (!CarriedPartsShared) return false;
+            foreach (uint pn in car.Parts)
+            {
+                if (!Server.TryGetValue(pn, out var part) || !Finite(part.Where)) continue;
+                double dx = pos.x - part.Where.x, dy = pos.y - part.Where.y, dz = pos.z - part.Where.z;
+                if (dx * dx + dy * dy + dz * dz <= reach * reach) return true;
+            }
+            return false;
+        }
+
+        /// What a member that came off carries stays in its first group (CheckPartOff), and that group can be out of
+        /// range on the machine that unbolts it: a wheel or engine taken off a wreck and driven away with. Its group
+        /// here no longer knows the part, so nothing went out and it was off on one screen for good (itemchaos
+        /// aud-wheel-far). Such a part is named by where it is bolted, the carrier's slot, and the carrier's owner decides.
+        public static bool CarriedPartsShared = true;   // A/B: false = not shared
+        /// The group member bolted into `slot` of member `parentIdx`, or -1.
+        private static int CarriedMember(SEnt car, int parentIdx, int slot)
+        {
+            var group = GroupRecord(car);
+            if (group == null || group.items == null || parentIdx <= 0 || parentIdx >= group.items.Count || group.items[parentIdx] == null) return -1;
+            for (int i = 1; i < group.items.Count; i++)
+            {
+                if (i == parentIdx || group.items[i] == null || car.SplitOff.Contains(i) || (car.Gone != null && car.Gone.Contains(i))) continue;
+                var state = group; bool canonical = false;
+                if (car.ItemState.TryGetValue(i, out var bytes))
+                {
+                    state = RecordCodec.Decode(bytes);
+                    if (state == null) continue;
+                    canonical = true;
+                }
+                if (state.attachable == null) continue;
+                uint id = canonical ? CanonBase + (uint)i : group.items[i].id, parent = canonical ? CanonBase + (uint)parentIdx : group.items[parentIdx].id;
+                foreach (var at in state.attachable)
+                    if (at != null && at.id == id && at.attachType == 1 && at.indexType == 2 && at.index == slot && at.parentid == parent) return i;
+            }
+            return -1;
+        }
+
+        private static void RefusePartOff(int from, uint carNet, int idx, uint epoch, string why)
+        {
+            PartOffRejected++;
+            SessionLog.Event("part-off-refused", carNet, item: idx, from: from, epoch: epoch, result: why);
+            PartRejects += "srv(car" + carNet + " from" + from + " " + why + ") ";
+            // The game already detached locally; do not leave that disagreement silent on the owner.
+            Plugin.Log.LogWarning($"player {from}: part-off refused: car {carNet}, item {idx}, epoch {epoch}: {why}; their local detach was not shared");
+            // once per player and car in PartOffToldS: a crash throws off many parts at once (review 2026-10-22, #20)
+            var told = (from, carNet); float now = Time.realtimeSinceStartup;
+            if (!_partOffToldAt.TryGetValue(told, out float at) || now - at >= PartOffToldS)
+            {
+                _partOffToldAt[told] = now;
+                Mp.Server?.Tell(from, "A part that came off your car could not be shared with the other players, so for them it is still on.");
+            }
+        }
+
         private static void ServerPartOff(int from, NetReader r)
         {
             uint carNet = r.U32(), epoch = r.U32(); int idx = (int)r.VarU32();
             var pos = new Vector3d(r.F64(), r.F64(), r.F64()); var rot = new Quaternion(r.F32(), r.F32(), r.F32(), r.F32());
+            if (!r.Bad && r.Remaining > 0) { ServerCarriedOff(from, carNet, epoch, (int)r.VarU32(), pos, rot, r); return; }
             Server.TryGetValue(carNet, out var car);
             string why = r.Bad || r.Remaining != 0 ? "malformed" : car == null ? "missing car" : car.OwnerId != from ? "wrong owner" : !ClaimEpochOk(car, from, epoch) ? "epoch" : CheckPartOff(car, idx, pos, rot);
-            if (why != null)
-            {
-                PartOffRejected++;
-                SessionLog.Event("part-off-refused", carNet, item: idx, from: from, epoch: epoch, result: why);
-                PartRejects += "srv(car" + carNet + " from" + from + " " + why + ") ";
-                // The game already detached locally; do not leave that disagreement silent on the owner.
-                Plugin.Log.LogWarning($"player {from}: part-off refused: car {carNet}, item {idx}, epoch {epoch}: {why}; their local detach was not shared");
-                // once per player and car in PartOffToldS: a crash throws off many parts at once (review 2026-10-22, #20)
-                var told = (from, carNet); float now = Time.realtimeSinceStartup;
-                if (!_partOffToldAt.TryGetValue(told, out float at) || now - at >= PartOffToldS)
-                {
-                    _partOffToldAt[told] = now;
-                    Mp.Server?.Tell(from, "A part that came off your car could not be shared with the other players, so for them it is still on.");
-                }
-                return;
-            }
+            if (why != null) { RefusePartOff(from, carNet, idx, epoch, why); return; }
+            SplitPart(car, idx, from, pos, rot, 0, -1);
+        }
+
+        private static void ServerCarriedOff(int from, uint carrierNet, uint epoch, int slot, Vector3d pos, Quaternion rot, NetReader r)
+        {
+            Server.TryGetValue(carrierNet, out var carrier);
+            SEnt car = null;
+            if (carrier != null) Server.TryGetValue(carrier.ParentNet, out car);
+            int idx = car != null ? CarriedMember(car, carrier.PartIndex, slot) : -1;
+            string why = r.Bad || r.Remaining != 0 ? "malformed" : carrier == null ? "missing carrier" : car == null ? "carrier has no group"
+                : carrier.OwnerId != from && !(carrier.PrevOwnerId == from && Time.realtimeSinceStartup - carrier.PrevOwnerAt <= HandoverAcceptS) ? "wrong owner"
+                : !Finite(pos) || !Finite(rot) ? "non-finite pose" : idx < 0 ? "no such part on the carrier" : null;
+            if (why != null) { RefusePartOff(from, carrierNet, slot, epoch, why); return; }
+            SplitPart(car, idx, from, pos, rot, carrierNet, slot);
+        }
+
+        private static void SplitPart(SEnt car, int idx, int from, Vector3d pos, Quaternion rot, uint carrierNet, int carrierSlot)
+        {
             // Membership is consumed before broadcasting and survives both ownership changes and part removal.
             car.SplitOff.Add(idx);
-            var part = new SEnt { NetId = _nextNet++, OwnerId = from, Epoch = 1, ParentNet = carNet, PartIndex = idx, HasState = true, Pos = pos, Rot = rot, Where = pos };
+            var part = new SEnt { NetId = _nextNet++, OwnerId = from, Epoch = 1, ParentNet = car.NetId, PartIndex = idx, HasState = true, Pos = pos, Rot = rot, Where = pos, CarrierNet = carrierNet, CarrierSlot = carrierSlot };
             Server[part.NetId] = part;
-            foreach (var kv in Known) if (kv.Value.Contains(carNet)) kv.Value.Add(part.NetId);
+            foreach (var kv in Known) if (kv.Value.Contains(car.NetId)) kv.Value.Add(part.NetId);
             car.Parts.Add(part.NetId);
             car.ItemState.Remove(idx);
             WritePartDetached(W, part);

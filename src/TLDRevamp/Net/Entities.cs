@@ -176,6 +176,7 @@ namespace TLDRevamp.Net
             public float Speed;                                                       // its last state's speed (m/s)
             public readonly Dictionary<int, byte[]> ItemState = new Dictionary<int, byte[]>(); // latest record per group index, for later joiners
             public uint ParentNet; public int PartIndex = -1;                         // a part that came off
+            public uint CarrierNet; public int CarrierSlot = -1;                      // off a member carried away from its group (Entities.PartOff)
             public readonly List<uint> Parts = new List<uint>();                     // parts that came off this car, in order
             public readonly HashSet<int> SplitOff = new HashSet<int>();             // kept even if the detached entity is later removed
             public int CrashReturnTo = -1; public float CrashUntil;                  // crash lease (Entities.CrashAuthority): owner to return to
@@ -834,6 +835,7 @@ namespace TLDRevamp.Net
         {
             w.Reset(); w.U8(PartDetached); w.U32(part.ParentNet); w.VarU32((uint)part.PartIndex); w.U32(part.NetId); w.VarU32((uint)part.OwnerId); w.U32(part.Epoch);
             w.F64(part.Pos.x); w.F64(part.Pos.y); w.F64(part.Pos.z); w.F32(part.Rot.x); w.F32(part.Rot.y); w.F32(part.Rot.z); w.F32(part.Rot.w);
+            if (part.CarrierNet != 0) { w.U32(part.CarrierNet); w.VarU32((uint)part.CarrierSlot); }
         }
 
         /// Sleep/load discontinuities shift the same quantity as vanilla sleep; periodic anchors use the follower.
@@ -1109,16 +1111,17 @@ namespace TLDRevamp.Net
                 {
                     uint carNet = r.U32(); int idx = (int)r.VarU32(); uint partNet = r.U32(); int owner = (int)r.VarU32(); uint epoch = r.U32();
                     var pos = new Vector3d(r.F64(), r.F64(), r.F64()); var rot = new Quaternion(r.F32(), r.F32(), r.F32(), r.F32());
+                    uint carrierNet = r.Remaining > 0 ? r.U32() : 0; int carrierSlot = carrierNet != 0 ? (int)r.VarU32() : -1;
                     if (r.Bad) { PartRejects += "bad "; return; }
                     SessionLog.Event("part-detached-received", carNet, partNet, item: idx, from: owner, to: MyId, epoch: epoch);
-                    if (!ByNet.TryGetValue(carNet, out var car)) { SessionLog.Event("part-off-refused", carNet, partNet, item: idx, to: MyId, result: "car absent"); PartRejects += "nocar" + carNet + " "; return; }
-                    if (idx < 0 || idx >= car.Items.Count) { SessionLog.Event("part-off-refused", carNet, partNet, item: idx, to: MyId, result: "item index"); PartRejects += "idx" + idx + "/" + car.Items.Count + " "; return; }
+                    if (!ByNet.TryGetValue(carNet, out var car) && carrierNet == 0) { SessionLog.Event("part-off-refused", carNet, partNet, item: idx, to: MyId, result: "car absent"); PartRejects += "nocar" + carNet + " "; return; }
+                    if (carrierNet == 0 && (idx < 0 || idx >= car.Items.Count)) { SessionLog.Event("part-off-refused", carNet, partNet, item: idx, to: MyId, result: "item index"); PartRejects += "idx" + idx + "/" + car.Items.Count + " "; return; }
                     if (ByNet.TryGetValue(partNet, out var had))
                     {
                         // the car fetched again (its copy was lost here) after this part came off: the part is still its own
                         // object here (KeepPartsOnRemove), and the car's new copy, made from the car's first record, has it
                         // bolted on a second time — that one goes, and the group's place is the part's again
-                        if (KeepPartsOnRemove && had.Root != null && car.Items[idx] != null && car.Items[idx] != had.Root && (car.Split == null || !car.Split.Contains(idx)))
+                        if (KeepPartsOnRemove && carrierNet == 0 && had.Root != null && car.Items[idx] != null && car.Items[idx] != had.Root && (car.Split == null || !car.Split.Contains(idx)))
                         {
                             (car.Split ?? (car.Split = new HashSet<int>())).Add(idx);
                             var twin = car.Items[idx];
@@ -1140,13 +1143,14 @@ namespace TLDRevamp.Net
                     }
                     // from now on the part's state is its own entity's: a car resync (captured before the crash, or later
                     // by the car's owner, who may no longer simulate it) must not re-bolt or overwrite it
-                    (car.Split ?? (car.Split = new HashSet<int>())).Add(idx);
-                    var it = car.Items[idx];
+                    if (car != null) (car.Split ?? (car.Split = new HashSet<int>())).Add(idx);
+                    var it = car != null && idx >= 0 && idx < car.Items.Count ? car.Items[idx] : null;
+                    if (it == null && carrierNet != 0) { it = CarriedItem(carrierNet, carrierSlot, owner); if (it != null) CarriedOffApplied++; }
                     LiveUsablesChanged(it);
-                    if (it == null && RebindMembers(car)) it = car.Items[idx];
+                    if (it == null && car != null && RebindMembers(car) && idx >= 0 && idx < car.Items.Count) it = car.Items[idx];
                     if (it == null)
                     {
-                        uint gid = car.ItemIds != null && idx < car.ItemIds.Count ? car.ItemIds[idx] : 0;
+                        uint gid = car != null && car.ItemIds != null && idx >= 0 && idx < car.ItemIds.Count ? car.ItemIds[idx] : 0;
                         // our copy of the car is in the far store: the part comes off there — it's placed back loose
                         // where it landed, the car without it
                         if (gid != 0 && DetachStored(gid, pos, rot))

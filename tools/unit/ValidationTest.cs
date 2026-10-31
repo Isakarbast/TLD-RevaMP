@@ -26,8 +26,9 @@ namespace TLDRevamp.Net
     {
         sealed class SEnt
         {
-            internal uint NetId, Epoch, ParentNet, AttachParent, ReceivedStateEpoch;
-            internal int OwnerId, PartIndex = -1, ClaimedBy = -1;
+            internal uint NetId, Epoch, ParentNet, AttachParent, ReceivedStateEpoch, CarrierNet;
+            internal int OwnerId, PartIndex = -1, ClaimedBy = -1, PrevOwnerId = -1, CarrierSlot = -1;
+            internal float PrevOwnerAt = -100f;
             internal uint ClaimedFromEpoch;
             internal float ClaimedAt = -100f;
             internal bool HasState;
@@ -49,6 +50,7 @@ namespace TLDRevamp.Net
         static readonly NetWriter W = new NetWriter();
         const byte LeaseGrant = 29, LeaseTaken = 30, LeaseFreed = 34;
         const uint CanonBase = 0xF0000000u;
+        const float HandoverAcceptS = 5f;
         static uint _nextNet = 100;
         static long PartOffRejected, LeasesFreed, LeasesGranted, LeaseTypeMismatches;
         static string PartRejects = "";
@@ -135,6 +137,11 @@ namespace TLDRevamp.Net
                 }
             Car(); ServerPartOff(2, Off(rot: new Quaternion())); check(Server.Count == 1, "zero rotation refused");
             Car(); ServerPartOff(2, Off(pos: new Vector3d(20, 56, 40))); check(Server.Count == 1 && SessionLog.Reason == "pose too far", "vertical distance checked");
+            // the tyre on a wheel carried away from its car: the wheel's place counts too (itemchaos aud-wheel-far)
+            Car(); Server[50] = new SEnt { NetId = 50, OwnerId = 2, ParentNet = 1, PartIndex = 2, Where = new Vector3d(5000, 56, 40) }; Server[1].Parts.Add(50);
+            ServerPartOff(2, Off(pos: new Vector3d(5010, 56, 40))); check(Server.Count == 3, "a part beside a member that came off is near enough");
+            Car(); Server[50] = new SEnt { NetId = 50, OwnerId = 2, ParentNet = 1, PartIndex = 2, Where = new Vector3d(5000, 56, 40) }; Server[1].Parts.Add(50);
+            ServerPartOff(2, Off(pos: new Vector3d(9000, 56, 40))); check(Server.Count == 2 && SessionLog.Reason == "pose too far", "far from the car and from what came off it is still refused");
             Car(); ServerPartOff(2, Off(pos: new Vector3d(71, 5, 40))); check(Server.Count == 1, "horizontal distance checked");
             check(Mp.Server.NoticeTarget == 2 && Mp.Server.Notice.Contains("could not be shared") &&
                   Plugin.Log.Warning.Contains("car 1, item 1, epoch 3") && Plugin.Log.Warning.Contains("pose too far"),
@@ -205,7 +212,30 @@ namespace TLDRevamp.Net
                 check(Server.Count == 1, "motion slack still refuses nonfinite or absurd part poses " + n);
             }
             Car(); var bad = Off(); bad.End--; ServerPartOff(2, bad); check(Server.Count == 1 && SessionLog.Reason == "malformed", "truncated packet");
-            bad = Off(); bad.End++; ServerPartOff(2, bad); check(Server.Count == 1 && SessionLog.Reason == "malformed", "trailing packet bytes");
+            // one more byte is a carrier's slot (a part on a member carried away from its group); net 1 here carries nothing
+            bad = Off(); bad.End++; ServerPartOff(2, bad); check(Server.Count == 1 && SessionLog.Reason == "carrier has no group", "trailing packet bytes");
+            bad = Off(); bad.End += 2; ServerPartOff(2, bad); check(Server.Count == 1 && SessionLog.Reason == "malformed", "trailing packet bytes after the slot");
+            SEnt Carried()
+            {
+                var c = Car(); c.OwnerId = 3;
+                c.Record.items.Add(new save_item { id = 1002, prefabID = 11 });
+                c.Record.attachable.Add(new save_attachable { id = 1002, parentid = 1001, attachType = 1, indexType = 2, index = 0 });
+                c.SplitOff.Add(1);
+                Server[50] = new SEnt { NetId = 50, OwnerId = 2, Epoch = 1, ParentNet = 1, PartIndex = 1, Where = new Vector3d(5000, 5, 40) }; c.Parts.Add(50);
+                return c;
+            }
+            NetReader CarriedOff(int slot)
+            {
+                var w = new NetWriter(); w.U32(50); w.U32(1); w.VarU32(0u);
+                w.F64(5001); w.F64(5); w.F64(40); w.F32(0); w.F32(0); w.F32(0); w.F32(1);
+                w.VarU32((uint)slot);
+                return new NetReader { Buf = w.Buf, End = w.Len };
+            }
+            car = Carried(); ServerPartOff(2, CarriedOff(0));
+            check(Server.Count == 3 && Server[100].PartIndex == 2 && Server[100].ParentNet == 1 && Server[100].CarrierNet == 50 && Server[100].OwnerId == 2 && car.SplitOff.Contains(2), "a part off a carried member: named by the carrier's slot, the car far away and someone else's");
+            Carried(); ServerPartOff(3, CarriedOff(0)); check(Server.Count == 2 && SessionLog.Reason == "wrong owner", "only the carrier's owner unbolts from it");
+            Carried(); ServerPartOff(2, CarriedOff(5)); check(Server.Count == 2 && SessionLog.Reason == "no such part on the carrier", "an empty slot of the carrier");
+            car = Carried(); Server[50].OwnerId = 3; Server[50].PrevOwnerId = 2; Server[50].PrevOwnerAt = Time.realtimeSinceStartup - 1; ServerPartOff(2, CarriedOff(0)); check(Server.Count == 3, "the carrier's owner a moment ago: it has already happened on their screen");
             car = Car(); car.Record = null; ServerPartOff(2, Off()); check(Server.Count == 1, "no group record");
             car = Car(); car.Record.items = null; ServerPartOff(2, Off()); check(Server.Count == 1, "null member list refused without throwing");
             car = Car(); car.Record.attachable = null; ServerPartOff(2, Off()); check(Server.Count == 1, "null attachment list refused without throwing");

@@ -21,6 +21,7 @@ namespace TLDRevamp.Net
 
         private static bool PartIsProxy(attachablescript at)
         {
+            if (CarriedFar(at, out var carrier)) return carrier.Proxy;
             var e = at != null ? EditEntityOf(at.tosave) : null;
             return e != null ? e.Proxy : IsProxy(at);
         }

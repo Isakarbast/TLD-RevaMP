@@ -170,10 +170,28 @@ namespace TLDRevamp.Net
         {
             if (!KeepPartsOnRemove || e.Split == null || e.Items == null) return false;
             if (e.Split.Contains(i)) return true;
-            var it = e.Items[i];
-            if (it == null) return false;
+            var it = i < e.Items.Count ? e.Items[i] : null;
+            if (it == null) return FarOnSplit(e, i);
             foreach (int j in e.Split)
                 if (j != i && j < e.Items.Count && e.Items[j] != null && it.transform.IsChildOf(e.Items[j].transform)) return true;
+            return false;
+        }
+
+        /// CameOff for a member stored away here: its record bolted, at any depth, onto a member that came off.
+        private static bool FarOnSplit(Ent e, int i)
+        {
+            var rows = savedatascript.s != null && savedatascript.s.data != null && savedatascript.s.data.itemData != null ? savedatascript.s.data.itemData.attachable : null;
+            if (rows == null || e.ItemIds == null || i >= e.ItemIds.Count) return false;
+            uint id = e.ItemIds[i];
+            for (int depth = 0; depth < 8 && id != 0; depth++)
+            {
+                uint parent = 0;
+                foreach (var at in rows) if (at != null && at.id == id && at.attachType == 1) { parent = at.parentid; break; }
+                int pi = parent != 0 ? e.ItemIds.IndexOf(parent) : -1;
+                if (pi < 0) return false;
+                if (e.Split.Contains(pi)) return true;
+                id = parent;
+            }
             return false;
         }
 
@@ -280,6 +298,9 @@ namespace TLDRevamp.Net
             ServerSendAll(W, true, from);   // everyone but the destroyer (already clean) — incl. the host's own copy (Deliver)
         }
 
+        public static bool RemoveFarMembers = true;   // A/B: false = a far object's members stay in the far store
+        public static long FarMembersRemoved;
+
         private static void DestroyLocalCopy(uint net)
         {
             if (!ByNet.TryGetValue(net, out var e)) return;
@@ -287,6 +308,16 @@ namespace TLDRevamp.Net
             {
                 // dormant: no live copy here — drop the far-store record too, or the item respawns on the next visit
                 RemoveRecord(e.RootId);
+                // and its members' records, or they come back loose where the object was, its doors and barrels on one
+                // machine only (itemchaos aud-ghost: a car deleted with the other player 3 km away). What came off stays.
+                if (RemoveFarMembers && e.ItemIds != null)
+                    for (int i = 0; i < e.ItemIds.Count; i++)
+                    {
+                        uint id = e.ItemIds[i];
+                        if (id == 0 || id == e.RootId || CameOff(e, i)) continue;
+                        RemoveRecord(id);
+                        FarMembersRemoved++;
+                    }
                 ByNet.Remove(net);
                 return;
             }

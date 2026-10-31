@@ -730,6 +730,44 @@ namespace TLDRevamp.Net
         }
 
         /// Test: a part comes off on this machine alone, no message: the state a lost or refused part-off leaves behind.
+        /// Test tooling: the saved objects here that carry `part` in their name, loose or bolted on, nearest first (a far
+        /// store's records not counted), to compare what two machines really have.
+        public static string NameCount(string part)
+        {
+            var pl = mainscript.s != null ? mainscript.s.player : null;
+            var found = new List<KeyValuePair<float, string>>();
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            foreach (var it in UnityEngine.Object.FindObjectsOfType<tosaveitemscript>())
+            {
+                if (it == null || it.name.IndexOf(part, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                var g = mainscript.GlobalFromUnityPos(it.transform.position);
+                float d = pl != null ? Vector3.Distance(it.transform.position, pl.transform.position) : 0f;
+                found.Add(new KeyValuePair<float, string>(d, "{\"name\":" + Json.Str(it.name) + ",\"root\":" + Json.Str(it.transform.root.name) + ",\"on\":" + (it.attachable != null && it.attachable.attached ? "true" : "false") +
+                    ",\"d\":" + d.ToString("F1", ci) + ",\"g\":[" + g.x.ToString("F1", ci) + "," + g.y.ToString("F1", ci) + "," + g.z.ToString("F1", ci) + "]}"));
+            }
+            int n = found.Count;
+            found.Sort((a, b) => a.Key.CompareTo(b.Key));
+            if (found.Count > 10) found.RemoveRange(10, found.Count - 10);
+            var rows = new List<string>(); foreach (var kv in found) rows.Add(kv.Value);
+            return "{\"count\":" + n + ",\"items\":[" + string.Join(",", rows) + "]}";
+        }
+
+        /// Test tooling: a player here unbolts the nearest part named `part`, as the game does it (fpscontroller: slot.UnCraft).
+        public static string GameOff(string part)
+        {
+            var pl = mainscript.s != null ? mainscript.s.player : null;
+            attachablescript best = null; float bd = float.MaxValue;
+            foreach (var at in UnityEngine.Object.FindObjectsOfType<attachablescript>())
+            {
+                if (at == null || !at.attached || at.slot == null || at.name.IndexOf(part, System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                float d = pl != null ? Vector3.Distance(at.transform.position, pl.transform.position) : 0f;
+                if (d < bd) { bd = d; best = at; }
+            }
+            if (best == null) return "{\"error\":\"no bolted " + part + " here\"}";
+            bool ok = best.slot.UnCraft();
+            return "{\"uncraft\":" + (ok ? "true" : "false") + ",\"d\":" + bd.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + ",\"attached\":" + (best.attached ? "true" : "false") + "}";
+        }
+
         public static string LocalOff(uint net, int idx)
         {
             if (!ByNet.TryGetValue(net, out var e) || !Resolve(e)) return "{\"error\":\"no such car here\"}";
