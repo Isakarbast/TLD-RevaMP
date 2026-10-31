@@ -78,10 +78,48 @@ namespace TLDRevamp.Net
                     if (e == null) continue;
                     _wornEnt[ts] = e;
                 }
+                if (WornLateOk && WornNotMineAnymore(pl, p, e)) continue;
                 if (e.Proxy || e.SentWornSlot == i) continue;
                 SendWorn(e, i);
                 _wornOwn.Add(e);
             }
+        }
+
+        /// On the local player's head and in the game's wear slot, whoever owns it. A copy there is a hat the other player's
+        /// states carry away: it lay on the ground and the slot stayed taken, so no other hat could go on. It is claimed back
+        /// (the wear key's own claim); when the claim keeps being refused it comes off here. Back as ours it can have been
+        /// moved off the head meanwhile: put on again. True: nothing to send this round.
+        public static int WornClaimTries = 3;
+        public static float WornClaimEveryS = 1f, WornOffHeadM = 1.2f;
+        public static long WornClaimedBack, WornGivenUp, WornReseated;
+        private static bool WornNotMineAnymore(fpscontroller pl, pickupable p, Ent e)
+        {
+            if (e.Proxy)
+            {
+                if (e.Root == null || e.Root.car != null) return true;
+                if (Time.unscaledTime - e.WornClaimAt < WornClaimEveryS) return true;
+                e.WornClaimAt = Time.unscaledTime;
+                if (e.WornClaims++ >= WornClaimTries)
+                {
+                    e.WornClaims = 0; WornGivenUp++;
+                    Plugin.Log.LogWarning("worn: " + e.Root.name + " net " + e.NetId + " is another player's: off the local player");
+                    pl.TakeOff(p, true);
+                    return true;
+                }
+                SetProxy(e, false); e.OwnerId = MyId; e.SentWornSlot = -1;
+                W.Reset(); WriteClaim(W, e.NetId, ClaimReason.Wear); ToServer(W, true); ClaimsSent++;
+                WornClaimedBack++;
+                return false;
+            }
+            e.WornClaims = 0;
+            var head = LocalHead();
+            if (head != null && e.Root != null && (e.Root.transform.position - head.position).sqrMagnitude > WornOffHeadM * WornOffHeadM)
+            {
+                pl.TakeOff(p, true);
+                pl.Wear(p);
+                WornReseated++;
+            }
+            return false;
         }
 
         private static void SendWorn(Ent e, int slot)
@@ -139,12 +177,39 @@ namespace TLDRevamp.Net
             uint net = r.U32(), epoch = r.U32(); byte slot = r.U8();
             Vector3 lp = default; Quaternion lq = Quaternion.identity;
             if (slot != 255) { lp = new Vector3(r.F32(), r.F32(), r.F32()); lq = ReadRot(r); }
-            if (r.Bad || !Server.TryGetValue(net, out var se) || se.OwnerId != from || !ClaimEpochOk(se, from, epoch)) return;
+            if (r.Bad || !Server.TryGetValue(net, out var se)) return;
             if (slot != 255 && (slot > 15 || !Finite(lp) || lp.sqrMagnitude > 4f)) return;   // on the head: within 2 m of it
+            if (se.OwnerId != from && !WornTakesBack(se, from, slot)) return;
+            if (!WornLateOk && !ClaimEpochOk(se, from, epoch)) return;
             se.WornBy = slot == 255 ? -1 : from; se.WornSlot = slot == 255 ? -1 : slot; se.WornLp = lp; se.WornLq = lq;
             WriteWornOut(W, se);
             ServerSendAll(W, true, from);
             WornRelayed++;
+        }
+
+        /// A player put it on while someone's claim on it (walking past is enough) was on its way: on their head for good,
+        /// loose for everyone else, and no one can do it for them as an owner can bolt a part. A deliberate act beats a claim
+        /// that overtook it: it goes back to them, unless the new owner has it in hand or on their own head.
+        public static bool WornLateOk = true;   // A/B: false = a Worn from a player who just lost the object is dropped, a copy stays in the wear slot (before)
+        public static long WornTakenBack, WornTooLate;
+        private static bool WornTakesBack(SEnt se, int from, byte slot)
+        {
+            if (!WornLateOk) return false;
+            if (slot == 255) return false;   // taken off: the new owner's game has it off already
+            if (se.PrevOwnerId != from || Time.realtimeSinceStartup - se.PrevOwnerAt > HandoverAcceptS || se.Held || se.Stored || ServerWornNow(se) || se.HitchCar != 0)
+            {
+                WornTooLate++;
+                SessionLog.Event("worn-refused", se.NetId, from: from, to: se.OwnerId, result: "no longer theirs");
+                return false;
+            }
+            se.ClaimedBy = from; se.ClaimedAt = Time.realtimeSinceStartup; se.ClaimedFromEpoch = se.Epoch;
+            OwnerLog(se, from, "on their head before the claim got here");
+            se.OwnerId = from; se.Epoch++;
+            W.Reset(); W.U8(Owner); W.U32(se.NetId); W.VarU32((uint)from); W.U32(se.Epoch);
+            ServerSendAll(W, true, -1);
+            CascadeOwner(se);
+            WornTakenBack++;
+            return true;
         }
 
         private static void WriteWornOut(NetWriter w, SEnt se)

@@ -107,6 +107,8 @@ namespace TLDRevamp.Net
         /// record) or seated in it or in the car it came off. Any player could otherwise change anything anywhere in the
         /// world (empty a tank, open every door) by naming its net id. What the edit changes is checked too, and how
         /// often a player edits (Entities.EditCheck).
+        public static bool EditsComeBack = true;   // A/B: false = an edit from a player who already owns the object is dropped (before)
+        public static long EditsReturned;
         public static bool EditRangeCheck = true;
         public static float EditRangeM = 15f;
         public static long EditsOutOfReach;
@@ -115,7 +117,19 @@ namespace TLDRevamp.Net
             uint net = r.U32();
             double stamp = r.F64();
             if (!Finite(stamp) || Math.Abs(SessionLog.St - stamp) > 10) { SessionLog.Event("edit-refused", net, from: from, result: "timestamp"); EditsRejected++; return; }
-            if (r.Bad || !Server.TryGetValue(net, out var se) || se.OwnerId == from) { SessionLog.Event("edit-refused", net, from: from, result: "missing entity or already owner"); EditsRejected++; return; }
+            if (r.Bad || !Server.TryGetValue(net, out var se)) { SessionLog.Event("edit-refused", net, from: from, result: "missing entity"); EditsRejected++; return; }
+            if (se.OwnerId == from)
+            {
+                // the object became theirs (it came with a car they took) before they heard: their game still called it a copy.
+                // The edit goes back to them, behind the Owner message that tells them. Dropped, the previous owner's
+                // handover record overwrote what they had just done.
+                if (!EditsComeBack) { SessionLog.Event("edit-refused", net, from: from, result: "already owner"); EditsRejected++; return; }
+                EditsReturned++;
+                SessionLog.Event("edit-returned", net, from: from, result: "already owner");
+                WS.Reset(); WS.Bytes(r.Buf, 0, r.End);
+                ServerSendTo(from, WS, true);
+                return;
+            }
             if (EditValidation && from != 0 && !TakeToken(_editBuckets, from, EditRatePerS, EditBurst))
             {
                 EditsRejected++;

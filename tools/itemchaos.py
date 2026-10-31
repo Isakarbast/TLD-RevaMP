@@ -11,7 +11,7 @@ is a finding, with the steps that led to it.
   Nothing refused (part-off), no exceptions.
 Scripted runs of what the reports did, then a random monkey (--seed, --steps).
   tools/itemchaos.py [--no-build] [--relay off|iad] [--seed 1] [--steps 60] [--only NAME[,NAME]] [--no-monkey] [--oldglue]"""
-import sys, os, time, math, json, random, shutil, pathlib
+import sys, os, time, math, json, random, re, shutil, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import game
 from mplib import Agent, ensure_both, join_both, DESKTOP_IP
@@ -31,7 +31,7 @@ SETTLE = 5.0        # after a step
 PERSIST = 12.0      # a difference must still be there this much later
 LOOSE = {"can": 60, "lamp": 66, "sponge": 119, "jerry": 72}     # itemdatabase ids, what gets spawned to play with
 
-KIND = dict(pose=1, seat_in=2, seat_out=3, pickup=4, drop=5, throw=6, inv_switch=7, inv_store=9, inv_unstore=10, attach=15, detach=16)
+KIND = dict(pose=1, seat_in=2, seat_out=3, pickup=4, drop=5, throw=6, inv_switch=7, inv_store=9, inv_unstore=10, usable=13, attach=15, detach=16)
 HISTORY, FINDINGS = [], []
 def note(s):
     HISTORY.append(s); print(f"  [{len(HISTORY):3}] {s}", flush=True)
@@ -50,7 +50,7 @@ class Player:
     def try_act(self, *a, **k):
         try: return self.act(*a, **k)
         except RuntimeError as ex:
-            note(f"{self.label} {a[0]} refused: {str(ex)[:90]}"); return None
+            note(f"{self.label} {a[0]} refused: {str(ex)[:60]}...{str(ex)[-90:]}"); return None
     def ents(self): return {e["net"]: e for e in self.s("mp entities 2500")["entities"]}
     def me(self): return self.s("mp entities")["me"]
     def members(self, car):
@@ -377,7 +377,7 @@ def scripted(h, L, car, tracked, cars):
             check(h, L, tracked, cars, f"out-of-hand {rnd + 1} held")
             h.try_act("drop", net=n, item=0); time.sleep(2)
     for x in (h, L):    # the games are kept between runs: said every time
-        x(f"set TLDRevamp.Net.Entities.SlotReplaces {'--oldslot' not in sys.argv}"); x(f"set TLDRevamp.Net.Entities.StaleOwnerForwards {'--oldslot' not in sys.argv}")
+        for sw in ("SlotReplaces", "StaleOwnerForwards", "StaleDetachDirect", "AttachReqBecomesSync", "WornLateOk", "EditsComeBack"): x(f"set TLDRevamp.Net.Entities.{sw} {'--oldslot' not in sys.argv}")
     for k, x in h.slots(car).items():
         if "--slots" in sys.argv and x["parts"]: print(f"     member {k[0]} slot {k[1]}: {x['parts']}", flush=True)
         if len(x["parts"]) > 1 and not x.get("many"):
@@ -467,11 +467,14 @@ def scripted(h, L, car, tracked, cars):
                 if new:
                     tracked.add(new[0]); L.try_act("attach", net=new[0], other=car, item=1, slot=m["onSlot"], a=2); time.sleep(4)
             slot_row(m["onSlot"], "before")
+            if "--far" in sys.argv:     # the audit: a detach the reach check of a player's request would turn down (thrown clear of a crash)
+                h("set TLDRevamp.Net.Entities.EditRangeM 0.1")
             print("     host claims:", h.s(f"mp claim {car}"), flush=True)
             time.sleep(0.05)
             print("     joiner loses it:", str(L.s(f"mp falloff {car} {m['i']}"))[:120], flush=True)
             for w in (0.3, 1, 3, 8, 12):
                 time.sleep(w); slot_row(m["onSlot"], f"+{w}")
+            if "--far" in sys.argv: h("set TLDRevamp.Net.Entities.EditRangeM 15")
             print("     owner log:", h(f"mp ownerlog {car}")["log"][-3:], flush=True)
             ha, la = slot_row(m["onSlot"], "after 24 s")
             if ha != la: finding(f"door-stale {label}", f"{m['name']}: {ha or 'empty'} on the host, {la or 'empty'} on the joiner, for good")
@@ -502,6 +505,142 @@ def scripted(h, L, car, tracked, cars):
             ha, la = slot_row(m["onSlot"], "after 24 s")
             if ha != la: finding("door-stale bolt", f"{m['name']}: {ha or 'empty'} on the host, {la or 'empty'} on the joiner, for good")
             check(h, L, tracked, cars, "door-stale bolt")
+        L("mp lag 0")
+    T_ = "TLDRevamp.Net.Entities"
+    def litres(p, n):
+        try: return {k: round(float(v), 2) for k, v in re.findall(r"([a-zA-Z_]+):(\d+\.\d+)", json.dumps(p.s(f"mp fluids {n}")))}
+        except RuntimeError as ex: return str(ex)[:60]
+    def barrel_of():
+        m = next((m for m in L.members(car) if m.get("attached") and "BARREL" in m.get("name", "")), None)
+        if m is None: note("no barrel on the car"); return None
+        beside(L, L.ents()[car]); known = set(L.ents()); L.act("detach", net=car, item=m["i"]); time.sleep(4)
+        n = next((k for k, v in L.ents().items() if k not in known and "BARREL" in v.get("name", "")), None)
+        if n: tracked.add(n); L.s(f"mp fill {n} 0 gas 10"); time.sleep(3)
+        return n
+    if want("aud-near-pour") or want("aud-far-edit"):
+        print("\n=== the host pours into a barrel the joiner owns (barrel fluids): beside it, and with its owner 3 km away", flush=True)
+        n = barrel_of()
+        for far_ in (False, True) if n else ():
+            if (far_ and not want("aud-far-edit")) or (not far_ and not want("aud-near-pour")): continue
+            if far_:
+                g = L("gpos"); home = (g["gx"], g["gz"]); L(f"tpground {g['gx'] + 3000} {g['gz']}"); note("joiner 3 km away"); time.sleep(12)
+            beside(h, h.ents()[n], (2, 0, 0)); can = spawn(h, "jerry"); tracked.add(can); time.sleep(2)
+            if h.ents()[can]["proxy"]: h.s(f"mp claim {can}"); time.sleep(2)
+            h.s(f"mp fill {can} 0 gas 8"); time.sleep(2)
+            a0 = litres(h, n); c0 = litres(h, can)
+            print(f"     before: barrel host {a0}, joiner {litres(L, n) if not far_ else 'far'}, can {c0}, owner {h.ents()[n]['owner']}", flush=True)
+            print("     fill as a player (can in hand, left mouse):", str(h.s(f"mp holdfill {can} {n} 0"))[:120], flush=True); time.sleep(10)
+            print("     status:", str(h.s("mp holdfill status"))[:200], flush=True)
+            h.s("mp holdfill stop"); time.sleep(3)
+            if h.held(): h("dropheld")
+            time.sleep(1)
+            if far_:
+                L(f"tpground {home[0]} {home[1]}"); note("joiner back"); time.sleep(16)
+            ha, la, c1 = litres(h, n), litres(L, n), litres(h, can)
+            print(f"     after: barrel host {ha}, joiner {la}, can {c1}, owner {h.ents()[n]['owner']}", flush=True)
+            if ha != la and (not isinstance(ha, dict) or not isinstance(la, dict) or sum(ha.values()) - sum(la.values()) > 0.2 or sum(la.values()) - sum(ha.values()) > 0.2):
+                finding("aud-far-edit" if far_ else "aud-near-pour", f"barrel {ha} on the host, {la} on the joiner")
+            if isinstance(ha, dict) and isinstance(a0, dict) and isinstance(c0, dict) and isinstance(c1, dict):
+                gain, loss = sum(ha.values()) - sum(a0.values()), sum(c0.values()) - sum(c1.values())
+                print(f"     barrel gained {gain:.2f}, can lost {loss:.2f}", flush=True)
+                if gain > loss + 0.5: finding("aud-pour-count", f"barrel gained {gain:.2f} L, the can lost {loss:.2f} L")
+    if want("aud-fight"):
+        print("\n=== both players change usables of one item within a second: the same on both after?", flush=True)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(1)
+        rows = h.s(f"mp usables {car}")["usables"]
+        by = {}
+        for u in rows: by.setdefault(u["item"], []).append(u)
+        pick = [(i, us) for i, us in by.items() if len(us) >= 2][:3] + [(i, us) for i, us in by.items() if len(us) == 1][:2]
+        def vals(p): return {(u["item"], u["usable"]): u["value"] for u in p.s(f"mp usables {car}")["usables"]}
+        for i, us in pick:
+            a, b = us[0], us[-1]
+            for rnd, (x1, x2) in enumerate(((0.3, 0.7), (0.8, 0.2))):
+                h.try_act("usable", net=car, item=i, slot=a["usable"], x=x1); time.sleep(0.4)
+                L.try_act("usable", net=car, item=i, slot=b["usable"], x=x2); time.sleep(10)
+                va, vb = vals(h), vals(L)
+                bad = {k: (va[k], vb[k]) for k in va if k in vb and k[0] == i and any(abs(float(x) - float(y)) > 0.01 for x, y in zip(va[k], vb[k]))}
+                print(f"     item {i} {a['itemName']} usables {a['usable']}/{b['usable']} round {rnd + 1}: {'same' if not bad else bad}"[:260], flush=True)
+                if bad: finding(f"aud-fight {a['itemName']} {rnd + 1}", f"different after 10 s: {str(bad)[:160]}")
+    if want("aud-wheel-far"):
+        print("\n=== a tyre taken off a wheel carried 3 km from its car", flush=True)
+        beside(L, L.ents()[car]); w = next((m for m in bolted(L, car) if "Felni" in m["name"] and m.get("on") == 0), None)
+        known = set(L.ents()); L.act("detach", net=car, item=w["i"]); time.sleep(3)
+        wn = next((k for k, v in L.ents().items() if k not in known and "Felni" in v.get("name", "")), None); tracked.add(wn)
+        tyre = next((m for m in L.members(car) if m.get("on") == w["i"] and m.get("attached")), None)
+        note(f"wheel {wn}, tyre {tyre and tyre['name']}")
+        g = L("gpos"); print("     wheel moved:", str(L.s(f"mp moveitem {wn} 3000 0"))[:100], flush=True); L(f"tpground {g['gx'] + 3000} {g['gz']}"); h(f"tpground {g['gx'] + 3004} {g['gz']}"); time.sleep(14)
+        known = set(L.ents()); r = L.try_act("detach", net=car, item=tyre["i"]); time.sleep(4)
+        sh, sl = {x["i"]: x for x in h.members(car)}, {x["i"]: x for x in L.members(car)}
+        print(f"     tyre attached host {sh.get(tyre['i'], {}).get('attached')}, joiner {sl.get(tyre['i'], {}).get('attached')}, refusals {h(f'get {T_}.PartRejects').get('value')}", flush=True)
+        if sh.get(tyre["i"], {}).get("attached") != sl.get(tyre["i"], {}).get("attached"): finding("aud-wheel-far", "the tyre is off on the joiner only")
+        cars_ = cars
+        check(h, L, tracked, cars_, "aud-wheel-far")
+    if want("aud-break-far"):
+        print("\n=== a window broken with the other player 3 km away", flush=True)
+        beside(h, h.ents()[car]); time.sleep(1)
+        g = L("gpos"); L(f"tpground {g['gx'] + 3000} {g['gz']}"); note("joiner 3 km away"); time.sleep(12)
+        print("     host breaks:", str(h.s(f"mp breakent {car}"))[:160], flush=True); time.sleep(3)
+        L(f"tpground {g['gx']} {g['gz']}"); note("joiner back"); time.sleep(16)
+        def br(p):
+            try: return json.dumps(p.s("mp breakables 40"))
+            except RuntimeError as ex: return str(ex)
+        bh, bl = br(h), br(L); print(f"     host {bh[:240]}\n     joiner {bl[:240]}", flush=True)
+        if bh.count("true") != bl.count("true") or bh.count("false") != bl.count("false"): finding("aud-break-far", f"breakables differ: {bh.count('true')}/{bl.count('true')} true")
+    if want("worn-stale"):
+        print("\n=== a player puts a hat on while the other player's claim on it is on its way: on one head, loose for the other?", flush=True)
+        hat = next(w for w in h("mp wearables")["wearables"] if w[2] in ("hat", "cap"))
+        L(f"mp lag {arg('--lag', '400')}"); time.sleep(2)
+        for rnd in range(4):
+            before = set(L.ents()); beside(L, L.ents()[car], (4, 0, 2 * rnd)); L(f"devspawn {hat[0]}")
+            def newhat(): return next((k for k, v in L.ents().items() if k not in before and v.get("name", "").startswith(hat[1])), None)
+            until(newhat, 10); n = newhat(); tracked.add(n); time.sleep(3)
+            beside(h, h.ents()[n], (1.2, 0, 0)); time.sleep(1)
+            if h.ents()[n]["owner"] != L.me(): L.s(f"mp claim {n}"); time.sleep(2)
+            if rnd == 0: print("     no claim this round: what a hat looks like when nothing goes wrong", flush=True)
+            else: print("     host claims it:", h.s(f"mp claim {n}"), flush=True)
+            time.sleep(0.05)
+            print("     joiner puts it on:", str(L.s(f"mp wear {n}"))[:90], flush=True)
+            time.sleep(6)
+            g = L("gpos"); L(f"tpground {g['gx'] + 8} {g['gz'] + 3}"); time.sleep(4)
+            eh, el = h.ents()[n], L.ents()[n]; me = L("gpos")
+            apart = math.dist(eh["pos"], el["pos"])
+            def wrow(p):
+                j = p.s("mp worn"); rows = next((v for v in j.values() if isinstance(v, list) and v and isinstance(v[0], dict) and "net" in v[0]), [])
+                r = next((x for x in rows if x["net"] == n), {})
+                return {k: r.get(k) for k in ("proxy", "localSlot", "wornBy", "wearing", "rides", "headDist", "onBody")}
+            wh, wl = wrow(h), wrow(L)
+            print(f"     host {wh}\n     joiner {wl}", flush=True)
+            if wl.get("localSlot", -1) >= 0 and wl.get("proxy"): finding(f"worn-stale {rnd + 1} / slot", "in the joiner's wear slot, the hat itself is the host's and lies elsewhere")
+            if wl.get("localSlot", -1) >= 0 and float(wl.get("headDist") or 0) > 1: finding(f"worn-stale {rnd + 1} / head", f"on the joiner's head in the game, {wl['headDist']} m from it")
+            print(f"     owner {eh['owner']}/{el['owner']}, copy {eh['proxy']}/{el['proxy']}, hat apart {apart:.2f} m, took back {h('get ' + T_ + '.WornTakenBack').get('value')}, log {h(f'mp ownerlog {n}')['log'][-2:]}", flush=True)
+            if apart > 1: finding(f"worn-stale {rnd + 1}", f"on the joiner's head, {apart:.1f} m away on the host's screen (owner {eh['owner']})")
+            check(h, L, tracked, cars, f"worn-stale {rnd + 1}")
+            tracked.discard(n)
+            try: L.s(f"mp takeoff {n} drop")
+            except RuntimeError as ex: print("     takeoff:", str(ex)[:80], flush=True)
+            time.sleep(2)
+        L("mp lag 0")
+    if want("edit-stale"):
+        print("\n=== a part comes with a car the player just took, the player edits it before hearing that it's theirs", flush=True)
+        door = next((m for m in bolted(h, car) if "Door" in m["name"]), None)
+        beside(h, h.ents()[car]); take_car(h, car)
+        known = set(h.ents()); h.act("detach", net=car, item=door["i"]); time.sleep(3)
+        dn = next((k for k, v in h.ents().items() if k not in known and v.get("name") == door["name"]), None)
+        h.try_act("attach", net=dn, other=car, item=door["on"] + 1, slot=door["onSlot"], a=2); time.sleep(4)
+        tracked.add(dn)
+        L(f"mp lag {arg('--lag', '400')}"); time.sleep(2)
+        for rnd in range(3):
+            beside(h, h.ents()[car]); take_car(h, car)
+            beside(L, L.ents()[car]); time.sleep(1)
+            r0 = (h(f"get {T_}.EditsRejected").get("value"), h(f"get {T_}.EditsReturned").get("value"), L(f"get {T_}.EditsApplied").get("value"))
+            print("     joiner claims the car:", L.s(f"mp claim {car}"), flush=True)
+            time.sleep(0.03)
+            print("     joiner edits the door:", str(L.s(f"mp forgeedit {dn} ok"))[:100], flush=True)
+            time.sleep(3)
+            r1 = (h(f"get {T_}.EditsRejected").get("value"), h(f"get {T_}.EditsReturned").get("value"), L(f"get {T_}.EditsApplied").get("value"))
+            print(f"     refused {r0[0]} -> {r1[0]}, returned {r0[1]} -> {r1[1]}, applied on the joiner {r0[2]} -> {r1[2]}, door owner {h.ents()[dn]['owner']}", flush=True)
+            if r1[0] != r0[0]: finding(f"edit-stale {rnd + 1}", "the joiner's edit was refused and lost")
+            check(h, L, tracked, cars, f"edit-stale {rnd + 1}")
         L("mp lag 0")
     if want("door-chaos"):
         print("\n=== one door of the joiner's car, off and on in every odd situation: a door on one screen only, or two in a slot?", flush=True)

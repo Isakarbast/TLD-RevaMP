@@ -142,6 +142,8 @@ namespace TLDRevamp.Net
             }
         }
 
+        public static bool AttachReqBecomesSync = true;   // A/B: false = relayed as a request every copy ignores (before)
+        public static bool StaleDetachDirect = true;    // A/B: false = through the reach and rate checks of ServerDetachReq
         public static bool StaleOwnerForwards = true;   // A/B: false = a bolt or an unbolt from a player who just lost the object is dropped (before)
         public static long StaleAttachesForwarded, StaleDetachesForwarded;
         public static bool AttachRequests = true;   // A/B: false = before v0.66.4 (a copy bolted by the player stays local)
@@ -314,6 +316,8 @@ namespace TLDRevamp.Net
             }
             SetLiveRecordFloor(new UsableKey { Net = partNet, Epoch = se.Epoch, Item = 0 }, SessionLog.St);
             r.Pos = 0; int len = r.End;
+            // its claim went through first (ServerAttachReq): for everyone else, and for later joiners, an attach, not a request
+            if (AttachReqBecomesSync && r.Buf[0] == AttachReq) r.Buf[0] = AttachSync;
             WS.Reset(); WS.Bytes(r.Buf, 0, len);
             ServerSendAll(WS, true, from);
             // kept for whoever gets these objects later: a joiner gets the part's own record (taken when it came off:
@@ -496,7 +500,13 @@ namespace TLDRevamp.Net
                 if (!StaleOwnerForwards) return;
                 StaleDetachesForwarded++;
                 SessionLog.Event("detach-forwarded", net, from: from, to: se.OwnerId, result: "sender no longer owns it");
-                ServerDetachReq(from, net, 0);
+                // not through the checks of a player's request: it has already happened on their screen, a refusal is this bug again
+                if (StaleDetachDirect && se.PrevOwnerId == from && Time.realtimeSinceStartup - se.PrevOwnerAt <= HandoverAcceptS)
+                {
+                    W.Reset(); W.U8(DetachReq); W.U32(net); W.VarU32(0u);
+                    ServerSendTo(se.OwnerId, W, true);
+                }
+                else ServerDetachReq(from, net, 0);
                 return;
             }
             if (!ClaimEpochOk(se, from, epoch)) return;

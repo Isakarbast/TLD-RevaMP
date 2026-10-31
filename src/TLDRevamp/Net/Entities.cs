@@ -81,6 +81,7 @@ namespace TLDRevamp.Net
             internal readonly HandItemGlide HandDraw = new HandItemGlide();
             public int WornBy = -1, WornSlot = -1; public Vector3 WornLp; public Quaternion WornLq = Quaternion.identity;   // copy: on this player's head (Entities.Worn)
             public tosaveitemscript WornOffFor;   // copy: the object whose collisions were switched off for that
+            public float WornClaimAt = -100f; public int WornClaims;   // on the local head as a copy: claimed back (Entities.Worn)
             public int SentWornSlot = -1;     // owner: the slot last announced (-1 = not worn)
             public uint CarriedBy;            // copy: held by a player seated in this car — its states are in the car's frame (Entities.Carried)
             public uint RideCar;              // owner: the car this loose item lies in, its states sent in that car's frame (Entities.Carried)
