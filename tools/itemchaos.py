@@ -1266,7 +1266,7 @@ def monkey(h, L, car, tracked, cars, seed, steps):
                 ms = [n for n in tracked if e.get(n, {}).get("held") and e[n]["owner"] == me]
                 if ms: into_car(p, car, ms[0], None)
             elif op == "throw" and heldname:
-                g = p("gpos"); note(f"{p.label} throws: {str(p(f'mp throwpoint {e[car]['pos'][0]} {e[car]['pos'][2]} 0.8'))[:60]}")
+                g = p("gpos"); cp = e[car]["pos"]; note(f"{p.label} throws: {str(p(f'mp throwpoint {cp[0]} {cp[2]} 0.8'))[:60]}")
             elif op == "store" and heldname: p.try_act("inv_store", slot=rng.randrange(0, 3))
             elif op == "glue" and heldname:
                 p(f"mp lookat {car}"); time.sleep(0.5); p("set MountAnything.Mounting.TestPress True"); note(f"{p.label} glues: {p('get MountAnything.Mounting.LastMount').get('value')}")
