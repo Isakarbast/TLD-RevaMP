@@ -178,7 +178,7 @@ namespace TLDRevamp.Net
                 _censusDue.Remove(net);
                 if (!ByNet.TryGetValue(net, out var e) || !e.Proxy || e.Root == null) continue;
                 if (CensusRepairs && EditHeld(e, now)) { _censusDue[net] = new CensusDue { At = now + CensusHoldS, Attempt = attempt }; continue; }   // differs for now: our edit
-                W.Reset(); W.U8(CensusAsk); W.U32(net); W.U32(e.Epoch); W.U32(CensusHash(CensusRepairs ? RepairRows(e) : CensusRows(e))); W.U8(attempt);
+                W.Reset(); W.U8(CensusAsk); W.U32(net); W.U32(e.Epoch); W.U32(CensusHash(CensusRepairs ? RepairRows(e) : CensusRows(e))); W.U8(attempt); WriteCopyPlace(e, attempt);
                 ToServer(W, true);
                 CensusAsks++;
             }
@@ -190,6 +190,7 @@ namespace TLDRevamp.Net
             uint net = r.U32(), epoch = r.U32(), hash = r.U32(); byte attempt = r.U8();
             if (r.Bad || !Server.TryGetValue(net, out var se) || se.OwnerId == from || se.Epoch != epoch) return;
             WS.Reset(); WS.U8(CensusAsk); WS.U32(net); WS.U32(epoch); WS.U32(hash); WS.U8(attempt); WS.VarU32((uint)from);
+            if (r.Remaining >= PlaceDigest.Bytes) { WS.U16(r.U16()); WS.U16(r.U16()); WS.U16(r.U16()); }
             ServerSendTo(se.OwnerId, WS, true);
         }
 
@@ -197,8 +198,11 @@ namespace TLDRevamp.Net
         internal static void ApplyCensusAsk(NetReader r)
         {
             uint net = r.U32(), epoch = r.U32(), hash = r.U32(); byte attempt = r.U8(); int asker = (int)r.VarU32();
+            bool place = r.Remaining >= PlaceDigest.Bytes;
+            ushort px = place ? r.U16() : (ushort)0, py = place ? r.U16() : (ushort)0, pz = place ? r.U16() : (ushort)0;
             if (r.Bad || !ByNet.TryGetValue(net, out var e) || e.Proxy || e.Epoch != epoch || !Resolve(e) || e.Root == null) return;
             CensusAsked++;
+            if (place) CheckCopyPlace(e, asker, px, py, pz);
             var rows = CensusRepairs ? RepairRows(e) : CensusRows(e);
             if (CensusHash(rows) == hash) return;
             W.Reset(); W.U8(CensusReply); W.U32(net); W.VarU32((uint)asker); W.U8(attempt); W.Str(string.Join("\n", rows));
@@ -219,6 +223,7 @@ namespace TLDRevamp.Net
             uint net = r.U32(); r.VarU32(); byte attempt = r.U8(); string theirs = r.Str();
             CensusRepliesIn++;
             if (r.Bad || !ByNet.TryGetValue(net, out var e) || !e.Proxy || e.Root == null) return;
+            if (attempt == PlaceTold) { CopyPlaceHeard(e, theirs); return; }
             CensusDiffers++;
             if (attempt < 2)
             {

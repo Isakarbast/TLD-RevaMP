@@ -810,6 +810,43 @@ def scripted(h, L, car, tracked, cars):
         print(f"     repairs: host {str(h.s(f'mp repairrows {car} 0'))[-70:]}, joiner {str(L.s(f'mp repairrows {car} 0'))[-70:]}", flush=True)
         print("     anomalies host:", str(h.s("mp anomalies").get("lines"))[-300:], flush=True)
         check(h, L, tracked, cars, "repair")
+    if want("aud-place"):
+        print("\n=== a copy that missed an item's last states: does the census put it back where the owner has it?", flush=True)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(2)
+        n = spawn(L, "jerry"); tracked.add(n); time.sleep(3)
+        if n is None: note("INVALID aud-place: no loose item")
+        else:
+            if L.ents()[n]["proxy"]: L.s(f"mp claim {n}"); time.sleep(2)
+            print("     item", n, L.ents()[n]["name"], "owner", L.ents()[n]["owner"], "| before:", h.s("mp places"), flush=True)
+            for rnd, on in enumerate((False, True)):
+                h.s(f"set {T}.CensusPlaces {on}"); L.s(f"set {T}.CensusPlaces {on}")
+                h.s(f"mp dropstates {n}")
+                print(f"     census positions {on}: the owner moves it, the copy hears none of it:", str(L.s(f"mp moveitem {n} {8 + 6 * rnd} 0"))[:70], flush=True); time.sleep(6)
+                h.s("mp dropstates 0")
+                gap = lambda: math.dist(h.ents()[n]["pos"], L.ents()[n]["pos"])
+                d0 = gap(); print(f"     apart {d0:.2f} m", flush=True)
+                if d0 < 2: note(f"INVALID aud-place {on}: no gap made ({d0:.2f} m)"); continue
+                h.s(f"mp censusnow {n} 0")
+                t0 = time.time()
+                while time.time() - t0 < 40 and gap() > 0.6: time.sleep(1)
+                d1 = gap()
+                print(f"     census positions {on}: {'healed in %.0f s' % (time.time() - t0) if d1 <= 0.6 else 'STILL %.2f m apart after 40 s' % d1}", flush=True)
+                if on and d1 > 0.6: finding("aud-place", f"still {d1:.2f} m apart")
+                if not on and d1 <= 0.6: note("INVALID aud-place: healed with the check off, a gap this way doesn't last")
+            print("     places: host", h.s("mp places"), "joiner", L.s("mp places"), flush=True)
+            print("     anomalies host:", str(h.s("mp anomalies").get("lines"))[-400:], flush=True)
+            check(h, L, tracked, cars, "aud-place")
+    if want("aud-place-cost"):
+        print("\n=== what the position check costs: both players by the car, nothing else going on, a minute each way", flush=True)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(5)
+        for on in (False, True, False, True):
+            h.s(f"set {T}.CensusPlaces {on}"); L.s(f"set {T}.CensusPlaces {on}")
+            h("net meter reset"); L("net meter reset"); time.sleep(60)
+            for who, p in (("host", h), ("joiner", L)):
+                m = p("net meter")
+                ask = next((t for t in m["types"] if t["type"] == 65), {})
+                print(f"     positions {on}, {who}: {m['seconds']:.0f} s, all traffic out {m['outBytesPerSec']} B/s in {m['inBytesPerSec']} B/s; census asks out {ask.get('outMsgs')} msgs {ask.get('outBytes')} B, in {ask.get('inMsgs')} msgs {ask.get('inBytes')} B", flush=True)
+        print("     places: host", h.s("mp places"), "joiner", L.s("mp places"), flush=True)
     if want("aud-share"):
         print("\n=== an item spawned and deleted while the message about it is still on its way: left behind anywhere?", flush=True)
         beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0))
@@ -1225,6 +1262,7 @@ with game.ProtectedSession():
         for who, s_ in (("host", h), ("joiner", L)):
             a_ = s_.s("mp anomalies")
             print(f"census {who}: asks {a_.get('censusAsks')}, differ {a_.get('censusDiffers')}, repairs asked {a_.get('repairsAsked')}, healed {a_.get('repairsHealed')}, failed {a_.get('repairsFailed')}, run {a_.get('repairsRun')}", flush=True)
+            print(f"places {who}: {s_('mp places')}", flush=True)
             for l_ in a_.get("lines", []):
                 if "repair" in l_ or "parts differ" in l_: print("    ", l_[:300], flush=True)
         L("mp stop"); h("mp stop")

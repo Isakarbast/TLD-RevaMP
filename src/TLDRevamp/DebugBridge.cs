@@ -936,6 +936,8 @@ namespace TLDRevamp
                         case "displace": return Net.Entities.TestDisplace(uint.Parse(ma[1]), float.Parse(ma[2], System.Globalization.CultureInfo.InvariantCulture));
                         case "repairrows": { Net.Entities.TryRows(uint.Parse(ma[1]), out var rr); return rr; }
                         case "censusnow": return Net.Entities.CensusNow(uint.Parse(ma[1]));
+                        case "places": return Net.Entities.PlacesJson();
+                        case "dropstates": Net.Entities.TestDropStates = uint.Parse(ma[1]); return "{\"dropping\":" + ma[1] + "}";
                         case "localstate": return Net.Entities.LocalState(uint.Parse(ma[1]), int.Parse(ma[2]));
                         case "copypartgone": return Net.Entities.TestCopyPartGone(uint.Parse(ma[1]), ma[2]);
                         case "usecap": return Net.Entities.UseCap(uint.Parse(ma[1]), int.Parse(ma[2]));

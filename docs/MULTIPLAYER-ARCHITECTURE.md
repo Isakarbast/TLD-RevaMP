@@ -203,6 +203,8 @@ and plays on the game's own world, exactly as before.
 
 Protocol 59 sends a pour on a copy as a change (Edit ends with tank, fluid and litres; Entities.Edits, TankAdds) next to the level: the owner adds the change to what it has, so two players pouring into one barrel both count. An edit that comes back to its sender, now the owner, uses the level. A record held off while the edit is on its way still sets what the tank comes to after the hold, and the copy runs a census once the hold is over.
 
+Protocol 60 adds where an object is to the census (Entities.PlaceCheck): a copy near its player ends its ask with its position in six bytes, and the owner stays silent unless the object is held by neither, not bolted on, not moving fast, and the copy is 0.5 m or more away. Then the owner sends one fresh state and tells the copy what it sees, for its log. A state at rest is sent once, so a lost or refused one used to leave a copy in the wrong place for good. Bolted parts follow their parent and creatures wander, so neither is compared; members of a group are not compared either.
+
 Protocol 58 adds the census repair (Entities.Repair): a copy near its player asks about one object at a time, 4 a second, with a hash of what is bolted where (group index and slot, or net and slot for its own object) and of the state a player can change (part conditions, turnable usables, tanks in whole litres). The owner answers only when its hash differs. Still different 6 s later, the copy sends CensusRepair naming the difference and the owner sends what it holds again through the normal messages: every record of the group, its AttachSync or DetachSync, a PartOff that never got through; the server replays a PartDetached the copy never had. Nothing is applied that the normal paths would not apply. Another difference 8 s after that is logged as an anomaly and asked about again after 30 s, doubling up to 10 minutes.
 
 Protocol 57 names a part unbolted from a member carried away from its group by the carrier's slot (PartOff and PartDetached can end with the carrier net and slot): the group can be out of range on the machine that unbolts it, a tyre on a wheel off a wreck.
@@ -699,7 +701,7 @@ upper-envelope counts. They say where to look, not what anything costs at run ti
    not checked (the host doesn't have every player's surroundings). Hits on objects (cars, creatures, breakables) are
    still the attacker's word.
 
-### Join loading (introduced in protocol 45; current protocol 59)
+### Join loading (introduced in protocol 45; current protocol 60)
 
 `MpClient.Ready` starts replication; it is not gameplay readiness. With `joinLoading` enabled, `JoinLoadingState` gates a joiner-only overlay and audio lease. The scene/player initialization, requested terrain meshes/colliders and road chunks, a static floor stable under the player for 0.5 s, and initial object application must all hold. `fpscontroller.Move` is suppressed and the player body held during loading; teardown always releases the body and restores audio/cursor state.
 

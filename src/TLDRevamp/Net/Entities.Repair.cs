@@ -72,6 +72,7 @@ namespace TLDRevamp.Net
         private static void RepairTick(float now)
         {
             if (!CensusRepairs) return;
+            PlaceWaitTick(now);
             if (_repairWait.Count > 0)
             {
                 _repairDone.Clear();

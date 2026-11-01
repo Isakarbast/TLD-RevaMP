@@ -121,7 +121,7 @@ namespace TLDRevamp.Net
                 case Entities.CrashClaim:
                     net = r.U32(); other = r.U32(); break;
                 case Entities.CensusAsk:
-                    net = r.U32(); r.Skip(9); if (fromServer) r.Var(); break;
+                    net = r.U32(); r.Pos = r.End; break;
                 case Entities.CensusReply:
                     net = r.U32(); r.Var(); r.Skip(1); r.Str(); break;
                 case Entities.CensusRepair:
