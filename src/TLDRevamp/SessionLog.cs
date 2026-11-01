@@ -149,7 +149,7 @@ namespace TLDRevamp
                 !(_loadKind != null && !_worldEntered) && DataFromMenuScript.s != null && !DataFromMenuScript.s.mainmenu && mainscript.s != null && mainscript.s.started && menuhandler.s != null ? (object)menuhandler.s.currentMainMap : null;
             if (!ReferenceEquals(ctx, _context))
             {
-                Close(); FinishCaptures(now, true); Ring.Clear(); Events.Clear(); History.Clear(); Net.Entities.ResetTelemetry(); Net.NetMeter.ResetTelemetry(); LiveSamples.Clear(); _context = ctx; _disabled = false;
+                Close(); FinishCaptures(now, true); Ring.Clear(); Events.Clear(); ObjectTrail.Clear(); History.Clear(); Net.Entities.ResetTelemetry(); Net.NetMeter.ResetTelemetry(); LiveSamples.Clear(); _context = ctx; _disabled = false;
                 _sent = _received = 0;
                 _costTicks = _costFrames = _costBytes = _costMax = 0;
                 _longHitchesDropped = 0;
@@ -635,7 +635,7 @@ namespace TLDRevamp
             Close(); _context = null;
             // Deferred MP teardown must not erase the menu action that started the next world.
             if (!sceneStop || _worldEntered || _loadKind == "join") { _loadKind = null; _worldEntered = false; }
-            FinishCaptures(Time.realtimeSinceStartupAsDouble, true); Ring.Clear(); Events.Clear(); History.Clear(); Net.Entities.ResetTelemetry(); Net.NetMeter.ResetTelemetry(); LiveSamples.Clear();
+            FinishCaptures(Time.realtimeSinceStartupAsDouble, true); Ring.Clear(); Events.Clear(); ObjectTrail.Clear(); History.Clear(); Net.Entities.ResetTelemetry(); Net.NetMeter.ResetTelemetry(); LiveSamples.Clear();
         }
         internal static void Shutdown()
         {
@@ -659,7 +659,7 @@ namespace TLDRevamp
                 if (!LiveSamples.Take(net, item, slot, kind.GetHashCode(), now)) { Events.Sampled++; for (int i = 0; i < Captures.Count; i++) if (now <= Captures[i].Local + 5) Captures[i].Events.Sampled++; return; }
             }
             var e = new TelemetryEvent { St = St, Local = now, Kind = kind, Net = net, Other = other, Item = item, Slot = slot, From = from, To = to, Result = result, Epoch = epoch, Count = count, Value = value, Dx = dx, Dy = dy, Dz = dz };
-            Events.Add(e);
+            Events.Add(e); ObjectTrail.Add(e);
             for (int i = 0; i < Captures.Count; i++) if (now <= Captures[i].Local + 5) Captures[i].Events.Add(e);
         }
         public static void Flush() { try { _w?.Flush(); } catch (Exception e) { Fail("flush", e); } }

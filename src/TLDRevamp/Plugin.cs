@@ -157,6 +157,7 @@ namespace TLDRevamp
             var cl = Environment.GetCommandLineArgs();
             int ci = Array.IndexOf(cl, "-tldbridge");
             if (ci >= 0 && ci + 1 < cl.Length && int.TryParse(cl[ci + 1], out int bp) && bp > 1024 && bp < 65536) BridgePort = bp;
+            ObjectTrail.On = BridgeEnabled;
             if (BridgeEnabled) { Bridge = new DebugBridge(BridgePort); Bridge.Start(); }
 
             // The mod's keys: none the game uses. The game's own F1–F10, Home and End (dev mode: F8 a test ragdoll, F9

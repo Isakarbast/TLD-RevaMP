@@ -220,6 +220,9 @@ class SourceGuardTests(unittest.TestCase):
         self.assertIn("_verify_data_path", bench)
         # it is called before the command is sent
         self.assertRegex(bench, r"def __call__[\s\S]{0,600}?_verify_data_path\(\)[\s\S]{0,120}?return self\._raw\(cmd\)")
+        # the lease is looked at on connecting and again on a timer, also before the command is sent
+        self.assertRegex(bench, r"def __call__[\s\S]{0,600}?LEASE_RECHECK_S:\s+launchguard\.run\(self\.spec, \"verify\", self\.remote\)")
+        self.assertRegex(bench, r"LEASE_RECHECK_S = \d(\.\d)?\n")
 
     def test_the_kill_is_scoped_to_the_lease(self):
         self.assertNotIn("pkill", self.game)

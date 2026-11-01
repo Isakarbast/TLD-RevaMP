@@ -703,3 +703,17 @@ def compare_items(a, b, tol=0.3):
         else:
             only_a.append((it[0], round(it[1], 1), round(it[3], 1), None if best is None else round(best, 2)))
     return matched, only_a, [(o[0], round(o[1], 1), round(o[3], 1)) for o in left], worst
+
+
+def trail(machines, net):
+    """What happened to one object on every machine, oldest first, as text rows ({label: bridge}; `mp trail`)."""
+    rows = []
+    for label, s in machines.items():
+        try: got = s(f"mp trail {net}")
+        except RuntimeError as ex: rows.append((0, f"{label}: no trail: {str(ex)[-60:]}")); continue
+        if got.get("lost"): rows.append((0, f"{label}: {got['lost']} older rows lost"))
+        for r in got["rows"]:
+            rel = f" other {r['other']}" if r["net"] == net and r["other"] else f" of {r['net']}" if r["net"] != net else ""
+            at = "".join(f" {k} {r[k]}" for k in ("item", "slot") if r[k] >= 0)
+            rows.append((r["st"], f"{r['st']:9.2f} {label:6} {r['kind']}{rel}{at} {r['from']}->{r['to']} epoch {r['epoch']} {r['result']}"))
+    return [t for _, t in sorted(rows, key=lambda x: x[0])]

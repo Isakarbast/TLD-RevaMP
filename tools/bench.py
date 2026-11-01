@@ -238,11 +238,13 @@ def restore_settings(restore=None):
     return ok
 
 
+LEASE_RECHECK_S = 5.0
+
 class Bridge:
     """A connection to a leased hidden test game, never to an arbitrary answering bridge.
 
-    The lease is verified and the game's own dataPath is read back BEFORE the first command, and again
-    before every command: a bridge that answers but belongs to another copy (the wrong game directory, the
+    The lease is verified and the game's own dataPath is read back BEFORE the first command; dataPath again
+    before every command, the lease every LEASE_RECHECK_S: a bridge that answers but belongs to another copy (the wrong game directory, the
     wrong prefix, the wrong port) is refused, because a test that talks to somebody else's game means nothing.
     """
     def __init__(self, remote=None, port=None, game_dir=None, compat=None):
@@ -250,6 +252,7 @@ class Bridge:
         self.remote = remote or REMOTE
         self.spec = launchguard.specification(bool(self.remote), game_dir, compat, port)
         self.spec = launchguard.run(self.spec, "verify", self.remote)["spec"]
+        self._lease_seen = time.monotonic()
         destination = self.spec["port"]
         connect_port = ensure_tunnel(self.remote, destination_port=destination) if self.remote else destination
         self.restore_file = restore_file(self.remote, destination)
@@ -298,8 +301,11 @@ class Bridge:
     def __call__(self, cmd):
         import launchguard, testdisplay
         testdisplay.validate_command(cmd, self.spec["profile"])
-        # Every bridge command may have side effects. Even a custom command named like a query is guarded.
-        launchguard.run(self.spec, "verify", self.remote)
+        # Every command may have side effects, so each is guarded: dataPath always; the lease (its own process, 150 ms)
+        # on a timer, since a game can't change under an open connection.
+        if time.monotonic() - self._lease_seen >= LEASE_RECHECK_S:
+            launchguard.run(self.spec, "verify", self.remote)
+            self._lease_seen = time.monotonic()
         self._verify_data_path()
         return self._raw(cmd)
 

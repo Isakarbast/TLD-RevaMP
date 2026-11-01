@@ -10,12 +10,45 @@ is a finding, with the steps that led to it.
   centre is in a storage area that can store it and that nobody holds: held by a container (on both machines).
   Nothing refused (part-off), no exceptions.
 Scripted runs of what the reports did, then a random monkey (--seed, --steps).
-  tools/itemchaos.py [--no-build] [--relay off|iad] [--seed 1] [--steps 60] [--only NAME[,NAME]] [--no-monkey] [--oldglue]"""
-import sys, os, time, math, json, random, re, shutil, pathlib
+  tools/itemchaos.py [--no-build] [--relay off|iad] [--seed 1] [--steps 60] [--only NAME[,NAME]] [--no-monkey] [--monkey] [--oldglue]
+--only skips the monkey unless --monkey is there too. --slow waits the old fixed times instead of until the machines agree.
+--ab adds the census scenarios' round with the check off (40 s each: proves the gap stays without it; --slow has it too).
+The screen gets the scenario heads and a short result; everything else is in the run's folder (printed at the end, or
+TLD_CHAOS_DIR): log.txt, findings.json, objects/<net>.txt (what happened to each object in a finding, both machines,
+or the --trail N,M ones). --verbose prints it all. The folder can hold private text: it stays on this machine."""
+import sys, os, time, math, json, random, re, shutil, pathlib, traceback
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import game
-from mplib import Agent, ensure_both, join_both, DESKTOP_IP
+from mplib import Agent, ensure_both, join_both, trail, DESKTOP_IP
 from roadkit import until
+
+# where a run's time goes: seconds slept per line of this file (other files by name), printed at the end
+T0, SLEPT, _sleep = time.time(), {}, time.sleep
+def _timed_sleep(s):
+    f = sys._getframe(1)
+    k = f.f_lineno if f.f_code.co_filename == __file__ else pathlib.Path(f.f_code.co_filename).name
+    SLEPT[k] = SLEPT.get(k, 0) + s
+    _sleep(s)
+time.sleep = _timed_sleep
+
+RUN = pathlib.Path(os.environ.get("TLD_CHAOS_DIR") or pathlib.Path.home() / ".cache/tld-revamp/itemchaos" / time.strftime("%Y%m%d-%H%M%S"))
+RUN.mkdir(parents=True, exist_ok=True)
+class ShortOut:
+    """The run's whole output goes to log.txt, the screen gets what's worth reading."""
+    KEEP = re.compile(r"^(=== |FINDING |result: |  \S.*\u00d7\d+$|Traceback|JOINER|ensure_both: (fresh|the .*launch)|.* error CS)")
+    def __init__(self, screen):
+        self.screen, self.log, self.part, self.all = screen, open(RUN / "log.txt", "w", encoding="utf-8"), "", "--verbose" in sys.argv
+    def write(self, text):
+        self.log.write(text); self.log.flush()
+        self.part += text
+        while "\n" in self.part:
+            line, self.part = self.part.split("\n", 1)
+            if self.all or self.KEEP.match(line):
+                self.screen.write((f"[{time.time() - T0:4.0f} s] " if line.startswith("=== ") else "") + line[:400] + "\n"); self.screen.flush()
+    def flush(self): self.log.flush(); self.screen.flush()
+    def __getattr__(self, name): return getattr(self.screen, name)
+sys.stdout = ShortOut(sys.stdout)
+sys.stdout.screen.write(f"the whole run: {RUN}\n")
 
 def arg(name, default, conv=str):
     return conv(sys.argv[sys.argv.index(name) + 1]) if name in sys.argv else default
@@ -23,25 +56,35 @@ RELAY = arg("--relay", "off")
 if RELAY == "off": RELAY = None
 SEED, STEPS = arg("--seed", 1, int), arg("--steps", 60, int)
 ONLY = [x for x in arg("--only", "").split(",") if x]
+SLOW, AB = "--slow" in sys.argv, "--ab" in sys.argv or "--slow" in sys.argv
+MONKEY = "--monkey" in sys.argv or not (ONLY or "--no-monkey" in sys.argv)
 SRC = pathlib.Path(os.environ.get("TLD_PLAYSAVE_DIR", "")).expanduser()
 SRC_NAME = os.environ.get("TLD_PLAYSAVE", "autosave1")
 SAVE = "itemchaos"
 T = "TLDRevamp.Net.Entities"
 SETTLE = 5.0        # after a step
 PERSIST = 12.0      # a difference must still be there this much later
+QUIET = 1.5         # the machines agreeing for this long ends the settle time early
 LOOSE = {"can": 60, "lamp": 66, "sponge": 119, "jerry": 72}     # itemdatabase ids, what gets spawned to play with
 
 KIND = dict(pose=1, seat_in=2, seat_out=3, pickup=4, drop=5, throw=6, inv_switch=7, inv_store=9, inv_unstore=10, usable=13, attach=15, detach=16)
 HISTORY, FINDINGS = [], []
 def note(s):
     HISTORY.append(s); print(f"  [{len(HISTORY):3}] {s}", flush=True)
-def finding(tag, detail):
-    FINDINGS.append({"tag": tag, "detail": detail, "steps": HISTORY[-8:]})
+def finding(tag, detail, net=None):
+    FINDINGS.append({"tag": tag, "detail": detail, "steps": HISTORY[-8:], "net": net})
     print(f"FINDING  {tag}: {detail}", flush=True)
 
+def wait(secs, cond, step=0.2):
+    """Until cond, at most secs; the full secs with --slow."""
+    if SLOW: time.sleep(secs); return True
+    return until(cond, secs, step)
+
+PLAYERS = []
 class Player:
     def __init__(self, s, label):
         self.s, self.label = s, label
+        PLAYERS.append(self)
     def __call__(self, cmd): return self.s(cmd)
     def act(self, kind, net=0, other=0, item=-1, slot=-1, x=0, y=0, z=0, a=0):
         r = self.s(f"repro act {KIND[kind]} {net} {other} {item} {slot} {x} {y} {z} {a} 0 0 0 0 0 0 0")
@@ -146,13 +189,21 @@ def differences(h, L, tracked, cars):
 DOUBLED_AT_START = set()   # a save that already has two doors in a slot: not this run's doing
 _counts = {}
 def check(h, L, tracked, cars, tag, settle=SETTLE):
-    time.sleep(settle)
-    first = differences(h, L, tracked, cars)
+    if SLOW: time.sleep(settle)
+    t0, agreed = time.time(), None
+    while True:     # until they have agreed for QUIET, at most settle
+        first = differences(h, L, tracked, cars)
+        if SLOW or time.time() - t0 >= settle: break
+        agreed = None if first else agreed or time.time()
+        if agreed and time.time() - agreed >= QUIET: break
+        time.sleep(0.25)
     if first:
         time.sleep(PERSIST)
         again = differences(h, L, tracked, cars)
         for k, v in again.items():
-            if k in first: finding(tag + " / " + k.split()[0], v)
+            if k in first:
+                m = re.search(r"\d+", k)   # "place 4474", "member-on 3/5": the object's net
+                finding(tag + " / " + k.split()[0], v, int(m.group()) if m else None)
     for who, s in (("host", h), ("joiner", L)):
         e = s("errors raw")   # the game's own texts: this log can hold private data, it stays on this machine
         n = e.get("errors", 0) + e.get("exceptions", 0)
@@ -182,7 +233,11 @@ def bolted(p, car):
 
 def beside(p, car_e, off=(2.6, 0.0, 0.0)):
     v = qrot(car_e["rot"], off)
-    p(f"tpground {car_e['pos'][0] + v[0]} {car_e['pos'][2] + v[2]}"); time.sleep(1.5)
+    x, z = car_e['pos'][0] + v[0], car_e['pos'][2] + v[2]
+    p(f"tpground {x} {z}")
+    # the server's reach check goes by where it last heard the player is
+    me, others = p.me(), [o for o in PLAYERS if o is not p]
+    wait(1.5, lambda: all(any(q["id"] == me and math.hypot(q["target"][0] - x, q["target"][2] - z) < 2 for q in o.s("mp players")["players"]) for o in others))
 
 def bed(h, car):
     a = h(f"mount areas {car}")["areas"]
@@ -217,13 +272,15 @@ def into_car(p, car, net, ents_of):
     time.sleep(1.2)
 
 def take_car(p, car):
+    me = p.me()
+    theirs = lambda: all(o.ents()[car]["owner"] == me for o in PLAYERS)
     for _ in range(4):
-        p(f"mp sitdriver {car}"); time.sleep(2)
+        p(f"mp sitdriver {car}"); wait(2, p.seated)
         if p.seated(): break
-    time.sleep(2)
+    wait(2, theirs)
     try: p("driveout")
     except RuntimeError: pass
-    note(f"{p.label} sat in the driver's seat of {car} and got out"); time.sleep(3)
+    note(f"{p.label} sat in the driver's seat of {car} and got out"); wait(3, lambda: theirs() and not p.seated())
 
 # ---- scripted: what the reports did
 def run_glue_off(h, L, A, car, tracked, cars, tag, drop_in):
@@ -324,6 +381,7 @@ def run_pick_replace(h, L, A, car, net, tracked, cars, tag, seated=None):
         A.try_act("pickup", net=net, item=0); time.sleep(0.7 if k else 1.5)
         into_car(A, car, net, None)
         check(h, L, tracked, cars, f"{tag} round {k + 1}")
+        if not seated: wait(SETTLE, lambda: (h.lock(net) or {}).get("physlock"))
         la, lb = h.lock(net), L.lock(net)
         note(f"{tag} round {k + 1}: container host '{la and la.get('physlock')}', joiner '{lb and lb.get('physlock')}', owner {h.ents().get(net, {}).get('owner')}")
         if not seated and la and not la.get("physlock"): finding(tag + " / not in", f"net {net} put in the bed, in no container on the host; areas with its centre: {[x['name'] for x in la.get('areas', []) if x['centreInBox']]}")
@@ -454,7 +512,8 @@ def scripted(h, L, car, tracked, cars):
             check(h, L, tracked, cars, f"door-top {who}")
             print(f"     end: {slot_row(d1['onSlot'], 'end')}", flush=True)
             time.sleep(1)
-    if want("door-stale"):
+    if want("door-stale") and doorpair()[0] is None: note("INVALID door-stale: no two doors on the car (an earlier scenario took them off)")
+    elif want("door-stale"):
         print("\n=== the car changes hands, its old owner doesn't know yet and loses a door: on one screen only? (a slow connection)", flush=True)
         keep, d1 = doorpair()
         ms = int(arg("--lag", "400"))
@@ -474,7 +533,8 @@ def scripted(h, L, car, tracked, cars):
             time.sleep(0.05)
             print("     joiner loses it:", str(L.s(f"mp falloff {car} {m['i']}"))[:120], flush=True)
             for w in (0.3, 1, 3, 8, 12):
-                time.sleep(w); slot_row(m["onSlot"], f"+{w}")
+                time.sleep(w); ha, la = slot_row(m["onSlot"], f"+{w}")
+                if w >= 3 and ha == la and not SLOW: break     # the rest of the watch is for a split that stays
             if "--far" in sys.argv: h("set TLDRevamp.Net.Entities.EditRangeM 15")
             print("     owner log:", h(f"mp ownerlog {car}")["log"][-3:], flush=True)
             ha, la = slot_row(m["onSlot"], "after 24 s")
@@ -501,7 +561,8 @@ def scripted(h, L, car, tracked, cars):
             time.sleep(0.05)
             L.try_act("attach", net=n, other=car, item=m["on"] + 1, slot=m["onSlot"], a=2)
             for w in (0.3, 1, 3, 8, 12):
-                time.sleep(w); slot_row(m["onSlot"], f"+{w}")
+                time.sleep(w); ha, la = slot_row(m["onSlot"], f"+{w}")
+                if w >= 3 and ha == la and not SLOW: break     # the rest of the watch is for a split that stays
             print("     owner log:", h(f"mp ownerlog {n}")["log"][-3:], flush=True)
             ha, la = slot_row(m["onSlot"], "after 24 s")
             if ha != la: finding("door-stale bolt", f"{m['name']}: {ha or 'empty'} on the host, {la or 'empty'} on the joiner, for good")
@@ -563,6 +624,7 @@ def scripted(h, L, car, tracked, cars):
                 va, vb = vals(h), vals(L)
                 bad = {k: (va[k], vb[k]) for k in va if k in vb and k[0] == i and any(abs(float(x) - float(y)) > 0.01 for x, y in zip(va[k], vb[k]))}
                 print(f"     item {i} {a['itemName']} usables {a['usable']}/{b['usable']} round {rnd + 1}: {'same' if not bad else bad}"[:260], flush=True)
+                print(f"     the car on the host {[round(v) for v in h.ents()[car]['pos']]}, the joiner there {[[round(v) for v in q['target']] for q in h.s('mp players')['players']]}, on the joiner {[round(v) for v in L('mp players')['me']]}, edits out of reach {h.s(f'get {T_}.EditsOutOfReach').get('value')}", flush=True)
                 if bad: finding(f"aud-fight {a['itemName']} {rnd + 1}", f"different after 10 s: {str(bad)[:160]}")
     if want("aud-wheel-far"):
         print("\n=== a tyre unbolted from a wheel, beside its car and 3 km from it: the same on both?", flush=True)
@@ -816,9 +878,9 @@ def scripted(h, L, car, tracked, cars):
         n = spawn(L, "jerry"); tracked.add(n); time.sleep(3)
         if n is None: note("INVALID aud-place: no loose item")
         else:
-            if L.ents()[n]["proxy"]: L.s(f"mp claim {n}"); time.sleep(2)
+            if L.ents()[n]["proxy"]: L.s(f"mp claim {n}"); wait(2, lambda: not L.ents()[n]["proxy"] and h.ents()[n]["proxy"])
             print("     item", n, L.ents()[n]["name"], "owner", L.ents()[n]["owner"], "| before:", h.s("mp places"), flush=True)
-            for rnd, on in enumerate((False, True)):
+            for rnd, on in enumerate((False, True) if AB else (True,)):
                 h.s(f"set {T}.CensusPlaces {on}"); L.s(f"set {T}.CensusPlaces {on}")
                 h.s(f"mp dropstates {n}")
                 print(f"     census positions {on}: the owner moves it, the copy hears none of it:", str(L.s(f"mp moveitem {n} {8 + 6 * rnd} 0"))[:70], flush=True); time.sleep(6)
@@ -924,7 +986,7 @@ def scripted(h, L, car, tracked, cars):
         check(h, L, tracked, cars, "aud-handcopy")
     if want("aud-glued"):
         print("\n=== a glued member of a car off its place on one copy: does the census put it back?", flush=True)
-        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(2)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0))
         print("     car owner", h.ents()[car]["owner"], flush=True)
         copy, own = (h, L) if h.ents()[car]["proxy"] else (L, h)
         print("     before:", copy.s("mp places"), flush=True)
@@ -936,7 +998,7 @@ def scripted(h, L, car, tracked, cars):
                 a = {x["i"]: x for x in copy.members(car)}[i]; b = {x["i"]: x for x in own.members(car)}[i]
                 return math.dist(a["lp"], b["lp"])
             print(f"     member {i} {m['name']}: {apart():.3f} m apart at the start", flush=True)
-            for on in (False, True):
+            for on in (False, True) if AB else (True,):
                 copy.s(f"set {T}.CensusGluedPlaces {on}"); own.s(f"set {T}.CensusGluedPlaces {on}")
                 print(f"     check {on}: moved on the copy:", copy.s(f"mp nudgemember {car} {i} 1"), flush=True); time.sleep(1)
                 d0 = apart(); copy.s(f"mp censusnow {car} 0")
@@ -1410,21 +1472,39 @@ with game.ProtectedSession():
             s_(f"set TLDRevamp.ReproPlayback.Active True"); s_("set TLDRevamp.TestSafety.BlockAutoSave True")
             s_("set UnityEngine.Application.runInBackground True")
         if "--oldglue" in sys.argv: h(f"set {T}.GluedPartOff False")
-        time.sleep(8)
+        near_cars = lambda: [e for e in h.ents().values() if e["car"] and not e.get("dormant")]
+        wait(8, near_cars)
         g = h("gpos")
         cs = sorted((math.hypot(e["pos"][0] - g["gx"], e["pos"][2] - g["gz"]), n) for n, e in h.ents().items() if e["car"] and not e.get("dormant"))
         if not cs: sys.exit("no car near the host")
         car = cs[0][1]
         ce = h.ents()[car]
         print(f"the car: net {car} {ce['name']}, owner {ce['owner']}, {len(glued(h, car))} glued, {len(bolted(h, car))} bolted: {[m['name'] for m in glued(h, car)][:10]}", flush=True)
-        beside(h, ce); L(f"tpground {ce['pos'][0] - 5} {ce['pos'][2]}"); time.sleep(10)
         tracked, cars = set(), {car}
+        beside(h, ce); L(f"tpground {ce['pos'][0] - 5} {ce['pos'][2]}")
+        def loaded():   # the joiner has the car, whole, where it stands
+            e = L.ents().get(car)
+            return e and not e.get("dormant") and e["items"] == h.ents()[car]["items"] and all(m.get("loaded") for m in L.members(car))
+        wait(10, loaded)
         for who, s_ in (("host", h), ("joiner", L)):    # a game kept from the last run brings its old errors along
             e_ = s_("errors"); _counts[who] = e_.get("errors", 0) + e_.get("exceptions", 0)
         _counts["partoff"] = h(f"get {T}.PartOffRejected").get("value", 0)
         check(h, L, tracked, cars, "as they join")
-        scripted(h, L, car, tracked, cars)
-        if "--no-monkey" not in sys.argv: monkey(h, L, car, tracked, cars, SEED, STEPS)
+        try:
+            scripted(h, L, car, tracked, cars)
+            if MONKEY: monkey(h, L, car, tracked, cars, SEED, STEPS)
+        except Exception as ex:     # the harness itself: say so and still give the result of what ran
+            print(traceback.format_exc(), flush=True)
+            finding("harness", f"the run stopped here: {str(ex)[:300]}")
+        if not SLOW: check(h, L, tracked, cars, "at the end", 8.0)    # what only shows later than a check that ended early
+        nets = {f["net"] for f in FINDINGS if f.get("net")} | {int(x) for x in arg("--trail", "").split(",") if x}
+        if any(not f.get("net") for f in FINDINGS): nets |= cars
+        (RUN / "objects").mkdir(exist_ok=True)
+        for n in nets:
+            rows = trail({"host": hb, "joiner": Lag}, n)
+            (RUN / "objects" / f"{n}.txt").write_text("\n".join(rows) + "\n", encoding="utf-8")
+            for f in FINDINGS:
+                if f.get("net") == n: f["trail"] = rows[-30:]
         for who, s_ in (("host", h), ("joiner", L)):
             a_ = s_.s("mp anomalies")
             print(f"census {who}: asks {a_.get('censusAsks')}, differ {a_.get('censusDiffers')}, repairs asked {a_.get('repairsAsked')}, healed {a_.get('repairsHealed')}, failed {a_.get('repairsFailed')}, run {a_.get('repairsRun')}", flush=True)
@@ -1437,10 +1517,13 @@ with game.ProtectedSession():
             try: f.unlink()
             except OSError: pass
         Lag.close()
-print("\nFINDINGS", len(FINDINGS))
+print(f"\ntime: {time.time() - T0:.0f} s, slept {sum(SLEPT.values()):.0f} s; biggest waits (line: s): " + ", ".join(f"{k}: {v:.0f}" for k, v in sorted(SLEPT.items(), key=lambda kv: -kv[1])[:12]), flush=True)
 seen = {}
 for f in FINDINGS:
-    k = f["tag"].split(" / ")[-1] + " " + f["detail"].split(":")[0]
-    seen.setdefault(k, 0); seen[k] += 1
-    print(f"  {f['tag']}: {f['detail']}")
-pathlib.Path(os.environ.get("TLD_CHAOS_OUT", "/dev/null")).write_text(json.dumps({"findings": FINDINGS, "history": HISTORY}, indent=1))
+    seen.setdefault(f["tag"].split(" / ")[-1] + " " + f["detail"].split(":")[0], []).append(f)
+print(f"result: {len(FINDINGS)} findings, {len(seen)} kinds, {time.time() - T0:.0f} s, all of it in {RUN}", flush=True)
+for k, fs in list(seen.items())[:12]:
+    print(f"  {fs[0]['tag']}: {fs[0]['detail'][:200]} \u00d7{len(fs)}", flush=True)
+if len(seen) > 12: print(f"result: {len(seen) - 12} more kinds in findings.json", flush=True)
+(RUN / "findings.json").write_text(json.dumps({"findings": FINDINGS, "history": HISTORY}, indent=1), encoding="utf-8")
+if os.environ.get("TLD_CHAOS_OUT"): shutil.copy(RUN / "findings.json", os.environ["TLD_CHAOS_OUT"])

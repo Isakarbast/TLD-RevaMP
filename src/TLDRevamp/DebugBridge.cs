@@ -937,6 +937,7 @@ namespace TLDRevamp
                         case "repairrows": { Net.Entities.TryRows(uint.Parse(ma[1]), out var rr); return rr; }
                         case "censusnow": return Net.Entities.CensusNow(uint.Parse(ma[1]));
                         case "places": return Net.Entities.PlacesJson();
+                        case "trail": return ObjectTrail.Rows(uint.Parse(ma[1], mic));
                         case "handcopy": return Net.Entities.TestHandCopy(uint.Parse(ma[1]));
                         case "nudgemember": return Net.Entities.TestNudgeMember(uint.Parse(ma[1]), int.Parse(ma[2]), float.Parse(ma[3], System.Globalization.CultureInfo.InvariantCulture));
                         case "poitanks": return Net.Entities.TestPoiTanks(float.Parse(ma[1], System.Globalization.CultureInfo.InvariantCulture));
