@@ -937,7 +937,7 @@ namespace TLDRevamp
                         case "repairrows": { Net.Entities.TryRows(uint.Parse(ma[1]), out var rr); return rr; }
                         case "censusnow": return Net.Entities.CensusNow(uint.Parse(ma[1]));
                         case "places": return Net.Entities.PlacesJson();
-                        case "handcopy": { Net.Entities.TestPickupNoClaim = true; var hc = Net.FillLab.HoldNet(uint.Parse(ma[1])); Net.Entities.TestPickupNoClaim = false; return hc; }
+                        case "handcopy": return Net.Entities.TestHandCopy(uint.Parse(ma[1]));
                         case "dropstates": Net.Entities.TestDropStates = uint.Parse(ma[1]); return "{\"dropping\":" + ma[1] + "}";
                         case "localstate": return Net.Entities.LocalState(uint.Parse(ma[1]), int.Parse(ma[2]));
                         case "copypartgone": return Net.Entities.TestCopyPartGone(uint.Parse(ma[1]), ma[2]);

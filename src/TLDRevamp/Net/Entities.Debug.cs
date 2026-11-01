@@ -711,6 +711,18 @@ namespace TLDRevamp.Net
             return "{\"claimed\":true}";
         }
 
+        /// Test (bridge `mp handcopy <net>`): this copy picked up with no claim sent (not known as a copy for that moment): HandCopyTick's state.
+        public static string TestHandCopy(uint net)
+        {
+            if (!ByNet.TryGetValue(net, out var e) || !Resolve(e) || e.Root == null || !e.Proxy) return "{\"error\":\"no such copy here\"}";
+            foreach (var it in e.Items) if (it != null) ProxyItems.Remove(it.gameObject);
+            ProxyItems.Remove(e.Root.gameObject);
+            string held = FillLab.HoldNet(net);
+            foreach (var it in e.Items) if (it != null) ProxyItems.Add(it.gameObject);
+            ProxyItems.Add(e.Root.gameObject);
+            return held;
+        }
+
         public static string SetForceHeld(uint net)
         {
             if (net == 0) { ForceHeld = null; return "{\"forceHeld\":null}"; }

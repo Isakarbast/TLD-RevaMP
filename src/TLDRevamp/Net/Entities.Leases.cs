@@ -454,7 +454,7 @@ namespace TLDRevamp.Net
             [HarmonyLib.HarmonyPrefix]
             private static void Prefix(pickupable __instance)
             {
-                if (!InSession || TestPickupNoClaim || !IsProxy(__instance)) return;
+                if (!InSession || !IsProxy(__instance)) return;
                 var limbOf = RagdollOf(__instance);   // a limb of a dead creature: not under the item any more
                 // the item's own entity first: one under another shared object (stuck on a car or its door, riding in
                 // it) matched that object's root as well, and whichever came first in ByNet won — the car (no claim:
@@ -493,7 +493,6 @@ namespace TLDRevamp.Net
         public static bool HandCopyClaims = true;
         public static float HandCopyS = 0.5f, HandCopyRetryS = 5f;
         public static long HandCopiesClaimed;
-        public static bool TestPickupNoClaim;   // test: the next pickups send no claim
         private static float _handCopySince, _handCopyNext;
         private static void HandCopyTick(float now)
         {
