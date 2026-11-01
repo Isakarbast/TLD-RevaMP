@@ -296,11 +296,14 @@ namespace TLDRevamp.Net
                 var rec = new byte[len]; Buffer.BlockCopy(r.Buf, r.Pos, rec, 0, len); r.Pos += len;
                 if (idx < 0 || idx >= e.Items.Count || e.Items[idx] == null) continue;
                 if (e.Split != null && e.Split.Contains(idx)) { ResyncSplitSkipped++; continue; }   // came off: never re-bolted from a car record
-                if (e.EditHoldUntil != null && e.EditHoldUntil.TryGetValue(idx, out float hold) && Time.realtimeSinceStartup < hold) { ResyncHeld++; continue; }   // our edit is on its way to the owner
+                // our edit is on its way to the owner: not shown yet, and not sent again unless it changes
+                bool held = e.EditHoldUntil != null && e.EditHoldUntil.TryGetValue(idx, out float hold) && Time.realtimeSinceStartup < hold;
+                if (held) { ResyncHeld++; CensusAfterHold(e.NetId); if (!TankAddEdits) continue; }
                 var d = RecordCodec.Decode(rec);
                 if (d == null) continue;
                 DropUncanonAttach(d);
                 ItemSnapshot.Remap(d, map);
+                if (held) { CopyTanksAre(e.Items[idx].idInSave, d.tanks); continue; }   // what the tank comes to when the hold ends
                 bool useUsables = LiveRecordUsables(e, idx, stamp);
                 LiveRecordApplied(e, idx, stamp);
                 CopyTanksAre(e.Items[idx].idInSave, d.tanks);

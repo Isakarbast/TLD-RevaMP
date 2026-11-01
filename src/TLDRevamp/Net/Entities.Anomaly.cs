@@ -177,6 +177,7 @@ namespace TLDRevamp.Net
                 byte attempt = _censusDue[net].Attempt;
                 _censusDue.Remove(net);
                 if (!ByNet.TryGetValue(net, out var e) || !e.Proxy || e.Root == null) continue;
+                if (CensusRepairs && EditHeld(e, now)) { _censusDue[net] = new CensusDue { At = now + CensusHoldS, Attempt = attempt }; continue; }   // differs for now: our edit
                 W.Reset(); W.U8(CensusAsk); W.U32(net); W.U32(e.Epoch); W.U32(CensusHash(CensusRepairs ? RepairRows(e) : CensusRows(e))); W.U8(attempt);
                 ToServer(W, true);
                 CensusAsks++;
@@ -219,7 +220,12 @@ namespace TLDRevamp.Net
             CensusRepliesIn++;
             if (r.Bad || !ByNet.TryGetValue(net, out var e) || !e.Proxy || e.Root == null) return;
             CensusDiffers++;
-            if (attempt < 2) { _censusDue[net] = new CensusDue { At = Time.realtimeSinceStartup + CensusRecheckS, Attempt = 2 }; return; }
+            if (attempt < 2)
+            {
+                if (CensusRepairs) _censusFirst[net] = RowMap(theirs.Split('\n'));
+                _censusDue[net] = new CensusDue { At = Time.realtimeSinceStartup + CensusRecheckS, Attempt = 2 };
+                return;
+            }
             if (CensusRepairs) { RepairReply(e, attempt, theirs); return; }
             var ours = CensusRows(e);
             var owner = new List<string>(theirs.Split('\n'));

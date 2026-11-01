@@ -136,7 +136,7 @@ A join is refused, with the reason shown in the multiplayer screen, when:
 | Kicked before | "You were kicked from this game." |
 | Full | "The game is full (16 players)." |
 
-The current wire protocol is **58** (`src/TLDRevamp/Net/Protocol.cs`). A different *game* build is not a refusal: the
+The current wire protocol is **59** (`src/TLDRevamp/Net/Protocol.cs`). A different *game* build is not a refusal: the
 host announces it in chat instead, because the worlds can differ (buildings) but the session still works.
 
 ### What is shared

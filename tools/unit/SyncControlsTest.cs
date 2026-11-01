@@ -60,7 +60,7 @@ namespace TLDRevamp.Net
             internal PoseInterpolator Ip;
             internal tosaveitemscript Root; internal List<tosaveitemscript> Items = new List<tosaveitemscript>(); internal HashSet<int> Split;
         }
-        internal sealed class SEnt { internal uint AttachParent, ParentNet; internal int OwnerId, PartIndex = -1; internal bool Car = true; internal SyncFakes.Group Record; }
+        internal sealed class SEnt { internal uint AttachParent, ParentNet; internal int OwnerId, PartIndex = -1; internal bool Car = true; internal SyncFakes.Group Record; internal List<uint> Parts = new List<uint>(); }
         static readonly Dictionary<uint, Ent> ByNet = new Dictionary<uint, Ent>();
         static readonly Dictionary<uint, SEnt> Server = new Dictionary<uint, SEnt>();
         static readonly Dictionary<SyncFakes.Engine, Ent> ProxyEngineOwner = new Dictionary<SyncFakes.Engine, Ent>();
@@ -85,6 +85,10 @@ namespace TLDRevamp.Net
         static bool HitchDetach(attachablescript at) => true;
         static SyncFakes.Group GroupRecord(SEnt e) => e.Record;
         static bool AtObject(int from, SEnt e) => Near;
+        static bool CarriedPartsShared = true;
+        static bool CarriedFar(attachablescript at, out Ent carrier) { carrier = null; return false; }
+        static void NoteCarrier(attachablescript at) { }
+        static bool SentCarriedOff(tosaveitemscript ts) => false;
         static bool TakeToken(object bucket, int from, float rate, float burst) => Token;
         static void Refuse(ref long count, string reason, string what) => count++;
         static void ToServer(NetWriter w, bool reliable) => Sent++;

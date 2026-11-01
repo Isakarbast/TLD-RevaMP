@@ -835,7 +835,7 @@ namespace TLDRevamp
                         case "tankexplode": return Net.Entities.TankExplode(uint.Parse(ma[1]), int.Parse(ma[2]), ma.Length > 3 ? float.Parse(ma[3], System.Globalization.CultureInfo.InvariantCulture) : 1000f);
                         case "holdnet": return Net.FillLab.HoldNet(uint.Parse(ma[1]));
                         case "walkat": return Net.FillLab.WalkAt(uint.Parse(ma[1]), float.Parse(ma[2], System.Globalization.CultureInfo.InvariantCulture));
-                        case "holdfill": return ma[1] == "stop" ? Net.FillLab.Stop() : ma[1] == "status" ? Net.FillLab.Status() : Net.FillLab.Start(uint.Parse(ma[1]), uint.Parse(ma[2]), int.Parse(ma[3]));
+                        case "holdfill": return ma[1] == "stop" ? Net.FillLab.Stop() : ma[1] == "status" ? Net.FillLab.Status() : Net.FillLab.Start(uint.Parse(ma[1]), uint.Parse(ma[2]), int.Parse(ma[3]), ma.Length > 4 ? float.Parse(ma[4], System.Globalization.CultureInfo.InvariantCulture) : 0f, ma.Length > 5 ? float.Parse(ma[5], System.Globalization.CultureInfo.InvariantCulture) : 0.7f);
                         case "fill": return Net.Entities.Fill(uint.Parse(ma[1]), int.Parse(ma[2]), ma[3], float.Parse(ma[4], System.Globalization.CultureInfo.InvariantCulture));
                         case "pour": return ma[1] == "stop" ? Net.Entities.Pour(0, 0, 0, false) : ma[1] == "status" ? Net.Entities.PourStatus() : Net.Entities.Pour(uint.Parse(ma[1]), uint.Parse(ma[2]), int.Parse(ma[3]), true);
                         case "sitdriver": return Net.Entities.SitDriver(uint.Parse(ma[1]));

@@ -64,7 +64,7 @@ namespace TLDRevamp.Net
             foreach (var it in e.Items)
             {
                 if (it == null) continue;
-                if (!proxy) CopyTankTruth.Remove(it.idInSave);
+                if (!proxy) { CopyTankTruth.Remove(it.idInSave); _tankTold.Remove(it.idInSave); }
                 else if (!CopyTankTruth.ContainsKey(it.idInSave)) CopyTanksAreNow(it);
             }
         }
@@ -103,6 +103,7 @@ namespace TLDRevamp.Net
                         CopyFluidContainers.Add(t.F);
                         if (_tankFilledAt.TryGetValue(t, out float at) && Time.realtimeSinceStartup - at < 2f) pending = true;   // a player filling it: an edit is on its way
                     }
+                    if (!pending) _tankTold.Remove(it.idInSave);
                     if (pending || !it.loaded || !CopyTankTruth.TryGetValue(it.idInSave, out var truth)) continue;
                     CopyFluidChecks++;
                     for (int i = 0; i < it.tanks.Count; i++)

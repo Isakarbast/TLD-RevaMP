@@ -249,7 +249,7 @@ namespace TLDRevamp.Net
             // keyed by copies and network ids (which start at 1 again next session). (Known, the server's "sent to player N"
             // sets, needs nothing here: ServerOnJoin starts every joiner with an empty one - rehost.py)
             PhysicalCars.Clear(); _refetchedAt.Clear();
-            _censusDue.Clear(); _repairWait.Clear(); _repairCycle.Clear(); _repairCursor = 0; _repairRunAt.Clear();
+            _tankTold.Clear(); _tankAddsOut.Clear(); _censusFirst.Clear(); _censusDue.Clear(); _repairWait.Clear(); _repairCycle.Clear(); _repairCursor = 0; _repairRunAt.Clear();
             ResetPoiCensus(); Leases.Clear(); LeaseTypes.Clear(); LeaseUntil.Clear(); LeaseAsked.Clear(); _leaseRetryAt.Clear(); PendingGrants.Clear(); _leasesDone.Clear(); _captureKnown = null; Captures.Clear();
             ShotgunReset();
             AiReset();

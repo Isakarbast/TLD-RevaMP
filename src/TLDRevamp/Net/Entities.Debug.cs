@@ -764,7 +764,10 @@ namespace TLDRevamp.Net
                 if (d < bd) { bd = d; best = at; }
             }
             if (best == null) return "{\"error\":\"no bolted " + part + " here\"}";
-            bool ok = best.slot.UnCraft();
+            bool was = TestAsPlayer;
+            TestAsPlayer = true;   // a player's own unbolt: on a copy it goes out as a request, the game's own doing does not
+            bool ok;
+            try { ok = best.slot.UnCraft(); } finally { TestAsPlayer = was; }
             return "{\"uncraft\":" + (ok ? "true" : "false") + ",\"d\":" + bd.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + ",\"attached\":" + (best.attached ? "true" : "false") + "}";
         }
 

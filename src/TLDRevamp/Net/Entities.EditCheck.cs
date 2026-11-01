@@ -120,6 +120,17 @@ namespace TLDRevamp.Net
         private static bool Ind(int i) => i >= 0 && i < 1024;
 
         /// Server: is this edit's record something its kinds may do? null = yes, else why not.
+        private static string CheckTankAdds(SEnt se, int idx, List<TankAdds.Add> adds)
+        {
+            foreach (var a in adds)
+            {
+                if (a.Type >= FluidKinds) return "fluid type " + a.Type;
+                float cap = TankCapacity(se, idx, a.Tank);
+                if (System.Math.Abs(a.Litres) > cap * 1.01f + 0.01f) return $"tank change: {a.Litres:F2} of {cap:F2} L";
+            }
+            return null;
+        }
+
         private static string CheckEdit(SEnt se, int idx, int kinds, byte[] rec)
         {
             if (kinds == 0 || (kinds & ~KindsKnown) != 0) return "kinds " + kinds;   // KindAll: the car's controls and its attachments — never another player's edit

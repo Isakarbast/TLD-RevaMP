@@ -36,6 +36,60 @@ namespace TLDRevamp.Net
         private static readonly Dictionary<tosaveitemscript, int> EditKinds = new Dictionary<tosaveitemscript, int>();
         private static readonly Dictionary<tankscript, float> _tankFilledAt = new Dictionary<tankscript, float>();
 
+        /// A pour on a copy goes to the owner as a change ("8 L more"), the level beside it. The level alone was how the copy
+        /// saw it: two players at one barrel each sent theirs and the owner took the last, one pour was gone (aud-two-pour:
+        /// the cans lost 16.2 L, the barrel gained 8.2 L). The level still counts when the edit comes back to its sender,
+        /// who has become the owner and has the fluid here already. A/B: false = the level only (before).
+        public static bool TankAddEdits = true;
+        public static long TankAddsSent, TankAddsApplied, TankAddsRefused;
+        /// Per copy item being poured: its tanks as the owner has been told. Starts from the owner's latest record.
+        private static readonly Dictionary<uint, List<save_tankscript>> _tankTold = new Dictionary<uint, List<save_tankscript>>();
+        /// Edits with changes on their way: one that comes back is ours (ServerEdit, EditsComeBack).
+        private static readonly HashSet<(uint, int, double)> _tankAddsOut = new HashSet<(uint, int, double)>();
+        private static readonly List<TankAdds.Add> _tankAdds = new List<TankAdds.Add>();
+
+        private static bool TankChangesNow(tosaveitemscript it, List<TankAdds.Add> adds)
+        {
+            adds.Clear();
+            if (!TankAddEdits || it.tanks == null || !_tankTold.TryGetValue(it.idInSave, out var told)) return false;
+            var now = new List<save_tankscript>();
+            for (int i = 0; i < it.tanks.Count; i++)
+            {
+                var t = it.tanks[i];
+                if (t == null || t.F == null) continue;
+                var rec = new save_tankscript(t, it.idInSave, i);
+                now.Add(rec);
+                save_tankscript before = null;
+                foreach (var b in told) if (b != null && b.ind == i) { before = b; break; }
+                TankAdds.Diff(i, before?.type, before?.amount, rec.type, rec.amount, adds);
+            }
+            _tankTold[it.idInSave] = now;
+            return true;
+        }
+
+        private static void ApplyTankAdds(tosaveitemscript it, List<TankAdds.Add> adds)
+        {
+            if (it.tanks == null) return;
+            _applyingState = true;
+            try
+            {
+                foreach (var a in adds)
+                {
+                    if (a.Tank >= it.tanks.Count || it.tanks[a.Tank] == null) continue;
+                    var t = it.tanks[a.Tank];
+                    t.FStart();
+                    if (t.F == null) continue;
+                    float have = 0f;
+                    foreach (var fl in t.F.fluids) if (fl != null && (int)fl.type == a.Type) have += fl.amount;
+                    float l = TankAdds.Allowed(a.Litres, have, t.F.maxC - t.F.GetAmount());
+                    if (l != 0f) t.F.ChangeOne(l, (mainscript.fluidenum)a.Type);
+                    t.Upd();
+                    TankAddsApplied++;
+                }
+            }
+            finally { _applyingState = false; }
+        }
+
         private static int KindBit(string kind)
         {
             switch (kind)
@@ -90,8 +144,17 @@ namespace TLDRevamp.Net
                     int kinds = EditKinds.TryGetValue(it, out int kk) ? kk : KindAll;
                     // the car record only for a wash of its blood (Entities.Blood): the owner takes nothing else of it
                     byte[] rec = StateRecord(ItemSnapshot.Capture(it), CanonMap(e.Items), out _, withCar: kinds != KindAll && (kinds & KindBlood) != 0);
-                    if ((kinds & KindTank) != 0) CopyTanksAreNow(it);   // our fill: the owner's record of it may come while we hold it off
-                    W.Reset(); W.U8(Edit); W.U32(e.NetId); W.F64(SessionLog.St); W.VarU32((uint)idx); W.VarU32((uint)kinds); W.VarU32((uint)rec.Length); W.Bytes(rec, 0, rec.Length);
+                    bool withChanges = (kinds & KindTank) != 0 && TankChangesNow(it, _tankAdds);
+                    if ((kinds & KindTank) != 0 && !withChanges) CopyTanksAreNow(it);   // our fill: the owner's record of it may come while we hold it off
+                    double stamp = SessionLog.St;
+                    W.Reset(); W.U8(Edit); W.U32(e.NetId); W.F64(stamp); W.VarU32((uint)idx); W.VarU32((uint)kinds); W.VarU32((uint)rec.Length); W.Bytes(rec, 0, rec.Length);
+                    if (withChanges)
+                    {
+                        TankAdds.Write(W, _tankAdds);
+                        if (_tankAddsOut.Count > 256) _tankAddsOut.Clear();
+                        _tankAddsOut.Add((e.NetId, idx, stamp));
+                        TankAddsSent++;
+                    }
                     ToServer(W, true);
                     if (e.EditHoldUntil == null) e.EditHoldUntil = new Dictionary<int, float>();
                     e.EditHoldUntil[idx] = Time.realtimeSinceStartup + EditHold;
@@ -150,6 +213,11 @@ namespace TLDRevamp.Net
             {
                 var rec = new byte[len]; Buffer.BlockCopy(r.Buf, r.Pos, rec, 0, len);
                 string why = CheckEdit(se, idx, kinds, rec);
+                if (why == null && r.Remaining > len)
+                {
+                    r.Pos += len;
+                    why = !TankAdds.Read(r, _tankAdds) ? "tank changes" : CheckTankAdds(se, idx, _tankAdds);
+                }
                 if (why != null)
                 {
                     SessionLog.Event("edit-refused", net, item: idx, from: from, to: se.OwnerId, result: why, count: kinds);
@@ -184,12 +252,18 @@ namespace TLDRevamp.Net
             var rec = new byte[len]; Buffer.BlockCopy(r.Buf, r.Pos, rec, 0, len);
             var d = RecordCodec.Decode(rec);
             if (d == null) { SessionLog.Event("edit-refused", net, item: idx, to: MyId, result: "record decode failed"); EditsRejected++; return; }
+            r.Pos += len;
+            // ours come back (we own it now): the level, the fluid is here already. Someone else's: the change alone
+            bool changes = r.Remaining > 0 && !_tankAddsOut.Remove((net, idx, stamp));
+            if (changes && !TankAdds.Read(r, _tankAdds)) { TankAddsRefused++; changes = false; }
+            if (changes) kinds &= ~KindTank;
             var map = new Dictionary<uint, uint>();
             for (int i = 0; i < e.Items.Count; i++) if (e.Items[i] != null) map[CanonBase + (uint)i] = e.Items[i].idInSave;
             ItemSnapshot.Remap(d, map);
             bool useUsables = LiveRecordUsables(e, idx, stamp);
             if ((kinds & KindUsable) != 0) LiveRecordApplied(e, idx, stamp);
             ApplyState(e.Items[idx], d, kinds, useUsables);
+            if (changes) ApplyTankAdds(e.Items[idx], _tankAdds);
             e.ResyncAcc = Mathf.Max(e.ResyncAcc, ResyncInterval - 0.05f);
             EditsApplied++;
             SessionLog.Event("edit-applied", net, item: idx, to: MyId, count: kinds, epoch: e.Epoch);
@@ -239,7 +313,10 @@ namespace TLDRevamp.Net
         {
             if (_tankFilledAt.Count > 256) _tankFilledAt.Clear();
             _tankFilledAt[t] = Time.realtimeSinceStartup;
-            if (CopyFluidsFollowOwner && !t.setpoi && IsProxy(t)) MarkEdit(ItemOf(t, t.tosaveid, t.setid), fromTank: true, kind: "tank");
+            if (!CopyFluidsFollowOwner || t.setpoi || !IsProxy(t)) return;
+            var it = ItemOf(t, t.tosaveid, t.setid);
+            if (TankAddEdits && it != null && !_tankTold.ContainsKey(it.idInSave) && CopyTankTruth.TryGetValue(it.idInSave, out var truth)) _tankTold[it.idInSave] = truth;
+            MarkEdit(it, fromTank: true, kind: "tank");
         }
 
         [HarmonyLib.HarmonyPatch(typeof(fpscontroller), nameof(fpscontroller.DrinkFill))]

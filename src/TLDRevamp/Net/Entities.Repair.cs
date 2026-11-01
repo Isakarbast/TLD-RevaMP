@@ -27,6 +27,22 @@ namespace TLDRevamp.Net
         private static readonly Dictionary<uint, float> _repairRunAt = new Dictionary<uint, float>();
         private static readonly List<uint> _repairDone = new List<uint>();
 
+        private static readonly Dictionary<uint, Dictionary<string, string>> _censusFirst = new Dictionary<uint, Dictionary<string, string>>();
+
+        /// A record held off while our edit is on its way isn't sent again unless it changes: this copy checks itself after.
+        private const float CensusHoldS = 2f;
+        private static void CensusAfterHold(uint net)
+        {
+            if (CensusRepairs && !_censusDue.ContainsKey(net) && !_repairWait.ContainsKey(net))
+                _censusDue[net] = new CensusDue { At = Time.realtimeSinceStartup + CensusHoldS, Attempt = 1 };
+        }
+
+        private static bool EditHeld(Ent e, float now)
+        {
+            if (e.EditHoldUntil != null) foreach (var hold in e.EditHoldUntil.Values) if (now < hold) return true;
+            return false;
+        }
+
         /// `mp censusnow <net>`: this copy's check now, not when its turn comes.
         public static string CensusNow(uint net)
         {
@@ -186,10 +202,14 @@ namespace TLDRevamp.Net
             var diff = new List<string>();
             byte flags = 0;
             var off = new List<int>(); var missing = new List<uint>();
+            // what the owner has moved since it first differed (a can being poured out, seen every resync pass) is on its way, nothing lost
+            _censusFirst.TryGetValue(net, out var first);
+            bool stable = false;
             foreach (var kv in owner)
             {
                 ours.TryGetValue(kv.Key, out string mine);
                 if (mine == kv.Value) continue;
+                if (first == null || (first.TryGetValue(kv.Key, out string was1) && was1 == kv.Value)) stable = true;
                 diff.Add(kv.Key + " " + (mine ?? "?") + " here, " + kv.Value + " on the owner");
                 if (kv.Key == "self") { flags |= 1; continue; }
                 if (kv.Key[0] == 'm' && kv.Value.StartsWith("split:"))
@@ -200,7 +220,14 @@ namespace TLDRevamp.Net
                 if (kv.Key[0] == 'm' && kv.Value == "off" && mine != null && mine != "none" && int.TryParse(kv.Key.Substring(1), out int i)) { off.Add(i); continue; }
                 flags |= 2;
             }
-            foreach (var kv in ours) if (!owner.ContainsKey(kv.Key)) { diff.Add(kv.Key + " " + kv.Value + " here, nothing on the owner"); flags |= 2; }
+            foreach (var kv in ours) if (!owner.ContainsKey(kv.Key)) { diff.Add(kv.Key + " " + kv.Value + " here, nothing on the owner"); flags |= 2; stable = true; }
+            if (attempt == 2 && !stable)
+            {
+                _censusFirst[net] = owner;
+                _censusDue[net] = new CensusDue { At = now + CensusRecheckS, Attempt = 2 };
+                return;
+            }
+            _censusFirst.Remove(net);
             string text = string.Join("; ", diff);
             if (attempt >= 3)
             {

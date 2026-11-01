@@ -378,7 +378,7 @@ def scripted(h, L, car, tracked, cars):
             check(h, L, tracked, cars, f"out-of-hand {rnd + 1} held")
             h.try_act("drop", net=n, item=0); time.sleep(2)
     for x in (h, L):    # the games are kept between runs: said every time
-        for sw in ("SlotReplaces", "StaleOwnerForwards", "StaleDetachDirect", "AttachReqBecomesSync", "WornLateOk", "EditsComeBack", "CensusRepairs", "CarriedPartsShared", "RemoveFarMembers"): x(f"set TLDRevamp.Net.Entities.{sw} {'--oldslot' not in sys.argv}")
+        for sw in ("SlotReplaces", "StaleOwnerForwards", "StaleDetachDirect", "AttachReqBecomesSync", "WornLateOk", "EditsComeBack", "CensusRepairs", "CarriedPartsShared", "RemoveFarMembers", "TankAddEdits"): x(f"set TLDRevamp.Net.Entities.{sw} {'--oldslot' not in sys.argv}")
     for k, x in h.slots(car).items():
         if "--slots" in sys.argv and x["parts"]: print(f"     member {k[0]} slot {k[1]}: {x['parts']}", flush=True)
         if len(x["parts"]) > 1 and not x.get("many"):
@@ -569,7 +569,7 @@ def scripted(h, L, car, tracked, cars):
         def tyres(p): return p.s("mp namecount TireGumi 0")
         if "--oldslot" in sys.argv: h(f"set {T_}.CarriedPartsShared false"); L(f"set {T_}.CarriedPartsShared false")
         for dist, both in ((0, True), (100, True), (3000, True), (3000, False)):
-            if ("--far-only" in sys.argv and dist < 500) or ("--far-stay" in sys.argv and both): continue
+            if ("--far-only" in sys.argv and dist < 500) or ("--far-stay" in sys.argv and both) or ("--near-100" in sys.argv and dist != 100): continue
             print(f"     --- {dist} m, the host {'beside the wheel' if both else 'stays at the car'}", flush=True)
             beside(L, L.ents()[car]); h(f"tpground {L('gpos')['gx'] + 6} {L('gpos')['gz']}"); time.sleep(3)
             if L.ents()[car]["proxy"]: print("     joiner claims the car:", str(L.s(f"mp claim {car}"))[:60], flush=True); time.sleep(3)
@@ -607,10 +607,10 @@ def scripted(h, L, car, tracked, cars):
             check(h, L, tracked, cars, f"aud-wheel-far {dist}")
     if want("soak"):
         print("\n=== normal driving, nothing wrong: the census must leave it alone", flush=True)
-        beside(L, L.ents()[car]); L(f"mp sitdriver {car}"); time.sleep(2)
+        beside(L, L.ents()[car]); time.sleep(1); print("     drivein:", str(L("drivein"))[:80], flush=True); time.sleep(2)
         h.try_act("seat_in", net=car, slot=1); time.sleep(1)
         for c_ in ("fuelup", "handbrake off"):
-            try: L(c_)
+            try: print(f"     {c_}:", str(L(c_))[:90], flush=True)
             except RuntimeError as ex: note(f"{c_}: {str(ex)[:60]}")
         for secs, speed in ((60, 12), (60, 25), (40, 6)):
             print(f"     joiner drives at {speed} m/s for {secs} s: {str(L(f'autodrive on {speed}'))[:70]}", flush=True)
@@ -621,6 +621,116 @@ def scripted(h, L, car, tracked, cars):
         except RuntimeError: pass
         time.sleep(6); h.try_act("seat_out", net=car, slot=1); L("driveout"); time.sleep(20)
         check(h, L, tracked, cars, "soak")
+    if want("aud-edge"):
+        print("\n=== a door bolted on with the other player at the edge of range: part loaded, car not?", flush=True)
+        beside(L, L.ents()[car]); time.sleep(1)
+        if L.ents()[car]["proxy"]: L.s(f"mp claim {car}"); time.sleep(3)
+        door = next((m for m in bolted(L, car) if "Door" in m["name"] and m.get("on") == 0), None)
+        known = set(L.ents()); L.act("detach", net=car, item=door["i"]); time.sleep(3)
+        n = next((k for k in L.ents() if k not in known), None); tracked.add(n)
+        cp = L.ents()[car]["pos"]; band = None
+        for d in range(200, 800, 20):
+            h(f"tpground {cp[0] + d} {cp[2]}"); time.sleep(2.5)
+            eh = h.ents(); c_, p_ = eh.get(car, {}), eh.get(n, {})
+            cl, pl_ = not c_.get("dormant"), not p_.get("dormant")
+            print(f"     {d} m: car loaded {cl}, door loaded {pl_}", flush=True)
+            if pl_ and not cl: band = d; break
+            if not cl and not pl_: break
+        print(f"     the band: {band}", flush=True)
+        print("     joiner bolts the door back:", L.try_act("attach", net=n, other=car, item=1, slot=door["onSlot"], a=2), flush=True); time.sleep(4)
+        print("     host's attach fails:", str(h(f"get {T_}.AttachFails").get("value"))[-80:], flush=True)
+        h(f"tpground {cp[0] + 6} {cp[2]}"); time.sleep(25)
+        rh, rl = h.s(f"mp repairrows {n} 0")["rows"], L.s(f"mp repairrows {n} 0")["rows"]
+        print(f"     back: self host {[r for r in rh if r.startswith('self')]}, joiner {[r for r in rl if r.startswith('self')]}", flush=True)
+        check(h, L, tracked, cars, "aud-edge")
+    if want("aud-far-quick"):
+        print("\n=== the owner has just left, the object not yet handed over: the other player pours into it", flush=True)
+        n = barrel_of()
+        if n:
+            print("     clear of the car:", str(L.s(f"mp moveitem {n} 6 0"))[:60], flush=True); time.sleep(4)
+            beside(h, h.ents()[n], (2, 0, 0)); can = spawn(h, "jerry"); tracked.add(can); time.sleep(2)
+            if h.ents()[can]["proxy"]: h.s(f"mp claim {can}"); time.sleep(2)
+            h.s(f"mp fill {can} 0 gas 8"); time.sleep(2)
+            print("     fill:", str(h.s(f"mp holdfill {can} {n} 0"))[:80], flush=True); time.sleep(1)
+            a0 = litres(h, n); c0 = litres(h, can)
+            g = L("gpos"); L(f"tpground {g['gx'] + 3000} {g['gz']}"); note("joiner 3 km away, the pour going on"); time.sleep(8)
+            own = h.ents()[n]["owner"]; h.s("mp holdfill stop"); time.sleep(2)
+            if h.held(): h("dropheld")
+            L(f"tpground {g['gx']} {g['gz']}"); note("joiner back"); time.sleep(25)
+            ha, la, c1 = litres(h, n), litres(L, n), litres(h, can)
+            print(f"     owner during the pour {own}; barrel {a0} -> host {ha}, joiner {la}; can {c0} -> {c1}", flush=True)
+            if ha != la: finding("aud-far-quick", f"barrel {ha} on the host, {la} on the joiner")
+    if want("aud-two-pour"):
+        print("\n=== both players pour into one barrel at once, each from their own can: does it add up?", flush=True)
+        n = barrel_of()
+        if n:
+            print("     clear of the car:", str(L.s(f"mp moveitem {n} 6 0"))[:60], flush=True); time.sleep(4)
+            beside(h, h.ents()[n], (2, 0, 0)); beside(L, L.ents()[n], (-2, 0, 0))
+            def can_of(p):
+                c = spawn(p, "jerry"); tracked.add(c); time.sleep(2)
+                if p.ents()[c]["proxy"]: p.s(f"mp claim {c}"); time.sleep(2)
+                p.s(f"mp fill {c} 0 gas 15"); time.sleep(2)
+                return c
+            ch, cl = can_of(h), can_of(L)
+            # a step back, each from a side where the view lands on the cap: over the barrel one's can is in the way of the
+            # other's view (u1), and from some sides the off-centre cap is behind the rim. The view off the cap drinks from the can.
+            def spot(p, c, turns):
+                for t in turns:
+                    p.s(f"mp holdfill {c} {n} 0 {t} 1.1"); time.sleep(0.6)
+                    d = p.s("mp holdfill status").get("lookDist", 9); p.s("mp holdfill stop")
+                    if d <= 0.25: return t
+                note(f"INVALID aud-two-pour: {p.label} found no side with the cap in view"); return turns[0]
+            th = spot(h, ch, [0, 45, 315, 90, 270]); tl = spot(L, cl, [180, 135, 225, 90, 270, 45, 315, 0])
+            time.sleep(1.5)
+            a0, h0, l0 = litres(h, n), litres(h, ch), litres(L, cl)
+            print(f"     before: barrel {a0}, cans {h0} {l0}, owner {h.ents()[n]['owner']}, sides {th} {tl}", flush=True)
+            print("     host pours:", str(h.s(f"mp holdfill {ch} {n} 0 {th} 1.1"))[:70], flush=True)
+            print("     joiner pours:", str(L.s(f"mp holdfill {cl} {n} 0 {tl} 1.1"))[:70], flush=True)
+            time.sleep(6)
+            print(f"     mid pour: host {litres(h, ch)}, joiner {litres(L, cl)}", flush=True)
+            time.sleep(6)
+            print(f"     pouring: host {str(h.s('mp holdfill status'))[:110]}; joiner {str(L.s('mp holdfill status'))[:110]}", flush=True)
+            h.s("mp holdfill stop"); L.s("mp holdfill stop"); time.sleep(2)
+            if h.held(): h("dropheld")
+            if L.held(): L("dropheld")
+            time.sleep(25)
+            ha, la, h1, l1 = litres(h, n), litres(L, n), litres(h, ch), litres(L, cl)
+            gain, loss = sum(ha.values()) - sum(a0.values()), sum(h0.values()) - sum(h1.values()) + sum(l0.values()) - sum(l1.values())
+            print(f"     after: barrel host {ha}, joiner {la}; cans {h1} {l1}; barrel gained {gain:.2f}, the cans lost {loss:.2f}, repairs {h.s('mp anomalies').get('repairsAsked')}/{L.s('mp anomalies').get('repairsAsked')}", flush=True)
+            if sum(h0.values()) - sum(h1.values()) < 2 or sum(l0.values()) - sum(l1.values()) < 2: note("INVALID aud-two-pour: one player hardly poured")
+            if ha != la and abs(sum(ha.values()) - sum(la.values())) > 0.5: finding("aud-two-pour", f"barrel {ha} on the host, {la} on the joiner")
+            if abs(gain - loss) > 1: finding("aud-two-pour / count", f"the barrel gained {gain:.2f} L, the cans lost {loss:.2f} L")
+    if want("aud-tank-fight"):
+        print("\n=== the owner changes a tank's level while the other player pours into it", flush=True)
+        n = barrel_of()
+        if n:
+            print("     clear of the car:", str(L.s(f"mp moveitem {n} 6 0"))[:60], flush=True); time.sleep(4)
+            beside(h, h.ents()[n], (2, 0, 0)); beside(L, L.ents()[n], (-2, 0, 0)); can = spawn(h, "jerry"); tracked.add(can); time.sleep(2)
+            if h.ents()[can]["proxy"]: h.s(f"mp claim {can}"); time.sleep(2)
+            h.s(f"mp fill {can} 0 gas 8"); time.sleep(2)
+            print("     fill:", str(h.s(f"mp holdfill {can} {n} 0"))[:80], flush=True)
+            for k in range(3):
+                time.sleep(1.5); print("     owner sets it:", str(L.s(f"mp fill {n} 0 gas {30 + 10 * k}"))[:60], flush=True)
+            h.s("mp holdfill stop"); time.sleep(2)
+            if h.held(): h("dropheld")
+            time.sleep(25)
+            ha, la = litres(h, n), litres(L, n)
+            print(f"     barrel host {ha}, joiner {la}, repairs {h.s('mp anomalies').get('repairsAsked')}, resyncs held {h(f'get {T_}.ResyncHeld').get('value')}", flush=True)
+            if ha != la and abs(sum(ha.values()) - sum(la.values())) > 0.5: finding("aud-tank-fight", f"barrel {ha} on the host, {la} on the joiner")
+    if want("aud-attach-held"):
+        print("\n=== a player bolts a part its owner is holding: refused, undone on both?", flush=True)
+        beside(L, L.ents()[car]); beside(h, h.ents()[car], (-2.6, 0, 0)); time.sleep(1)
+        if L.ents()[car]["proxy"]: L.s(f"mp claim {car}"); time.sleep(3)
+        door = next((m for m in bolted(L, car) if "Door" in m["name"] and m.get("on") == 0), None)
+        known = set(L.ents()); L.act("detach", net=car, item=door["i"]); time.sleep(3)
+        n = next((k for k in L.ents() if k not in known), None); tracked.add(n)
+        if L.ents()[n]["proxy"]: L.s(f"mp claim {n}"); time.sleep(2)
+        print("     owner holds it:", str(L.s(f"mp holdnet {n}"))[:60], flush=True); time.sleep(2)
+        print("     host bolts it:", h.try_act("attach", net=n, other=car, item=1, slot=door["onSlot"], a=2), flush=True); time.sleep(5)
+        print(f"     attach requests refused {L(f'get {T_}.AttachReqsRefused').get('value')}; self host {[r for r in h.s(f'mp repairrows {n} 0')['rows'] if r.startswith('self')]}, joiner {[r for r in L.s(f'mp repairrows {n} 0')['rows'] if r.startswith('self')]}", flush=True)
+        L("dropheld"); time.sleep(20)
+        print(f"     after: self host {[r for r in h.s(f'mp repairrows {n} 0')['rows'] if r.startswith('self')]}, joiner {[r for r in L.s(f'mp repairrows {n} 0')['rows'] if r.startswith('self')]}", flush=True)
+        check(h, L, tracked, cars, "aud-attach-held")
     if want("repair"):
         print("\n=== one machine made to differ, no message at all: does the census bring it back?", flush=True)
         beside(L, L.ents()[car]); beside(h, h.ents()[car], (-2.6, 0, 0)); time.sleep(2)

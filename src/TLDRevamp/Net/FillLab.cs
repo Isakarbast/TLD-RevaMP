@@ -17,7 +17,7 @@ namespace TLDRevamp.Net
         /// The player steps up to tank ti of `car` (1 m out from its cap), the can (net `can`) is put in front of their
         /// face and picked up — a pick-up from afar is dropped by the game at once (fpscontroller.PickedUpForceAdd:
         /// beyond dropDist, fluids runs 6/7) — the cap is opened, then view and button are held.
-        public static string Start(uint can, uint car, int ti)
+        public static string Start(uint can, uint car, int ti, float turn = 0f, float stand = 0.7f)
         {
             var p = mainscript.s != null ? mainscript.s.player : null;
             if (p == null) return "{\"error\":\"not in game\"}";
@@ -47,7 +47,7 @@ namespace TLDRevamp.Net
             // grounded — 1 m out its capsule touched the copy car's body) — no fall deaths for 2 s (1.6 m out was beyond reach: run 11)
             p.godModeTillGrounded = true;
             if (p.RB != null) p.RB.velocity = Vector3.zero;
-            p.Teleport(StandSpot(t.transform.root, away.normalized));
+            p.Teleport(StandSpot(t.transform.root, Quaternion.AngleAxis(turn, Vector3.up) * away.normalized, stand));
             _safeUntil = Time.time + 2f;
             Aim(p);
             var cam = p.mainCam.transform;
@@ -62,13 +62,13 @@ namespace TLDRevamp.Net
         /// turning), the nearest spot 0.7–1.4 m out where a player's body touches none of the car's colliders. Caps
         /// under the bonnet are at the front: 1 m straight out put the laptop inside the bumper, the car pushed it off
         /// with the can (run 14).
-        private static Vector3 StandSpot(Transform car, Vector3 away)
+        private static Vector3 StandSpot(Transform car, Vector3 away, float stand = 0.7f)
         {
             var c = _cap.transform.position;
             foreach (float turn in new[] { 0f, 30f, -30f, 60f, -60f, 90f, -90f })
             {
                 var dir = Quaternion.AngleAxis(turn, Vector3.up) * away;
-                for (float d = 0.7f; d <= 1.41f; d += 0.1f)
+                for (float d = stand; d <= 1.41f; d += 0.1f)
                 {
                     var feet = c + dir * d + Vector3.down * 0.6f;
                     bool hitsCar = false;

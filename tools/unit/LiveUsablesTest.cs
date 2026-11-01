@@ -58,6 +58,8 @@ namespace TLDRevamp.Net
         static Group GroupRecord(SEnt se) => se.Record;
         static bool IsProxy(object it) => false;
         static bool AtObject(int from, SEnt se) => true;
+        static bool CarriedPartsShared = true;
+        static bool CarriedFar(attachablescript at, out Ent carrier) { carrier = null; return false; }
         static bool TakeToken(object b, int p, float r, float burst) => true;
         static void ServerSendTo(int id, NetWriter w, bool reliable) { }
         static bool Finite(double n) => !double.IsNaN(n) && !double.IsInfinity(n);
