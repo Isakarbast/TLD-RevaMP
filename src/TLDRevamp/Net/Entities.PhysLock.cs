@@ -259,6 +259,10 @@ namespace TLDRevamp.Net
             _containerBox[root] = b;
             return b;
         }
+        /// A passenger takes something out of the car they sit in: held in the car's frame, the check below was skipped (its
+        /// states are car-frame poses), and the other machines' copy stayed in the container for as long as they held it, the
+        /// owner's game holding it in no container at all (itemchaos `aud-part-hand`). A/B: false = skipped (before).
+        public static bool CarriedLeavesLock = true;
         public static float ReleaseClearS = 0.5f;
         public static long CopyLocksDroppedAttached, ReleasesPlaced, ReleaseGhostsCleared, AttachedStoresRefused, LockRecordsDropped;
         private static void CheckCopyLock(Ent e, double now)
@@ -273,7 +277,7 @@ namespace TLDRevamp.Net
                 else { DropAttachedLock(e, p); return; }
             }
             if (e.Ip == null || !e.Ip.Ready) { e.LockOffSince = 0; return; }
-            var shownUnity = mainscript.UnityPosFromGlobal(e.Ip.LastPos);
+            var shownUnity = mainscript.UnityPosFromGlobal(e.CarriedBy != 0 ? e.CarriedGlobal : e.Ip.LastPos);
             // against the container: the copy itself may have been drawn at its owner's pose (v0.66.7 compared that)
             var held = CopyLockByContainer ? p.physlock.transform.position : e.Root.transform.position;
             if (p.physlock.transform.root == e.Root.transform
@@ -286,7 +290,7 @@ namespace TLDRevamp.Net
             float off = Vector3.Distance(shownUnity, held);
             p.UnPhysicsLock();
             ApplyProxyBodies(e);
-            if (CopyLockSafe) PlaceReleased(e, shownUnity, e.Ip.LastRot);
+            if (CopyLockSafe) PlaceReleased(e, shownUnity, e.CarriedBy != 0 ? e.CarriedGlobalRot : e.Ip.LastRot);
             CopyLocksReleased++;
             if (CopyLocksReleased <= 20) Plugin.Log.LogWarning($"copy taken out of a container here: {e.Root.name} net {e.NetId} in {where} — its owner has it {off:F0} m away");
         }

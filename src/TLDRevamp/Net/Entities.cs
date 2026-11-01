@@ -459,7 +459,7 @@ namespace TLDRevamp.Net
                 // interpolator, simulated, at rest, bolted on — before the skip below: a part bolted on in a container)
                 bool wornRides = WornRides(e);   // on its wearer's head here: placed by WornLate
                 TickPoseLock(e);
-                if (e.Proxy && !e.PoseLocked && e.CarriedBy == 0 && !wornRides) CheckCopyLock(e, now);
+                if (e.Proxy && !e.PoseLocked && (e.CarriedBy == 0 || (CarriedLeavesLock && e.Held)) && !wornRides) CheckCopyLock(e, now);
                 if (e.ReleaseGhost && (e.Proxy || GhostEndsOnOwn)) ReleaseGhostTick(e);
                 bool attachedRides = RidesBolted(e) || AttachedCarPart(e);
                 if (attachedRides && e.Proxy) continue;

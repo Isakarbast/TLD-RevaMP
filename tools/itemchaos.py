@@ -105,7 +105,7 @@ def differences(h, L, tracked, cars):
         if not held and not a.get("stored") and not b.get("stored"):
             d = math.dist(a["pos"], b["pos"])
             moving = max(abs(x) for x in (a.get("vel") or [0])) > 0.3 or max(abs(x) for x in (b.get("vel") or [0])) > 0.3
-            if d > 0.6 and not moving: out[f"place {n}"] = f"{name}: {d:.2f} m apart at rest ({a['pos']} / {b['pos']})"
+            if d > 0.6 and not moving: out[f"place {n}"] = f"{name} net {n} owner {a['owner']}: {d:.2f} m apart at rest ({a['pos']} / {b['pos']})"
         if n in tracked and not held and not a["car"] and not a.get("stored") and not b.get("stored"):
             la, lb = h.lock(n), L.lock(n)
             if la and lb:
@@ -378,7 +378,7 @@ def scripted(h, L, car, tracked, cars):
             check(h, L, tracked, cars, f"out-of-hand {rnd + 1} held")
             h.try_act("drop", net=n, item=0); time.sleep(2)
     for x in (h, L):    # the games are kept between runs: said every time
-        for sw in ("SlotReplaces", "StaleOwnerForwards", "StaleDetachDirect", "AttachReqBecomesSync", "WornLateOk", "EditsComeBack", "CensusRepairs", "CarriedPartsShared", "RemoveFarMembers", "TankAddEdits"): x(f"set TLDRevamp.Net.Entities.{sw} {'--oldslot' not in sys.argv}")
+        for sw in ("SlotReplaces", "StaleOwnerForwards", "StaleDetachDirect", "AttachReqBecomesSync", "WornLateOk", "EditsComeBack", "CensusRepairs", "CarriedPartsShared", "RemoveFarMembers", "TankAddEdits", "CarriedLeavesLock"): x(f"set TLDRevamp.Net.Entities.{sw} {'--oldslot' not in sys.argv}")
     for k, x in h.slots(car).items():
         if "--slots" in sys.argv and x["parts"]: print(f"     member {k[0]} slot {k[1]}: {x['parts']}", flush=True)
         if len(x["parts"]) > 1 and not x.get("many"):
@@ -700,6 +700,49 @@ def scripted(h, L, car, tracked, cars):
             if sum(h0.values()) - sum(h1.values()) < 2 or sum(l0.values()) - sum(l1.values()) < 2: note("INVALID aud-two-pour: one player hardly poured")
             if ha != la and abs(sum(ha.values()) - sum(la.values())) > 0.5: finding("aud-two-pour", f"barrel {ha} on the host, {la} on the joiner")
             if abs(gain - loss) > 1: finding("aud-two-pour / count", f"the barrel gained {gain:.2f} L, the cans lost {loss:.2f} L")
+    if want("aud-pocket-grab"):
+        print("\n=== the other player grabs a can that is in someone's pocket", flush=True)
+        def row(p, n):
+            e = p.ents().get(n)
+            return {k: e.get(k) for k in ("owner", "proxy", "held", "stored", "pos", "vel")} if e else None
+        beside(h, h.ents()[car], (3, 0, 0)); beside(L, L.ents()[car], (-3, 0, 0))
+        c = spawn(h, "can"); tracked.add(c); time.sleep(2)
+        if h.ents()[c]["proxy"]: h.s(f"mp claim {c}"); time.sleep(2)
+        print("     host holds it:", str(h.s(f"mp holdnet {c}"))[:60], flush=True); time.sleep(1)
+        h.try_act("inv_store", slot=0); time.sleep(3)
+        print(f"     in the pocket: host {row(h, c)}", flush=True); print(f"                    joiner {row(L, c)}", flush=True)
+        print(f"     joiner's copy: {str(L.s(f'mp itemcheck {c}'))[:260]}", flush=True)
+        print("     joiner grabs it:", str(L.s(f"mp holdnet {c}"))[:60], flush=True); time.sleep(4)
+        print(f"     host {row(h, c)}", flush=True); print(f"     joiner {row(L, c)}, holds {L.held()}", flush=True)
+        L("dropheld"); time.sleep(3)
+        for w in range(4):
+            print(f"     +{w * 8}: host {row(h, c)}", flush=True); print(f"          joiner {row(L, c)}", flush=True); time.sleep(8)
+        check(h, L, tracked, cars, "aud-pocket-grab")
+    if want("aud-part-hand"):
+        print("\n=== a part put in the other player's car from a seat, taken back in hand, both get out", flush=True)
+        take_car(L, car); time.sleep(2)
+        beside(h, h.ents()[car]); print("     host sits:", h.try_act("seat_in", net=car, slot=1), flush=True); time.sleep(1)
+        known = set(h.ents())
+        m = next((m for m in glued(L, car) + bolted(L, car) if "Light" in m["name"] or "Lamp" in m["name"]), None) or bolted(L, car)[0]
+        print("     part:", m["i"], m["name"], flush=True)
+        h.act("detach", net=car, item=m["i"]); time.sleep(3)
+        n = next((k for k in h.ents() if k not in known), None); tracked.add(n)
+        def locks(): return (h.lock(n) or {}).get("physlock"), (L.lock(n) or {}).get("physlock")
+        def show(tag):
+            a, b = h.ents().get(n, {}), L.ents().get(n, {})
+            print(f"     {tag}: locks {locks()}, held {a.get('held')} {b.get('held')}, stored {a.get('stored')} {b.get('stored')}, owner {a.get('owner')}, host holds {h.held()}, seated {h.seated()} {L.seated()}, apart {math.dist(a['pos'], b['pos']) if a and b else None}", flush=True)
+        print("     host holds it:", str(h.s(f"mp holdnet {n}"))[:60], flush=True); time.sleep(1)
+        into_car(h, car, n, None); time.sleep(4); show("in the car")
+        print("     host takes it:", str(h.s(f"mp holdnet {n}"))[:60], flush=True)
+        for w in range(4): time.sleep(1.5); show(f"+{(w + 1) * 1.5}")
+        print("     host gets out:", h.try_act("seat_out", net=car, slot=1), flush=True)
+        for w in range(4): time.sleep(2); show(f"out +{(w + 1) * 2}")
+        check(h, L, tracked, cars, "aud-part-hand held")
+        if h.held(): h("dropheld")
+        for w in range(3): time.sleep(3); show(f"let go +{(w + 1) * 3}")
+        check(h, L, tracked, cars, "aud-part-hand let go")
+        print("     host gets out, hands empty:", h.try_act("seat_out", net=car, slot=1), flush=True); time.sleep(2); show("out")
+        if h.seated(): h("driveout"); time.sleep(2); show("driveout")
     if want("aud-tank-fight"):
         print("\n=== the owner changes a tank's level while the other player pours into it", flush=True)
         n = barrel_of()
@@ -1110,7 +1153,9 @@ def monkey(h, L, car, tracked, cars, seed, steps):
                     n = rng.choice(c); beside(p, e[n], (2.5, 0, 0)); note(f"{p.label} walks into {n}: {p(f'mp walkat {n} 3')}"); time.sleep(3.5)
             elif op == "seat":
                 p.try_act("seat_in", net=car, slot=rng.choice([0, 1, 4]))
-            elif op == "seat_out": p.try_act("seat_out", net=car, slot=0)
+            elif op == "seat_out":
+                try: p("driveout"); note(f"{p.label} got out")
+                except RuntimeError as ex: note(f"{p.label} driveout: {str(ex)[:60]}")
             elif op == "away":
                 g = p("gpos"); note(f"{p.label} walks 700 m away and back"); p(f"tpground {g['gx'] + 700} {g['gz']}"); time.sleep(15); beside(p, p.ents()[car] if car in p.ents() else e[car], (4, 0, 0))
             elif op == "both":
