@@ -69,8 +69,6 @@ namespace TLDRevamp.Net
         private static bool Finite(Vector3d v) => double.IsFinite(v.x) && double.IsFinite(v.y) && double.IsFinite(v.z);
         private static bool Finite(Vector3 v) => float.IsFinite(v.x) && float.IsFinite(v.y) && float.IsFinite(v.z);
         private static bool Finite(Quaternion q) => float.IsFinite(q.w);
-        private static void WriteRot(NetWriter w, Quaternion q) { w.F32(q.x); w.F32(q.y); w.F32(q.z); w.F32(q.w); }
-        private static Quaternion ReadRot(NetReader r) => new Quaternion(r.F32(), r.F32(), r.F32(), r.F32());
         private static byte[] Copy(NetWriter w) { var b = new byte[w.Len]; Array.Copy(w.Buf, b, b.Length); return b; }
         private static void ToServer(NetWriter w, bool reliable) => Requests.Add(Copy(w));
         private static void ServerSendTo(int target, NetWriter w, bool reliable) => Packets.Add((target, Copy(w)));
@@ -306,8 +304,9 @@ namespace TLDRevamp.Net
                     case HitchFrozen: ApplyHitchFrozen(r); break;
                     case HitchCommand: ApplyHitchCommand(r); break;
                     case DetachSync:
-                        // The existing receiver unmounts both loaded and far-store copies (SyncControlsTest covers it).
-                        var tr = ByNet[r.U32()];
+                        // The receiver's own read of what ReleaseHitch wrote; what it then does: SyncControlsTest.
+                        if (!ReadDetachSync(r, out uint detached, out _, out _) || r.Remaining != 0) throw new Exception("DetachSync doesn't read back as written");
+                        var tr = ByNet[detached];
                         if (tr.Root.attachable.attached) Unmount(tr.Root.attachable, true);
                         break;
                 }
@@ -527,7 +526,14 @@ namespace UnityEngine
         { var v = System.Numerics.Vector3.Transform(new System.Numerics.Vector3(p.x, p.y, p.z), q.Value); return new Vector3(v.X, v.Y, v.Z); }
     }
     public static class Time { public static float time, realtimeSinceStartup; }
-    public static class Mathf { public static float Abs(float f) => MathF.Abs(f); }
+    public static class Mathf
+    {
+        public static float Abs(float f) => MathF.Abs(f);
+        public static float Sqrt(float f) => MathF.Sqrt(f);
+        public static float Max(float a, float b) => MathF.Max(a, b);
+        public static int RoundToInt(float f) => (int)MathF.Round(f);
+        public static int Clamp(int v, int lo, int hi) => v < lo ? lo : v > hi ? hi : v;
+    }
 }
 public struct Vector3d
 {

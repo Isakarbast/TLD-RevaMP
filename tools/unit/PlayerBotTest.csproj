@@ -5,6 +5,7 @@
     <Compile Include="PlayerBotTest.cs" />
     <Compile Include="../../src/TLDRevamp/Net/PlayerBotCore.cs" />
     <Compile Include="../../src/TLDRevamp/Net/Entities.StateCodec.cs" />
+    <Compile Include="../../src/TLDRevamp/Net/Entities.RotCodec.cs" />
     <Compile Include="../../src/TLDRevamp/Net/NetBuffer.cs" />
   </ItemGroup>
 </Project>

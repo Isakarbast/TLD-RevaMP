@@ -112,8 +112,7 @@ namespace TLDRevamp.Net
         private static void SendDetachSync(Ent pe)
         {
             var t = pe.Root.transform; var g = mainscript.GlobalFromUnityPos(t.position); var q = t.rotation;
-            W.Reset(); W.U8(DetachSync); W.U32(pe.NetId); W.U32(pe.Epoch);
-            W.F64(g.x); W.F64(g.y); W.F64(g.z); W.F32(q.x); W.F32(q.y); W.F32(q.z); W.F32(q.w);
+            W.Reset(); WriteDetachSync(W, pe.NetId, pe.Epoch, g, q);
             ToServer(W, true);
             pe.SentAtRest = false;
             DetachSyncsSent++;
@@ -122,9 +121,7 @@ namespace TLDRevamp.Net
 
         internal static void ApplyDetachSync(NetReader r)
         {
-            uint net = r.U32(); r.U32();
-            var pos = new Vector3d(r.F64(), r.F64(), r.F64()); var rot = new Quaternion(r.F32(), r.F32(), r.F32(), r.F32());
-            if (r.Bad || !ByNet.TryGetValue(net, out var pe)) return;
+            if (!ReadDetachSync(r, out uint net, out var pos, out var rot) || !ByNet.TryGetValue(net, out var pe)) return;
             if (!Resolve(pe) || pe.Root == null)
             {
                 // our copy is in the far store: it comes off there (placed back loose where it landed)

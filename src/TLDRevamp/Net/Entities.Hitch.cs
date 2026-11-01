@@ -521,9 +521,8 @@ namespace TLDRevamp.Net
             DropAttach(tr);   // also removes LastAttach and the parent's child entry, including for future joiners
             // Invalidate queued commands and late acknowledgements, and release either simulator's frozen bodies.
             CompleteHitchTransfer(tr, false, default, Quaternion.identity, Vector3.zero, false, Vector3.zero, Quaternion.identity);
-            var w = new NetWriter(); w.U8(DetachSync); w.U32(tr.NetId); w.U32(tr.Epoch);
-            var p = tr.HasState ? tr.Pos : tr.Where; var q = tr.HasState ? tr.Rot : Quaternion.identity;
-            w.F64(p.x); w.F64(p.y); w.F64(p.z); WriteRot(w, q);
+            var w = new NetWriter();
+            WriteDetachSync(w, tr.NetId, tr.Epoch, tr.HasState ? tr.Pos : tr.Where, tr.HasState ? tr.Rot : Quaternion.identity);
             ServerSendAll(w, true, -1);   // loaded and far-store copies use the ordinary clean unmount path
         }
 

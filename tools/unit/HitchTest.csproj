@@ -3,6 +3,8 @@
   <ItemGroup>
     <Compile Include="HitchTest.cs" />
     <Compile Include="../../src/TLDRevamp/Net/Entities.Hitch.cs" />
+    <Compile Include="../../src/TLDRevamp/Net/Entities.DetachCodec.cs" />
+    <Compile Include="../../src/TLDRevamp/Net/Entities.RotCodec.cs" />
     <Compile Include="../../src/TLDRevamp/Net/HitchAuthority.cs" />
     <Compile Include="../../src/TLDRevamp/Net/NetBuffer.cs" />
   </ItemGroup>

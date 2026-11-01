@@ -41,6 +41,7 @@
     <Compile Include="../../src/TLDRevamp/Net/Entities.Bandwidth.cs" />
     <Compile Include="../../src/TLDRevamp/Net/Entities.Ragdoll.cs" />
     <Compile Include="../../src/TLDRevamp/Net/Entities.StateCodec.cs" />
+    <Compile Include="../../src/TLDRevamp/Net/Entities.RotCodec.cs" />
     <Compile Include="../../src/TLDRevamp/Net/PoseInterpolator.cs" />
     <Compile Include="../../src/TLDRevamp/Net/NetBuffer.cs" />
     <Compile Include="HandStateTest.cs" />
