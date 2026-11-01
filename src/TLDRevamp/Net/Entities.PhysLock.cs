@@ -413,7 +413,7 @@ namespace TLDRevamp.Net
             var p = e.Root != null ? e.Root.P : null;
             var sb = new System.Text.StringBuilder("{\"net\":" + net + ",\"resolved\":" + (resolved ? "true" : "false") + ",\"proxy\":" + (e.Proxy ? "true" : "false") +
                 ",\"owner\":" + e.OwnerId + ",\"held\":" + (e.Held ? "true" : "false") + ",\"stored\":" + (e.Stored ? "true" : "false") + ",\"carriedBy\":" + e.CarriedBy +
-                ",\"physical\":" + (e.Physical ? "true" : "false") + ",\"movedByBody\":" + (e.MovedByBody ? "true" : "false") + ",\"part\":" + e.PartIndex + ",\"items\":" + e.Items.Count +
+                ",\"physical\":" + (e.Physical ? "true" : "false") + ",\"movedByBody\":" + (e.MovedByBody ? "true" : "false") + ",\"kinematic\":" + (e.Root != null && e.Root.GetComponent<Rigidbody>() != null && e.Root.GetComponent<Rigidbody>().isKinematic ? "true" : "false") + ",\"part\":" + e.PartIndex + ",\"items\":" + e.Items.Count +
                 ",\"recv\":" + e.Recv + ",\"lockOffSince\":" + e.LockOffSince.ToString("F1", ci) + ",\"ripReady\":" + (e.Ip != null && e.Ip.Ready ? "true" : "false"));
             if (e.Root != null)
             {

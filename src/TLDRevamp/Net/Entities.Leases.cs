@@ -454,7 +454,7 @@ namespace TLDRevamp.Net
             [HarmonyLib.HarmonyPrefix]
             private static void Prefix(pickupable __instance)
             {
-                if (!InSession || !IsProxy(__instance)) return;
+                if (!InSession || TestPickupNoClaim || !IsProxy(__instance)) return;
                 var limbOf = RagdollOf(__instance);   // a limb of a dead creature: not under the item any more
                 // the item's own entity first: one under another shared object (stuck on a car or its door, riding in
                 // it) matched that object's root as well, and whichever came first in ByNet won — the car (no claim:
@@ -484,6 +484,32 @@ namespace TLDRevamp.Net
                 W.Reset(); WriteClaim(W, hit.NetId, ClaimReason.Pickup); ToServer(W, true);
                 ClaimsSent++;
             }
+        }
+
+        /// A/B: a copy in this player's hands with no claim on its way is claimed (false: it stayed so). Picking up a copy claims
+        /// it and a lost claim lets go, so this should never be seen; the anomaly says it was. Kept, the hand holds a body nobody
+        /// here moves and no state can place (HealCopyBody leaves what's in the hand alone): 1.56 m from the owner's for minutes,
+        /// the place repair helpless (a Bus02Tank in a random-action test run, its way there not found).
+        public static bool HandCopyClaims = true;
+        public static float HandCopyS = 0.5f, HandCopyRetryS = 5f;
+        public static long HandCopiesClaimed;
+        public static bool TestPickupNoClaim;   // test: the next pickups send no claim
+        private static float _handCopySince, _handCopyNext;
+        private static void HandCopyTick(float now)
+        {
+            var p = HandCopyClaims && mainscript.s != null && mainscript.s.player != null ? mainscript.s.player.pickedUp : null;
+            var e = p != null && p.tosave != null ? OwnEntity(p.tosave) : null;
+            if (e == null || !e.Proxy || e.Root == null || e.Root.P != p || e.Root.car != null || HitchTrailer(e)) { _handCopySince = 0f; return; }
+            if (_handCopySince == 0f) _handCopySince = now;
+            if (now - _handCopySince < HandCopyS || now < _handCopyNext) return;
+            _handCopyNext = now + HandCopyRetryS;
+            HandCopiesClaimed++;
+            Anomaly($"copy in our hands: {e.Root.name} net {e.NetId} owner {e.OwnerId} — claimed now");
+            if (PickupSkipsLock && e.PoseLocked) e.PoseLocked = false;
+            SetProxy(e, false);
+            e.OwnerId = MyId;
+            W.Reset(); WriteClaim(W, e.NetId, ClaimReason.Pickup); ToServer(W, true);
+            ClaimsSent++;
         }
 
         /// A/B switch: true = picking up the drawbar of another player's trailer claims the trailer. The drawbar is its own

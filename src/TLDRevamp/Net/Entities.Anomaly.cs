@@ -167,6 +167,7 @@ namespace TLDRevamp.Net
                 _lastGen = g; _hasGen = true;
             }
             RepairTick(now);
+            HandCopyTick(now);
             if (_censusDue.Count == 0) return;
             if (now - _censusTick < RepairAskEveryS) return;
             _censusTick = now;

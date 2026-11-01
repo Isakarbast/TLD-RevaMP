@@ -836,6 +836,92 @@ def scripted(h, L, car, tracked, cars):
             print("     places: host", h.s("mp places"), "joiner", L.s("mp places"), flush=True)
             print("     anomalies host:", str(h.s("mp anomalies").get("lines"))[-400:], flush=True)
             check(h, L, tracked, cars, "aud-place")
+    if want("aud-hold"):
+        print("\n=== taking an item out of a car the other player owns: whose is it, whose hand, where is the copy?", flush=True)
+        def row(n):
+            out = []
+            for p in (h, L):
+                try: m = p.s(f"mp lockdiag {n}")
+                except RuntimeError as ex: out.append(f"{p.label} no {str(ex)[-30:]}"); continue
+                out.append(f"{p.label}: owner {m.get('owner')} proxy {m.get('proxy')} held {m.get('held')} stored {m.get('stored')} kin {m.get('kinematic')} body {m.get('movedByBody')} lock {(m.get('lock') or {}).get('container')} hands {p.held()}")
+            try: gap = math.dist(h.ents()[n]["pos"], L.ents()[n]["pos"])
+            except KeyError: gap = -1
+            return f"{gap:5.2f} m | " + " | ".join(out)
+        def watch(n, secs, label):
+            for k in range(secs):
+                print(f"     {label} {k:2d}s {row(n)}", flush=True); time.sleep(1)
+        beside(L, L.ents()[car], (-2.6, 0, 0)); beside(h, h.ents()[car]); time.sleep(2)
+        tanks = [m for m in glued(h, car) if m["name"].startswith("Bus02Tank")]
+        if tanks:
+            before = set(h.ents()); h.try_act("detach", net=car, item=tanks[0]["i"]); time.sleep(4)
+            new = [x for x, e in h.ents().items() if x not in before and "Tank" in str(e.get("name"))]
+            if new:
+                n = new[0]; tracked.add(n); time.sleep(3)
+                def right():
+                    try: return h("get mainscript.s.player.inHandP.name").get("value")
+                    except RuntimeError: return None
+                print("  -- the host's inventory is in use (two items stored in one slot), then the host takes the joiner's tank", flush=True)
+                beside(h, h.ents()[car]); time.sleep(1)
+                for k in range(2):
+                    x = spawn(h, "lamp"); tracked.add(x); time.sleep(2); print("     host holds", str(h(f"mp holdnet {x}"))[:50], flush=True); time.sleep(0.5)
+                    h.try_act("inv_store", slot=0); time.sleep(1); print(f"     stored: hands {h.held()}, right hand {right()}", flush=True)
+                if h.held(): h("dropheld"); time.sleep(1)
+                print(f"     now: hands {h.held()}, right hand {right()}", flush=True)
+                into_car(L, car, n, None); time.sleep(3); L.try_act("seat_in", net=car, slot=4); time.sleep(5); L("driveout"); time.sleep(3)
+                print("     before", row(n), flush=True)
+                beside(h, h.ents()[n], (1.2, 0, 0)); time.sleep(1)
+                print("     host takes it:", str(h.s(f"mp holdnet {n}"))[:60], f"right hand {right()}", flush=True)
+                watch(n, 8, "held")
+                print(f"     hands {h.held()}, right hand {right()}", flush=True)
+                h(f"mp lookat {car}"); time.sleep(0.5); h("set MountAnything.Mounting.TestPress True"); time.sleep(1)
+                print("     glue press:", h("get MountAnything.Mounting.LastMount").get("value"), f"hands {h.held()}, right hand {right()}", flush=True)
+                watch(n, 6, "glued")
+                if h.held(): h("dropheld")
+                watch(n, 8, "after")
+                print("  -- both grab it in the same moment, three times", flush=True)
+                for k in range(3):
+                    if h.ents()[n].get("attached") or L.ents()[n].get("attached"): note("the tank is on the car now"); break
+                    beside(h, h.ents()[n], (1.2, 0, 0)); beside(L, L.ents()[n], (-1.2, 0, 0)); time.sleep(1)
+                    for x in (h, L) if k % 2 == 0 else (L, h):
+                        try: x(f"mp holdnet {n}")
+                        except RuntimeError: pass
+                    watch(n, 5, f"both{k}")
+                    for x in (h, L):
+                        if x.held(): x("dropheld")
+                    time.sleep(5); print("     let go", row(n), flush=True)
+                    d = math.dist(h.ents()[n]["pos"], L.ents()[n]["pos"])
+                    if d > 0.6: finding("aud-hold", f"both grab {k}: {d:.2f} m apart after both let go")
+            else: note("INVALID aud-hold: the tank came off as no object of its own")
+        else: note("INVALID aud-hold: no Bus02Tank on the car")
+        print("     places: host", h.s("mp places"), "joiner", L.s("mp places"), flush=True)
+        print("     anomalies host:", str(h.s("mp anomalies").get("lines"))[-500:], flush=True)
+        print("     refused:", h.s("mp entities").get("refusedWhy"), flush=True)
+        check(h, L, tracked, cars, "aud-hold")
+    if want("aud-handcopy"):
+        print("\n=== a copy in a player's hands with no claim sent (forced): stuck? does the guard take it?", flush=True)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(2)
+        n = spawn(L, "jerry"); tracked.add(n); time.sleep(3)
+        if L.ents()[n]["proxy"]: L.s(f"mp claim {n}"); time.sleep(2)
+        def hrow():
+            m = h.s(f"mp lockdiag {n}"); o = L.s(f"mp lockdiag {n}")
+            return f"{math.dist(h.ents()[n]['pos'], L.ents()[n]['pos']):5.2f} m | host: owner {m.get('owner')} proxy {m.get('proxy')} kin {m.get('kinematic')} body {m.get('movedByBody')} hands {h.held()} | joiner: owner {o.get('owner')} proxy {o.get('proxy')} held {o.get('held')} kin {o.get('kinematic')}"
+        for on, secs in ((False, 45), (True, 8)):
+            h.s(f"set {T}.HandCopyClaims {on}"); beside(h, h.ents()[n], (2.5, 0, 0)); time.sleep(1)
+            print(f"     guard {on}: before", hrow(), flush=True)
+            print("     host takes it, no claim:", str(h.s(f"mp handcopy {n}"))[:60], flush=True)
+            for k in range(secs):
+                if k < 4 or k % 10 == 0: print(f"     {k:2d}s {hrow()}", flush=True)
+                time.sleep(1)
+            print(f"     guard {on}: {hrow()}", flush=True); print("     places:", h.s("mp places"), flush=True)
+            if on and h.ents()[n]["proxy"]: finding("aud-handcopy", "still a copy in the host's hands with the guard on")
+            if not on and not h.ents()[n]["proxy"]: note("INVALID aud-handcopy: the hold made no copy in the hands")
+            if h.held(): h("dropheld")
+            time.sleep(6); d = math.dist(h.ents()[n]["pos"], L.ents()[n]["pos"])
+            print(f"     let go: {hrow()}", flush=True)
+            if d > 0.6: finding("aud-handcopy", f"guard {on}: {d:.2f} m apart after letting go")
+            L.s(f"mp claim {n}"); time.sleep(3)
+        print("     anomalies host:", str(h.s("mp anomalies").get("lines"))[-600:], flush=True)
+        check(h, L, tracked, cars, "aud-handcopy")
     if want("aud-place-cost"):
         print("\n=== what the position check costs: both players by the car, nothing else going on, a minute each way", flush=True)
         beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(5)
