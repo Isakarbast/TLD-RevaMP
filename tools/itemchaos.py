@@ -378,7 +378,7 @@ def scripted(h, L, car, tracked, cars):
             check(h, L, tracked, cars, f"out-of-hand {rnd + 1} held")
             h.try_act("drop", net=n, item=0); time.sleep(2)
     for x in (h, L):    # the games are kept between runs: said every time
-        for sw in ("SlotReplaces", "StaleOwnerForwards", "StaleDetachDirect", "AttachReqBecomesSync", "WornLateOk", "EditsComeBack"): x(f"set TLDRevamp.Net.Entities.{sw} {'--oldslot' not in sys.argv}")
+        for sw in ("SlotReplaces", "StaleOwnerForwards", "StaleDetachDirect", "AttachReqBecomesSync", "WornLateOk", "EditsComeBack", "CensusRepairs", "CarriedPartsShared", "RemoveFarMembers"): x(f"set TLDRevamp.Net.Entities.{sw} {'--oldslot' not in sys.argv}")
     for k, x in h.slots(car).items():
         if "--slots" in sys.argv and x["parts"]: print(f"     member {k[0]} slot {k[1]}: {x['parts']}", flush=True)
         if len(x["parts"]) > 1 and not x.get("many"):
@@ -605,6 +605,58 @@ def scripted(h, L, car, tracked, cars):
             if near(th) != near(tl): finding(f"aud-wheel-far {dist}", f"the tyre: host {near(th)}, joiner {near(tl)}")
             L(f"tpground {g['gx']} {g['gz']}"); h(f"tpground {g['gx'] + 3} {g['gz'] + 3}"); time.sleep(16 if dist else 4)
             check(h, L, tracked, cars, f"aud-wheel-far {dist}")
+    if want("soak"):
+        print("\n=== normal driving, nothing wrong: the census must leave it alone", flush=True)
+        beside(L, L.ents()[car]); L(f"mp sitdriver {car}"); time.sleep(2)
+        h.try_act("seat_in", net=car, slot=1); time.sleep(1)
+        for c_ in ("fuelup", "handbrake off"):
+            try: L(c_)
+            except RuntimeError as ex: note(f"{c_}: {str(ex)[:60]}")
+        for secs, speed in ((60, 12), (60, 25), (40, 6)):
+            print(f"     joiner drives at {speed} m/s for {secs} s: {str(L(f'autodrive on {speed}'))[:70]}", flush=True)
+            time.sleep(secs)
+            a_, b_ = h.s("mp anomalies"), L.s("mp anomalies")
+            print(f"     host asks {a_.get('censusAsks')}, differ {a_.get('censusDiffers')}, repairs {a_.get('repairsAsked')}; joiner asks {b_.get('censusAsks')}, differ {b_.get('censusDiffers')}, repairs {b_.get('repairsAsked')}, car at {[round(x) for x in h.ents()[car]['pos']]}", flush=True)
+        try: L("autodrive off")
+        except RuntimeError: pass
+        time.sleep(6); h.try_act("seat_out", net=car, slot=1); L("driveout"); time.sleep(20)
+        check(h, L, tracked, cars, "soak")
+    if want("repair"):
+        print("\n=== one machine made to differ, no message at all: does the census bring it back?", flush=True)
+        beside(L, L.ents()[car]); beside(h, h.ents()[car], (-2.6, 0, 0)); time.sleep(2)
+        if L.ents()[car]["proxy"]: L.s(f"mp claim {car}"); time.sleep(3)
+        def rows(p, n):
+            try: return dict(x.split("=", 1) for x in p.s(f"mp repairrows {n} 0")["rows"])
+            except RuntimeError as ex: return {"error": str(ex)[:60]}
+        def differ(n):
+            a, b = rows(h, n), rows(L, n)
+            return {k: (a.get(k), b.get(k)) for k in set(a) | set(b) if a.get(k) != b.get(k)}
+        def heal(n, tag, asker=h, wait=45, ask=True):
+            before = differ(n); print(f"     {tag}: made to differ: {str(before)[:200]}", flush=True)
+            if not before: note(f"INVALID {tag}: no difference made"); return
+            if ask: asker.s(f"mp censusnow {n} 0")
+            t0 = time.time()
+            while time.time() - t0 < wait and differ(n): time.sleep(1)
+            left = differ(n)
+            print(f"     {tag}: {'healed in %.0f s' % (time.time() - t0) if not left else 'STILL DIFFERENT after %d s: %s' % (wait, str(left)[:200])}", flush=True)
+            if left: finding(f"repair {tag}", str(left)[:200])
+        plain = [m for m in bolted(L, car) if m.get("on") == 0 and not any(x in m["name"] for x in ("Felni", "Gumi"))]
+        print("     bolted members:", [(m["i"], m["name"]) for m in plain][:8], "| rows on the car:", len(rows(h, car)), "| differences at the start:", str(differ(car))[:200], flush=True)
+        a, b, d = plain[0], plain[1], plain[2]
+        print("     the copy loses a part:", h.s(f"mp localoff {car} {a['i']} 0"), flush=True); heal(car, "part off on the copy")
+        print("     the owner loses a part:", L.s(f"mp localoff {car} {b['i']} 0"), flush=True); heal(car, "part off on the owner")
+        st = next((m for m in glued(L, car) + bolted(L, car) if m["i"] != a["i"] and m["i"] != b["i"]), None)
+        print("     a state changed on the copy:", h.s(f"mp localstate {car} 0 0"), flush=True); heal(car, "state on the copy")
+        known = set(L.ents()); L.act("detach", net=car, item=d["i"]); time.sleep(3)
+        n = next((k for k in L.ents() if k not in known), None); tracked.add(n)
+        print("     own object", n, "bolted back:", L.try_act("attach", net=n, other=car, item=1, slot=d["onSlot"], a=2), flush=True); time.sleep(4)
+        print("     rows:", rows(h, n).get("self"), rows(L, n).get("self"), flush=True)
+        print("     the copy's own object falls off:", h.s(f"mp localoff {n} 0 0"), flush=True); heal(n, "own object off on the copy")
+        print("     the owner's own object falls off:", L.s(f"mp localoff {n} 0 0"), flush=True); heal(n, "own object off on the owner")
+        print("     no asking, its turn only: the copy loses a part:", h.s(f"mp localoff {car} {plain[3]['i']} 0"), flush=True); heal(car, "part off, by its turn", wait=120, ask=False)
+        print(f"     repairs: host {str(h.s(f'mp repairrows {car} 0'))[-70:]}, joiner {str(L.s(f'mp repairrows {car} 0'))[-70:]}", flush=True)
+        print("     anomalies host:", str(h.s("mp anomalies").get("lines"))[-300:], flush=True)
+        check(h, L, tracked, cars, "repair")
     if want("aud-share"):
         print("\n=== an item spawned and deleted while the message about it is still on its way: left behind anywhere?", flush=True)
         beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0))
@@ -1015,6 +1067,11 @@ with game.ProtectedSession():
         check(h, L, tracked, cars, "as they join")
         scripted(h, L, car, tracked, cars)
         if "--no-monkey" not in sys.argv: monkey(h, L, car, tracked, cars, SEED, STEPS)
+        for who, s_ in (("host", h), ("joiner", L)):
+            a_ = s_.s("mp anomalies")
+            print(f"census {who}: asks {a_.get('censusAsks')}, differ {a_.get('censusDiffers')}, repairs asked {a_.get('repairsAsked')}, healed {a_.get('repairsHealed')}, failed {a_.get('repairsFailed')}, run {a_.get('repairsRun')}", flush=True)
+            for l_ in a_.get("lines", []):
+                if "repair" in l_ or "parts differ" in l_: print("    ", l_[:300], flush=True)
         L("mp stop"); h("mp stop")
     finally:
         for f in copied:

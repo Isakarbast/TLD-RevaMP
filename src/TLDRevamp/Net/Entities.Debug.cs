@@ -768,6 +768,19 @@ namespace TLDRevamp.Net
             return "{\"uncraft\":" + (ok ? "true" : "false") + ",\"d\":" + bd.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + ",\"attached\":" + (best.attached ? "true" : "false") + "}";
         }
 
+        /// Test tooling: a member's state changed on this machine only, no message: a part's condition, a knob, a tank's level.
+        public static string LocalState(uint net, int idx)
+        {
+            if (!ByNet.TryGetValue(net, out var e) || !Resolve(e)) return "{\"error\":\"no such object here\"}";
+            var it = idx >= 0 && idx < e.Items.Count ? e.Items[idx] : null;
+            if (it == null) return "{\"error\":\"no item " + idx + "\"}";
+            string what = "";
+            if (it.partconditions != null && it.partconditions.Count > 0 && it.partconditions[0] != null) { it.partconditions[0].state = it.partconditions[0].state == 0 ? 2 : 0; what += "condition "; }
+            if (it.usables != null) foreach (var u in it.usables) if (u != null && u.turnable) { u.currentTurnState = u.currentTurnState == 0 ? 1 : 0; what += "knob "; break; }
+            if (it.tanks != null && it.tanks.Count > 0 && it.tanks[0] != null && it.tanks[0].F != null) { it.tanks[0].F.ChangeOne(5f, mainscript.fluidenum.water); what += "tank "; }
+            return "{\"changed\":" + Json.Str(what) + "}";
+        }
+
         public static string LocalOff(uint net, int idx)
         {
             if (!ByNet.TryGetValue(net, out var e) || !Resolve(e)) return "{\"error\":\"no such car here\"}";

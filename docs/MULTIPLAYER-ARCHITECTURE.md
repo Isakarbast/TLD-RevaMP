@@ -201,6 +201,8 @@ and plays on the game's own world, exactly as before.
   that used the raw name would not find the map.
 
 
+Protocol 58 adds the census repair (Entities.Repair): a copy near its player asks about one object at a time, 4 a second, with a hash of what is bolted where (group index and slot, or net and slot for its own object) and of the state a player can change (part conditions, turnable usables, tanks in whole litres). The owner answers only when its hash differs. Still different 6 s later, the copy sends CensusRepair naming the difference and the owner sends what it holds again through the normal messages: every record of the group, its AttachSync or DetachSync, a PartOff that never got through; the server replays a PartDetached the copy never had. Nothing is applied that the normal paths would not apply. Another difference 8 s after that is logged as an anomaly and asked about again after 30 s, doubling up to 10 minutes.
+
 Protocol 57 names a part unbolted from a member carried away from its group by the carrier's slot (PartOff and PartDetached can end with the carrier net and slot): the group can be out of range on the machine that unbolts it, a tyre on a wheel off a wreck.
 
 Protocol 56 adds the owner's engine temperature to a car's engine block (flag 8, tenths of a degree), so a copy's gauge and coolant steam follow the owner. Protocol 55 adds voice to everyone (the codec byte's top bit) and the session's voice setting. Protocol 54 adds Frame / Key / Delta ragdoll blocks to State. Protocol 53 adds two claim reasons, ItemNear and ItemContact: a loose item moving on one machine takes the still loose item it is about to hit, so both are simulated there (Entities.ItemPush). Protocol 52 uses uniform six-byte Claims: message, net id and a diagnostic producer byte. It also carries the host's terrain mode in Welcome (one byte, after the session settings snapshot): the world is generated from the seed alone, so the joiner has to generate the host's shape. Pickup takes
@@ -695,7 +697,7 @@ upper-envelope counts. They say where to look, not what anything costs at run ti
    not checked (the host doesn't have every player's surroundings). Hits on objects (cars, creatures, breakables) are
    still the attacker's word.
 
-### Join loading (introduced in protocol 45; current protocol 57)
+### Join loading (introduced in protocol 45; current protocol 58)
 
 `MpClient.Ready` starts replication; it is not gameplay readiness. With `joinLoading` enabled, `JoinLoadingState` gates a joiner-only overlay and audio lease. The scene/player initialization, requested terrain meshes/colliders and road chunks, a static floor stable under the player for 0.5 s, and initial object application must all hold. `fpscontroller.Move` is suppressed and the player body held during loading; teardown always releases the body and restores audio/cursor state.
 

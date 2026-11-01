@@ -50,12 +50,21 @@ namespace TLDRevamp.Net
             if (!Server.TryGetValue(net, out var se)) return;
             string why = idx < 0 || idx > 4096 ? "item index" : null;
             if (why == null && EditValidation && from != 0 && !TakeToken(_editBuckets, from, EditRatePerS, EditBurst)) why = "edit rate";
-            if (why == null && EditRangeCheck && from != 0 && !AtObject(from, se)) why = "edit reach";
+            if (why == null && EditRangeCheck && from != 0 && !AtObject(from, se) && !AtSplitPart(from, se)) why = "edit reach";
             if (why != null) { SessionLog.Event("detach-refused", net, item: idx, from: from, to: se.OwnerId, result: why); return; }
             // Ownership may have reached the server while this player's copy was still a proxy. Its local
             // UnCraft was suppressed, so even an already-owner request must run on the current owner.
             W.Reset(); W.U8(DetachReq); W.U32(net); W.VarU32((uint)idx);
             ServerSendTo(se.OwnerId, W, true);
+        }
+
+        /// Standing at what came off the object: a tyre stays in the car's group on a wheel carried away from the car. The
+        /// reach to the car refused it, 100 m off, with the player's hand on the tyre (itemchaos aud-wheel-far).
+        private static bool AtSplitPart(int player, SEnt se)
+        {
+            if (!CarriedPartsShared) return false;
+            foreach (uint pn in se.Parts) if (Server.TryGetValue(pn, out var part) && AtObject(player, part)) return true;
+            return false;
         }
 
         /// The part's owner handles removal, even when its slot sits on another player's frame.

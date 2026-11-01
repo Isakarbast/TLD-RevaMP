@@ -28,7 +28,7 @@ namespace TLDRevamp
             "handover-sent", "join", "joint-broken", "joint-created", "leave",
             "live-applied", "live-sent", "owner-applied", "owner-change", "owner-decision",
             "owner-teleport", "physlock-lock", "physlock-unlock", "part-detached-received", "part-off-applied",
-            "part-off-deduped", "part-off-refused", "part-off-sent", "part-state", "player-damage",
+            "census-repair", "census-repair-failed", "census-repair-run", "part-off-deduped", "part-off-refused", "part-off-sent", "part-state", "player-damage",
             "player-damage-queued", "player-death", "proxy-correction", "proxy-snap", "remove-applied",
             "remove-relayed", "remove-sent", "resync-applied", "resync-sent", "seat-enter",
             "seat-leave", "spawn-add", "speed-high", "speed-jump", "test-desync",

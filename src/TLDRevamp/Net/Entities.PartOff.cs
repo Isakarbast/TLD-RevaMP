@@ -71,6 +71,16 @@ namespace TLDRevamp.Net
                 if (state == null) return "item record";
                 canonical = true;   // resync/handover records contain state only, addressed by group index
             }
+            string why = PartOffAttached(car, group, state, canonical, idx);
+            // Off on the owner, its part-off refused or never sent: its next record says so, and the owner saying it again
+            // would be refused as "not attached" while the part stays on on every other screen. A copy has just reported
+            // that (Entities.Repair: ServerCensusRepair): what the group was shared with counts too.
+            if (why == "not attached" && canonical && car.RepairOff != null && car.RepairOff.Contains(idx)) why = PartOffAttached(car, group, group, false, idx);
+            return why;
+        }
+
+        private static string PartOffAttached(SEnt car, itemDataClass group, itemDataClass state, bool canonical, int idx)
+        {
             if (state.attachable == null) return "not attached";
             foreach (var at in state.attachable)
             {
@@ -198,6 +208,7 @@ namespace TLDRevamp.Net
         {
             // Membership is consumed before broadcasting and survives both ownership changes and part removal.
             car.SplitOff.Add(idx);
+            car.RepairOff?.Remove(idx);
             var part = new SEnt { NetId = _nextNet++, OwnerId = from, Epoch = 1, ParentNet = car.NetId, PartIndex = idx, HasState = true, Pos = pos, Rot = rot, Where = pos, CarrierNet = carrierNet, CarrierSlot = carrierSlot };
             Server[part.NetId] = part;
             foreach (var kv in Known) if (kv.Value.Contains(car.NetId)) kv.Value.Add(part.NetId);

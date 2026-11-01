@@ -124,6 +124,8 @@ namespace TLDRevamp.Net
                     net = r.U32(); r.Skip(9); if (fromServer) r.Var(); break;
                 case Entities.CensusReply:
                     net = r.U32(); r.Var(); r.Skip(1); r.Str(); break;
+                case Entities.CensusRepair:
+                    net = r.U32(); r.Pos = r.End; break;
                 case Entities.ShotgunIn:
                     net = r.U32(); r.Skip(6); break;
                 case Entities.ExplodeReq:

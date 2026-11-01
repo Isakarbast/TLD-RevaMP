@@ -93,6 +93,9 @@ namespace TLDRevamp.Net
             if (!RabStoredWaits) return false;
             var rb = a.GetComponent<Rigidbody>();
             if (rb == null) { RabStoredSkips++; return true; }
+            // a limb's body gone too: SetRagdol walks them all and threw just the same (itemchaos 2026-11-01, thousands a session)
+            if (a.ragdoll != null && a.ragdoll.RBs != null)
+                foreach (var limb in a.ragdoll.RBs) if (limb == null) { RabStoredSkips++; return true; }
             if (a.ragdoll != null && a.ragdoll.RB == null) a.ragdoll.RB = rb;
             if (a.move != null && a.move.RB == null) a.move.RB = rb;
             return false;

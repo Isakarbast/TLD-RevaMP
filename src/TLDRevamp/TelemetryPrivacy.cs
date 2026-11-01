@@ -291,7 +291,7 @@ namespace TLDRevamp
             "TimeUpdate", "Initialization", "EarlyUpdate", "FixedUpdate", "PreUpdate", "Update", "PreLateUpdate",
             "PostLateUpdate", "?", "AI/munka", "Add", "AiSound", "AiState", "Assigned", "AttachReq", "AttachSync", "Batch",
             "Batches Count", "BehaviourUpdate", "BreakFx", "BreakHit", "WorldBreak", "CPU Main Thread Frame Time",
-            "CPU Render Thread Frame Time", "Camera.Render", "CensusAsk", "CensusReply", "Chat", "Claim", "CompactState", "ContactImpulse",
+            "CPU Render Thread Frame Time", "Camera.Render", "CensusAsk", "CensusRepair", "CensusReply", "Chat", "Claim", "CompactState", "ContactImpulse",
             "CrashClaim", "CrashRelease", "DetachReq", "DetachSync", "Draw Calls Count", "Edit", "ExplodeReq",
             "ExplosionFx", "FarHz", "FixedBehaviourUpdate", "GC.Collect", "GPU Frame Time", "Gfx.PresentFrame",
             "Gfx.WaitForPresentOnGfxThread", "GoMsg", "HandoverState", "Hello", "IgnitionKey", "JoinSpot", "JoinLoading",

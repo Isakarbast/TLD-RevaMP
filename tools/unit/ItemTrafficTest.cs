@@ -239,7 +239,7 @@ namespace TLDRevamp.Net
         public const byte Resync = 31, Edit = 32, RemoveItem = 35, ContactImpulse = 36, DetachReq = 37, ShotgunIn = 39;
         public const byte AttachSync = 41, DetachSync = 42, CrashClaim = 43, CrashRelease = 44, ShotFx = 45, ExplodeReq = 46;
         public const byte BreakHit = 48, BreakFx = 49, AiState = 50, AiSound = 51, PoiUsable = 52, PushIn = 53;
-        public const byte Refetch = 58, HandoverState = 59, AttachReq = 62, CensusAsk = 65, CensusReply = 66, Worn = 85, MemberGone = 86, RabbitState = 90, RabbitFx = 91, IgnitionKey = 96;
+        public const byte Refetch = 58, HandoverState = 59, AttachReq = 62, CensusAsk = 65, CensusReply = 66, CensusRepair = 63, Worn = 85, MemberGone = 86, RabbitState = 90, RabbitFx = 91, IgnitionKey = 96;
         public static readonly Dictionary<uint, GameObject> Objects = new Dictionary<uint, GameObject>();
         internal static GameObject GameObjectOf(uint id) => Objects.TryGetValue(id, out var go) ? go : null;
         internal static bool Finite(Vector3 p) => true;

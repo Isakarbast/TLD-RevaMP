@@ -176,6 +176,7 @@ namespace TLDRevamp.Net
             public float Speed;                                                       // its last state's speed (m/s)
             public readonly Dictionary<int, byte[]> ItemState = new Dictionary<int, byte[]>(); // latest record per group index, for later joiners
             public uint ParentNet; public int PartIndex = -1;                         // a part that came off
+            public HashSet<int> RepairOff;                                            // members a copy reports on and the owner has off (Entities.Repair)
             public uint CarrierNet; public int CarrierSlot = -1;                      // off a member carried away from its group (Entities.PartOff)
             public readonly List<uint> Parts = new List<uint>();                     // parts that came off this car, in order
             public readonly HashSet<int> SplitOff = new HashSet<int>();             // kept even if the detached entity is later removed
@@ -248,6 +249,7 @@ namespace TLDRevamp.Net
             // keyed by copies and network ids (which start at 1 again next session). (Known, the server's "sent to player N"
             // sets, needs nothing here: ServerOnJoin starts every joiner with an empty one - rehost.py)
             PhysicalCars.Clear(); _refetchedAt.Clear();
+            _censusDue.Clear(); _repairWait.Clear(); _repairCycle.Clear(); _repairCursor = 0; _repairRunAt.Clear();
             ResetPoiCensus(); Leases.Clear(); LeaseTypes.Clear(); LeaseUntil.Clear(); LeaseAsked.Clear(); _leaseRetryAt.Clear(); PendingGrants.Clear(); _leasesDone.Clear(); _captureKnown = null; Captures.Clear();
             ShotgunReset();
             AiReset();
@@ -788,6 +790,7 @@ namespace TLDRevamp.Net
                 case Worn: ServerWorn(from, r); break;
                 case MemberGone: ServerMemberGone(from, r); break;
                 case CensusReply: ServerCensusReply(from, r); break;
+                case CensusRepair: ServerCensusRepair(from, r); break;
                 case DetachSync: ServerDetachSync(from, r); break;
                 case CrashClaim: { uint net = r.U32(), partner = r.U32(); if (!r.Bad) ServerCrashClaim(from, net, partner); break; }
                 case CrashRelease: { uint net = r.U32(); if (!r.Bad) ServerCrashRelease(from, net); break; }
@@ -1232,6 +1235,7 @@ namespace TLDRevamp.Net
                 case HitchResult: ApplyHitchResult(r); break;
                 case CensusAsk: ApplyCensusAsk(r); break;
                 case CensusReply: ApplyCensusReply(r); break;
+                case CensusRepair: ApplyCensusRepair(r); break;
                 case DetachSync: ApplyDetachSync(r); break;
                 case PlayerCombat.PlayerDamage: PlayerCombat.ClientReceive(r); break;
                 case ShotFx: ApplyShotFx(r); break;

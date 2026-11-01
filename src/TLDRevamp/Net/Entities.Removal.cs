@@ -5,6 +5,16 @@ namespace TLDRevamp.Net
 {
     public static partial class Entities
     {
+        private static void SendPartOff(Ent e, int idx, tosaveitemscript ts)
+        {
+            var t = ts.transform; var g = mainscript.GlobalFromUnityPos(t.position); var q = t.rotation;
+            W.Reset(); W.U8(PartOff); W.U32(e.NetId); W.U32(e.Epoch); W.VarU32((uint)idx);
+            W.F64(g.x); W.F64(g.y); W.F64(g.z); W.F32(q.x); W.F32(q.y); W.F32(q.z); W.F32(q.w);
+            ToServer(W, true);
+            PartsReported++;
+            SessionLog.Event("part-off-sent", e.NetId, item: idx, from: MyId, epoch: e.Epoch);
+        }
+
         // a part on a member carried away from its group: Entities.PartOff
         public static long CarriedOffSent, CarriedOffApplied;
         private static readonly Dictionary<(uint, int), tosaveitemscript> _carriedOff = new Dictionary<(uint, int), tosaveitemscript>();
@@ -89,12 +99,7 @@ namespace TLDRevamp.Net
                     if (e != group || e.Proxy) continue;
                     int idx = e.Items.IndexOf(ts);
                     if (idx < 0) continue;
-                    var t = ts.transform; var g = mainscript.GlobalFromUnityPos(t.position); var q = t.rotation;
-                    W.Reset(); W.U8(PartOff); W.U32(e.NetId); W.U32(e.Epoch); W.VarU32((uint)idx);
-                    W.F64(g.x); W.F64(g.y); W.F64(g.z); W.F32(q.x); W.F32(q.y); W.F32(q.z); W.F32(q.w);
-                    ToServer(W, true);
-                    PartsReported++;
-                    SessionLog.Event("part-off-sent", e.NetId, item: idx, from: MyId, epoch: e.Epoch);
+                    SendPartOff(e, idx, ts);
                     return;
                 }
             }

@@ -35,6 +35,7 @@ namespace TLDRevamp.Net
             internal float DrivenAt;
             internal Vector3d Pos, Where;
             internal Quaternion Rot;
+            internal HashSet<int> RepairOff;
             internal itemDataClass Record;
             internal readonly List<uint> Parts = new List<uint>();
             internal readonly HashSet<int> SplitOff = new HashSet<int>();
@@ -267,6 +268,8 @@ namespace TLDRevamp.Net
             car = Car(); car.Gone = new HashSet<int> { 1 }; ServerPartOff(2, Off()); check(Server.Count == 1, "destroyed part refused");
             car = Car(); car.ItemState[1] = new byte[] { 1 }; RecordCodec.Records[1] = new itemDataClass();
             ServerPartOff(2, Off()); check(Server.Count == 1 && SessionLog.Reason == "not attached", "latest detached record wins over original attached record");
+            car.RepairOff = new HashSet<int> { 1 }; ServerPartOff(2, Off()); check(Server.Count == 2 && !car.RepairOff.Contains(1), "a copy reported it still on: the owner saying it again gets through");
+            car = Car(); car.ItemState[1] = new byte[] { 1 }; RecordCodec.Records[1] = new itemDataClass();
             RecordCodec.Records[1].attachable.Add(new save_attachable { id = CanonBase + 1, parentid = CanonBase, attachType = 1, indexType = 2, index = 0 }); ServerPartOff(2, Off());
             check(Server.Count == 2 && car.ItemState.Count == 0 && Known[2].Contains(100), "latest attached record accepted and consumed");
             car = Car(); car.ItemState[1] = new byte[] { 1 }; RecordCodec.Records[1] = new itemDataClass();

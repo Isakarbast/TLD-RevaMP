@@ -3,16 +3,17 @@ using UnityEngine;
 
 namespace TLDRevamp.Net
 {
-    /// Always on, log only: the faults the scripted playtests caught once and never again (playround.py, 2026-10-09: the
+    /// Always on: the faults the scripted playtests caught once and never again (playround.py, 2026-10-09: the
     /// other player's car placed and gone again 35 m away; a door mirror on one machine's copy only) — written as
-    /// "[anomaly]" lines (capped) for the next real playtest's logs. It never changes the game.
+    /// "[anomaly]" lines (capped) for the next real playtest's logs. The census is the one part that changes the game: a
+    /// lasting difference is repaired (Entities.Repair).
     /// Dev actions can't trip it: a deletion (any tool) leaves no far-store record, so it is not a store-out; a teleport
     /// streams by distance (the copy is far, and so is its owner's pose); a part changed by a tool reaches both machines —
     /// the census is asked twice, 6 s apart, and only a difference both times is logged. The last bridge command is noted
     /// on every line anyway.
     public static partial class Entities
     {
-        public const byte CensusAsk = 65, CensusReply = 66;
+        public const byte CensusAsk = 65, CensusReply = 66, CensusRepair = 63;
         public static bool AnomalyWatch = true;
         public static int AnomalyLogCap = 40;
         public static float CensusDelayS = 8f, CensusRecheckS = 6f;
@@ -26,7 +27,7 @@ namespace TLDRevamp.Net
         {
             var rows = new List<string>(); foreach (var l in _anomLines) rows.Add(Json.Str(l));
             return "{\"count\":" + Anomalies + ",\"censusAsks\":" + CensusAsks + ",\"censusAsked\":" + CensusAsked + ",\"censusRepliesIn\":" + CensusRepliesIn + ",\"censusDiffers\":" + CensusDiffers +
-                   ",\"storeOutsSeen\":" + StoreOutsSeen + ",\"storeOutsAfterJump\":" + StoreOutsAfterJump + ",\"lines\":[" + string.Join(",", rows) + "]}";
+                   ",\"repairsAsked\":" + RepairsAsked + ",\"repairsHealed\":" + RepairsHealed + ",\"repairsFailed\":" + RepairsFailed + ",\"repairsRun\":" + RepairsRun + ",\"storeOutsSeen\":" + StoreOutsSeen + ",\"storeOutsAfterJump\":" + StoreOutsAfterJump + ",\"lines\":[" + string.Join(",", rows) + "]}";
         }
 
         // ---- test hooks (bridge): a glitch made on purpose, to see the watch catch it
@@ -165,8 +166,9 @@ namespace TLDRevamp.Net
                 if (_hasGen && (g - _lastGen).magnitude > JumpM) _jumpAt = now;
                 _lastGen = g; _hasGen = true;
             }
+            RepairTick(now);
             if (_censusDue.Count == 0) return;
-            if (now - _censusTick < 0.5f) return;
+            if (now - _censusTick < RepairAskEveryS) return;
             _censusTick = now;
             _censusNow.Clear();
             foreach (var kv in _censusDue) if (now >= kv.Value.At) _censusNow.Add(kv.Key);
@@ -175,7 +177,7 @@ namespace TLDRevamp.Net
                 byte attempt = _censusDue[net].Attempt;
                 _censusDue.Remove(net);
                 if (!ByNet.TryGetValue(net, out var e) || !e.Proxy || e.Root == null) continue;
-                W.Reset(); W.U8(CensusAsk); W.U32(net); W.U32(e.Epoch); W.U32(CensusHash(CensusRows(e))); W.U8(attempt);
+                W.Reset(); W.U8(CensusAsk); W.U32(net); W.U32(e.Epoch); W.U32(CensusHash(CensusRepairs ? RepairRows(e) : CensusRows(e))); W.U8(attempt);
                 ToServer(W, true);
                 CensusAsks++;
             }
@@ -196,7 +198,7 @@ namespace TLDRevamp.Net
             uint net = r.U32(), epoch = r.U32(), hash = r.U32(); byte attempt = r.U8(); int asker = (int)r.VarU32();
             if (r.Bad || !ByNet.TryGetValue(net, out var e) || e.Proxy || e.Epoch != epoch || !Resolve(e) || e.Root == null) return;
             CensusAsked++;
-            var rows = CensusRows(e);
+            var rows = CensusRepairs ? RepairRows(e) : CensusRows(e);
             if (CensusHash(rows) == hash) return;
             W.Reset(); W.U8(CensusReply); W.U32(net); W.VarU32((uint)asker); W.U8(attempt); W.Str(string.Join("\n", rows));
             ToServer(W, true);
@@ -218,6 +220,7 @@ namespace TLDRevamp.Net
             if (r.Bad || !ByNet.TryGetValue(net, out var e) || !e.Proxy || e.Root == null) return;
             CensusDiffers++;
             if (attempt < 2) { _censusDue[net] = new CensusDue { At = Time.realtimeSinceStartup + CensusRecheckS, Attempt = 2 }; return; }
+            if (CensusRepairs) { RepairReply(e, attempt, theirs); return; }
             var ours = CensusRows(e);
             var owner = new List<string>(theirs.Split('\n'));
             var missing = owner.FindAll(x => !ours.Contains(x));
