@@ -14,7 +14,7 @@ static class DocsAccuracyTest
         Check("current protocol is " + protocol, protocol.Length > 0);
         // The explicit pin: the protocol this branch works with. The derived comparisons below follow the code, but
         // the pin says which protocol the docs and the tools are written for, so a bump that misses a doc fails here.
-        const string pinned = "60";
+        const string pinned = "61";
         Check("the protocol is pinned to " + pinned, protocol == pinned);
         Check("the pin is in the protocol's own history", Read("src/TLDRevamp/Net/Protocol.cs").Contains("56:"));
         string wire = Read("src/TLDRevamp/Net/ObjectPanelWire.cs");

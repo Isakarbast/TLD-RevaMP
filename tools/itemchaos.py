@@ -154,10 +154,10 @@ def check(h, L, tracked, cars, tag, settle=SETTLE):
         for k, v in again.items():
             if k in first: finding(tag + " / " + k.split()[0], v)
     for who, s in (("host", h), ("joiner", L)):
-        e = s("errors")
+        e = s("errors raw")   # the game's own texts: this log can hold private data, it stays on this machine
         n = e.get("errors", 0) + e.get("exceptions", 0)
         if n > _counts.get(who, 0):
-            finding(tag + " / errors", f"{who}: {n - _counts.get(who, 0)} new: {str(e.get('kinds'))[:300]}")
+            finding(tag + " / errors", f"{who}: {n - _counts.get(who, 0)} new: {str(e.get('kinds'))[:2500]}")
             _counts[who] = n
     for who, s in (("host", h),):
         r = s(f"get {T}.PartOffRejected").get("value", 0)
@@ -922,6 +922,86 @@ def scripted(h, L, car, tracked, cars):
             L.s(f"mp claim {n}"); time.sleep(3)
         print("     anomalies host:", str(h.s("mp anomalies").get("lines"))[-600:], flush=True)
         check(h, L, tracked, cars, "aud-handcopy")
+    if want("aud-glued"):
+        print("\n=== a glued member of a car off its place on one copy: does the census put it back?", flush=True)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(2)
+        print("     car owner", h.ents()[car]["owner"], flush=True)
+        copy, own = (h, L) if h.ents()[car]["proxy"] else (L, h)
+        print("     before:", copy.s("mp places"), flush=True)
+        ms = [m for m in glued(copy, car) if m.get("lp") and math.hypot(*m["lp"]) < 30]
+        if not ms: note("INVALID aud-glued: nothing glued on the car")
+        else:
+            m = ms[0]; i = m["i"]
+            def apart():
+                a = {x["i"]: x for x in copy.members(car)}[i]; b = {x["i"]: x for x in own.members(car)}[i]
+                return math.dist(a["lp"], b["lp"])
+            print(f"     member {i} {m['name']}: {apart():.3f} m apart at the start", flush=True)
+            for on in (False, True):
+                copy.s(f"set {T}.CensusGluedPlaces {on}"); own.s(f"set {T}.CensusGluedPlaces {on}")
+                print(f"     check {on}: moved on the copy:", copy.s(f"mp nudgemember {car} {i} 1"), flush=True); time.sleep(1)
+                d0 = apart(); copy.s(f"mp censusnow {car} 0")
+                t0 = time.time()
+                while time.time() - t0 < 40 and apart() > 0.1: time.sleep(1)
+                d1 = apart()
+                print(f"     check {on}: {d0:.2f} m, {'back in %.0f s (%.3f m)' % (time.time() - t0, d1) if d1 <= 0.1 else 'STILL %.2f m after 40 s' % d1}", flush=True)
+                if on and d1 > 0.1: finding("aud-glued", f"{m['name']} still {d1:.2f} m off")
+                if not on and d1 <= 0.1: note("INVALID aud-glued: put back with the check off")
+            print("     places copy:", copy.s("mp places"), "owner:", own.s("mp places"), flush=True)
+        check(h, L, tracked, cars, "aud-glued")
+    if want("aud-building"):
+        print("\n=== along the road: tanks in buildings, a building door refused by the host, a pour with its owner far and no hand-off", flush=True)
+        print("     building prefabs with a tank no saved object holds:", h.s("mp poitanks 0").get("prefabs"), flush=True)
+        t = h.s("mp poitanks 400"); print(f"     placed within 400 m: in shared objects {t['shared']}, not shared {t['unshared']}", flush=True)
+        rp = h("roadpoint"); yaw = math.radians(rp["yaw"]); x, z = rp["gx"], rp["gz"]; door = None
+        home = (x, z)
+        for k in range(14):
+            h(f"tpground {x} {z}"); L(f"tpground {x + 6} {z}"); time.sleep(4)
+            us = [c for c in h.s("mp poius 250")["usables"] if c["kind"] and ("rot" in c["kind"] and max(c["maxX"] - c["minX"], c["maxY"] - c["minY"]) >= 30)]
+            if us: door = min(us, key=lambda c: c["dist"]); break
+            x, z = x + math.sin(yaw) * 400, z + math.cos(yaw) * 400
+            h(f"tpground {x} {z}")
+            for _ in range(12):   # the road there isn't made yet right after the jump
+                try:
+                    rp = h("roadpoint"); yaw = math.radians(rp["yaw"]); x, z = rp["gx"], rp["gz"]; break
+                except RuntimeError: time.sleep(1)
+        if door:
+            a = f"{door['gen']} {door['id'][0]} {door['id'][1]} {door['id'][2]} {door['u']}"
+            ux, uz = door["at"][0], door["at"][2]; h(f"tpground {ux + 3} {uz + 3}"); L(f"tpground {ux - 3} {uz + 3}"); time.sleep(8)
+            st = lambda p: {k: p.s(f"mp poiu {a}").get(k) for k in ("x", "y", "slide", "turn")}
+            ax = "x" if door["maxX"] - door["minX"] >= door["maxY"] - door["minY"] else "y"
+            def swing(sign):
+                for _ in range(40): L.s(f"mp poiuse {a} rot {25 * sign if ax == 'y' else -25 * sign} 0" if ax == "x" else f"mp poiuse {a} rot 0 {25 * sign}")
+            print("     door", a, "start: host", st(h), "joiner", st(L), flush=True)
+            for on, sign in ((False, -1), (True, 1)):
+                h.s(f"set {T}.PoiRefusalsTold {on}"); h.s(f"set {T}.PoiReachM 0"); swing(sign); time.sleep(4); h.s(f"set {T}.PoiReachM 150")
+                a1, b1 = st(h), st(L); print(f"     told back {on}, the host refuses the joiner's swing: host", a1, "joiner", b1, flush=True)
+                if on and abs(a1[ax] - b1[ax]) > 1: finding("aud-building / door", f"a refused door stays {a1[ax]} on the host, {b1[ax]} on the joiner")
+                if not on: note(f"without telling back: {a1[ax]} on the host, {b1[ax]} on the joiner"); swing(-sign); time.sleep(3)
+        else: note("INVALID aud-building: no door found")
+        h(f"tpground {home[0]} {home[1]}"); L(f"tpground {home[0] + 6} {home[1]}"); time.sleep(10)
+        beside(L, L.ents()[car]); L(f"mp sitdriver {car}"); time.sleep(3); L("driveout"); time.sleep(3)   # the jumps handed the car over
+        print("  -- the pour: hand-off off on the host, the joiner owns the barrel and leaves", flush=True)
+        n = barrel_of()
+        if n:
+            L.s(f"mp moveitem {n} 6 0"); time.sleep(4)
+            beside(h, h.ents()[n], (2, 0, 0)); can = spawn(h, "jerry"); tracked.add(can); time.sleep(2)
+            if h.ents()[can]["proxy"]: h.s(f"mp claim {can}"); time.sleep(2)
+            h.s(f"mp fill {can} 0 gas 8"); time.sleep(2)
+            h.s(f"set {T}.HandoffEnabled False")
+            g = L("gpos"); L(f"tpground {g['gx'] + 3000} {g['gz']}"); time.sleep(12)
+            a0, c0 = litres(h, n), litres(h, can); print(f"     owner {h.ents()[n]['owner']}, barrel {a0}, can {c0}", flush=True)
+            print("     pour:", str(h.s(f"mp holdfill {can} {n} 0"))[:80], flush=True); time.sleep(10); h.s("mp holdfill stop"); time.sleep(3)
+            if h.held(): h("dropheld")
+            a1, c1 = litres(h, n), litres(h, can); print(f"     after: barrel here {a1}, can {c1}", flush=True)
+            L(f"tpground {g['gx']} {g['gz']}"); time.sleep(4); h.s(f"set {T}.HandoffEnabled True"); time.sleep(25)
+            ha, la, c2 = litres(h, n), litres(L, n), litres(h, can); print(f"     joiner back, 25 s: barrel host {ha}, joiner {la}, can {c2}, owner {h.ents()[n]['owner']}", flush=True)
+            if isinstance(ha, dict) and isinstance(la, dict) and abs(sum(ha.values()) - sum(la.values())) > 0.5: finding("aud-building / pour", f"barrel {ha} on the host, {la} on the joiner")
+            if isinstance(ha, dict) and isinstance(a0, dict) and isinstance(c0, dict) and isinstance(c2, dict):
+                gain, loss = sum(ha.values()) - sum(a0.values()), sum(c0.values()) - sum(c2.values())
+                print(f"     the barrel gained {gain:.2f} L, the can lost {loss:.2f} L", flush=True)
+                if loss - gain > 1: finding("aud-building / pour lost", f"the can lost {loss:.2f} L, the barrel gained {gain:.2f} L")
+        else: note("INVALID aud-building: no barrel")
+        check(h, L, tracked, cars, "aud-building")
     if want("aud-place-cost"):
         print("\n=== what the position check costs: both players by the car, nothing else going on, a minute each way", flush=True)
         beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(5)

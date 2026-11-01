@@ -225,6 +225,7 @@ namespace TLDRevamp.Net
             CensusRepliesIn++;
             if (r.Bad || !ByNet.TryGetValue(net, out var e) || !e.Proxy || e.Root == null) return;
             if (attempt == PlaceTold) { CopyPlaceHeard(e, theirs); return; }
+            if (attempt == GluedPlacesTold) { ApplyGluedPlaces(e, theirs); return; }
             CensusDiffers++;
             if (attempt < 2)
             {

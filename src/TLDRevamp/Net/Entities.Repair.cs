@@ -143,6 +143,7 @@ namespace TLDRevamp.Net
                 var owner = Fixes.SlotOwnerSave.Owner(at);
                 string on = owner != null && index.TryGetValue(owner, out int pi) ? pi.ToString() : "*";
                 rows.Add("m" + i + "=" + (at.slot != null && owner != null && owner.partslotscripts != null ? "on" + on + "#" + owner.partslotscripts.IndexOf(at.slot) : "glue" + on));
+                if (at.slot == null && CensusGluedPlaces) { string place = GluedPlace(at); if (place != null) rows.Add("g" + i + "=" + place); }
             }
             rows.Sort(System.StringComparer.Ordinal);
             double ms = sw.Elapsed.TotalMilliseconds; if (ms > RepairRowsMsMax) RepairRowsMsMax = ms;
@@ -213,6 +214,7 @@ namespace TLDRevamp.Net
                 if (first == null || (first.TryGetValue(kv.Key, out string was1) && was1 == kv.Value)) stable = true;
                 diff.Add(kv.Key + " " + (mine ?? "?") + " here, " + kv.Value + " on the owner");
                 if (kv.Key == "self") { flags |= 1; continue; }
+                if (kv.Key[0] == 'g') { flags |= 4; continue; }   // a glued member elsewhere: its pose again (Entities.PlaceCheck)
                 if (kv.Key[0] == 'm' && kv.Value.StartsWith("split:"))
                 {
                     if (uint.TryParse(kv.Value.Substring(6), out uint pn) && pn != 0 && !ByNet.ContainsKey(pn)) missing.Add(pn);
@@ -274,6 +276,7 @@ namespace TLDRevamp.Net
             if (off.Count > 0) { if (se.RepairOff == null) se.RepairOff = new HashSet<int>(); foreach (int i in off) se.RepairOff.Add(i); }
             WS.Reset(); WS.U8(CensusRepair); WS.U32(net); WS.U32(epoch); WS.U8(flags);
             WS.VarU32((uint)off.Count); foreach (int i in off) WS.VarU32((uint)i);
+            WS.VarU32((uint)from);
             ServerSendTo(se.OwnerId, WS, true);
         }
 
@@ -284,6 +287,7 @@ namespace TLDRevamp.Net
             var off = new List<int>();
             uint n = r.VarU32();
             for (uint k = 0; k < n && k < 4096 && !r.Bad; k++) off.Add((int)r.VarU32());
+            int asker = (int)r.VarU32();
             if (r.Bad || !ByNet.TryGetValue(net, out var e) || e.Proxy || e.Epoch != epoch || !Resolve(e) || e.Root == null) return;
             float now = Time.realtimeSinceStartup;
             if (_repairRunAt.TryGetValue(net, out float at) && now - at < RepairRunEveryS) return;
@@ -291,6 +295,7 @@ namespace TLDRevamp.Net
             _repairRunAt[net] = now;
             RepairsRun++;
             SessionLog.Event("census-repair-run", net, from: MyId, epoch: e.Epoch, count: off.Count, slot: flags);
+            if ((flags & 4) != 0) SendGluedPlaces(e, asker);
             if ((flags & 2) != 0)
             {
                 e.ResyncHashes = null; e.ResyncCursor = -1; e.ResyncAcc = ResyncInterval;   // every record out on the next pass

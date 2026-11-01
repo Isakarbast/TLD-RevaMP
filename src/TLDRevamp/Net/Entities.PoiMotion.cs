@@ -84,7 +84,7 @@ namespace TLDRevamp.Net
         {
             if (!PoiPacketValid(r, k, stamp, st) || Math.Abs(SessionLog.St - stamp) > 10)
             { Refuse(ref PoiRefusedValues, "poi value", $"building usable from player {from}: unreadable value/clock"); return; }
-            if (!CheckPoiUsable(from, k.Poi, st)) return;
+            if (!CheckPoiUsable(from, k.Poi, st)) { if (final) PoiTellBack(from, k); return; }
             if (_poiServerOrder.TryGetValue(k.Poi, out double last) && stamp < last) { LiveUsablesStale++; return; }
             if (!_liveServerIn.TryGetValue(from, out var orders)) _liveServerIn[from] = orders = new Dictionary<UsableKey, LiveOrder>();
             if (!LiveNewer(orders, k, seq, stamp)) return;
@@ -98,6 +98,28 @@ namespace TLDRevamp.Net
             if (!final) WriteLiveUsable(WL, k, relaySeq, stamp, default, st);
             RelayPoi(k.Poi, WL, from, final);
         }
+        /// A/B: the sender of a refused building usable hears how it is (false: its door stayed moved on its screen alone, for good).
+        public static bool PoiRefusalsTold = true;
+        public static long PoiToldBack;
+        private static readonly Dictionary<int, float> _poiBackAt = new Dictionary<int, float>();
+        private static void PoiTellBack(int from, UsableKey k)
+        {
+            float now = Time.realtimeSinceStartup;
+            if (!PoiRefusalsTold || _poiBackAt.TryGetValue(from, out float at) && now - at < 0.25f) return;
+            PoiState st;
+            if (!KnownPoiUsables.TryGetValue(k.Poi, out st))
+            {
+                var u = PoiUsableOf(k.Poi);
+                if (u == null) return;
+                st = UsableState(u);
+            }
+            _poiBackAt[from] = now;
+            _liveRelaySeq.TryGetValue(k, out ushort seq); _liveRelaySeq[k] = ++seq;
+            WritePoiFinal(WL, k, seq, SessionLog.St, st);
+            ServerSendTo(from, WL, true);
+            PoiToldBack++;
+        }
+
         private static void ReceivePoiMotion(NetReader r, UsableKey k, ushort seq, double stamp, PoiState st, bool final)
         {
             if (!PoiPacketValid(r, k, stamp, st) || !LiveNewer(_liveIn, k, seq, stamp)) return;

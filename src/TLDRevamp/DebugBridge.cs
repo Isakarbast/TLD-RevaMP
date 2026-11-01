@@ -938,6 +938,8 @@ namespace TLDRevamp
                         case "censusnow": return Net.Entities.CensusNow(uint.Parse(ma[1]));
                         case "places": return Net.Entities.PlacesJson();
                         case "handcopy": return Net.Entities.TestHandCopy(uint.Parse(ma[1]));
+                        case "nudgemember": return Net.Entities.TestNudgeMember(uint.Parse(ma[1]), int.Parse(ma[2]), float.Parse(ma[3], System.Globalization.CultureInfo.InvariantCulture));
+                        case "poitanks": return Net.Entities.TestPoiTanks(float.Parse(ma[1], System.Globalization.CultureInfo.InvariantCulture));
                         case "dropstates": Net.Entities.TestDropStates = uint.Parse(ma[1]); return "{\"dropping\":" + ma[1] + "}";
                         case "localstate": return Net.Entities.LocalState(uint.Parse(ma[1]), int.Parse(ma[2]));
                         case "copypartgone": return Net.Entities.TestCopyPartGone(uint.Parse(ma[1]), ma[2]);
@@ -1107,7 +1109,7 @@ namespace TLDRevamp
                 case "pickupcar": return Net.Entities.PickupCar(uint.Parse(arg, System.Globalization.CultureInfo.InvariantCulture));
                 case "deleteshare": return Net.Entities.DeleteShared(uint.Parse(arg, System.Globalization.CultureInfo.InvariantCulture));
                 case "leasearm": Net.Entities.LeaseArm(arg); return "{\"armed\":" + Json.Str(arg) + "}";
-                case "errors": return Diagnostics.ErrorLog.Json(arg == "reset");
+                case "errors": return Diagnostics.ErrorLog.Json(arg == "reset", arg == "raw");
                 case "carprefabs":
                 {
                     // every vehicle the game can spawn (an item whose prefab has a carscript): id, name, slot count,

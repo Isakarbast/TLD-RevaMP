@@ -11,6 +11,7 @@ namespace TLDRevamp.Diagnostics
         private static readonly object Lock = new object();
         private static readonly Dictionary<string, int> Kinds = new Dictionary<string, int>();
         private static readonly List<string> Order = new List<string>();
+        private static readonly Dictionary<string, string> Stacks = new Dictionary<string, string>();   // `errors raw`
         public static long Errors, Exceptions;
         private const int MaxKinds = 60;
         private static readonly WarningCounter All = new WarningCounter(), Interval = new WarningCounter();
@@ -38,7 +39,7 @@ namespace TLDRevamp.Diagnostics
             {
                 if (type == LogType.Exception) Exceptions++; else Errors++;
                 if (Kinds.TryGetValue(key, out int n)) Kinds[key] = n + 1;
-                else if (Kinds.Count < MaxKinds) { Kinds[key] = 1; Order.Add(key); }
+                else if (Kinds.Count < MaxKinds) { Kinds[key] = 1; Order.Add(key); Stacks[key] = stack != null && stack.Length > 800 ? stack.Substring(0, 800) : stack ?? ""; }
             }
         }
 
@@ -57,14 +58,15 @@ namespace TLDRevamp.Diagnostics
             }
         }
 
-        public static string Json(bool reset)
+        /// `raw`: the texts as logged, for a test on this machine (bridge `errors raw`). They can hold private data: never in a report.
+        public static string Json(bool reset, bool raw = false)
         {
             lock (Lock)
             {
                 var rows = new List<string>();
-                foreach (var k in Order) rows.Add("{\"n\":" + Kinds[k] + ",\"what\":" + TelemetryPrivacy.Str(TelemetryPrivacy.FreeText(k)) + "}");
+                foreach (var k in Order) rows.Add("{\"n\":" + Kinds[k] + ",\"what\":" + (raw ? TLDRevamp.Json.Str(k) + ",\"stack\":" + TLDRevamp.Json.Str(Stacks[k]) : TelemetryPrivacy.Str(TelemetryPrivacy.FreeText(k))) + "}");
                 string s = "{\"errors\":" + Errors + ",\"exceptions\":" + Exceptions + ",\"kinds\":[" + string.Join(",", rows) + "]}";
-                if (reset) { Kinds.Clear(); Order.Clear(); Errors = Exceptions = 0; }
+                if (reset) { Kinds.Clear(); Order.Clear(); Stacks.Clear(); Errors = Exceptions = 0; }
                 return s;
             }
         }

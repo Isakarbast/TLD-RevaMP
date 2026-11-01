@@ -107,9 +107,75 @@ namespace TLDRevamp.Net
             }
         }
 
+        /// A member glued on something of its group is no object of its own: no state carries it, and a record only says which spot
+        /// of the collider its attach point is on. Its place in the frame of what the point hangs on (a door swings it along with
+        /// that frame: no difference), in the census's rows to 20 cm. Different: the owner sends the exact poses to whoever asked.
+        public static bool CensusGluedPlaces = true;   // A/B: false = a glued member isn't compared
+        public static long GluedPlacesSent, GluedPlacesApplied;
+        private const byte GluedPlacesTold = 201;   // CensusReply's attempt byte, as PlaceTold
+        private static string GluedPlace(attachablescript at)
+        {
+            var f = AttachFrame(at);
+            if (f == null) return null;
+            var lp = Quaternion.Inverse(f.rotation) * (at.transform.position - f.position);
+            return Mathf.RoundToInt(lp.x * 5f) + "," + Mathf.RoundToInt(lp.y * 5f) + "," + Mathf.RoundToInt(lp.z * 5f);
+        }
+
+        /// Owner: every glued member's pose, one line each (member, position, rotation).
+        private static void SendGluedPlaces(Ent e, int asker)
+        {
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < e.Items.Count; i++)
+            {
+                var at = e.Items[i] != null && e.Items[i] != e.Root && (e.Split == null || !e.Split.Contains(i)) ? e.Items[i].attachable : null;
+                var f = at != null && at.attached && at.slot == null ? AttachFrame(at) : null;
+                if (f == null) continue;
+                var iq = Quaternion.Inverse(f.rotation);
+                var lp = iq * (at.transform.position - f.position); var lq = iq * at.transform.rotation;
+                sb.Append(i.ToString(ic));
+                foreach (float v in new[] { lp.x, lp.y, lp.z, lq.x, lq.y, lq.z, lq.w }) sb.Append(' ').Append(v.ToString("R", ic));
+                sb.Append('\n');
+            }
+            if (sb.Length == 0) return;
+            GluedPlacesSent++;
+            W.Reset(); W.U8(CensusReply); W.U32(e.NetId); W.VarU32((uint)asker); W.U8(GluedPlacesTold); W.Str(sb.ToString());
+            ToServer(W, true);
+        }
+
+        /// Copy: the owner's poses of its glued members, placed.
+        private static void ApplyGluedPlaces(Ent e, string lines)
+        {
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            foreach (var line in lines.Split('\n'))
+            {
+                var a = line.Split(' ');
+                if (a.Length != 8 || !int.TryParse(a[0], System.Globalization.NumberStyles.Integer, ic, out int i) || i <= 0 || i >= e.Items.Count) continue;
+                var at = e.Items[i] != null && (e.Split == null || !e.Split.Contains(i)) ? e.Items[i].attachable : null;
+                var f = at != null && at.attached && at.slot == null ? AttachFrame(at) : null;
+                if (f == null) continue;
+                var v = new float[7];
+                bool ok = true;
+                for (int k = 0; k < 7 && ok; k++) ok = float.TryParse(a[k + 1], System.Globalization.NumberStyles.Float, ic, out v[k]) && !float.IsNaN(v[k]) && !float.IsInfinity(v[k]);
+                if (!ok) continue;
+                at.transform.SetPositionAndRotation(f.position + f.rotation * new Vector3(v[0], v[1], v[2]), f.rotation * new Quaternion(v[3], v[4], v[5], v[6]));
+                GluedPlacesApplied++;
+            }
+        }
+
+        /// `mp nudgemember <net> <member> <m>`: test, a glued member of this copy moved here only.
+        public static string TestNudgeMember(uint net, int i, float m)
+        {
+            if (!ByNet.TryGetValue(net, out var e) || !e.Proxy || !Resolve(e) || e.Root == null || i <= 0 || i >= e.Items.Count || e.Items[i] == null) return "{\"error\":\"no such member of a copy here\"}";
+            var at = e.Items[i].attachable;
+            if (at == null || !at.attached || at.slot != null) return "{\"error\":\"not glued\"}";
+            at.transform.position += e.Root.transform.up * m;
+            return "{\"moved\":" + Json.Str(e.Items[i].name) + "}";
+        }
+
         /// `mp places`: the counters and what a census ask added.
         public static string PlacesJson() =>
-            "{\"asked\":" + PlacesAsked + ",\"apart\":" + PlacesApart + ",\"resent\":" + PlacesResent + ",\"told\":" + PlacesTold + ",\"healed\":" + PlacesHealed + ",\"failed\":" + PlacesFailed +
+            "{\"asked\":" + PlacesAsked + ",\"apart\":" + PlacesApart + ",\"resent\":" + PlacesResent + ",\"told\":" + PlacesTold + ",\"healed\":" + PlacesHealed + ",\"failed\":" + PlacesFailed + ",\"gluedSent\":" + GluedPlacesSent + ",\"gluedApplied\":" + GluedPlacesApplied +
             ",\"asks\":" + CensusAsks + ",\"addedBytes\":" + PlacesAsked * PlaceDigest.Bytes + "}";
     }
 }

@@ -723,6 +723,29 @@ namespace TLDRevamp.Net
             return held;
         }
 
+        /// `mp poitanks <radius>`: fluid tanks here that no shared object holds: nothing of theirs has a network path.
+        public static string TestPoiTanks(float radius)
+        {
+            var pl = mainscript.s != null && mainscript.s.player != null ? mainscript.s.player.transform.position : Vector3.zero;
+            var rows = new List<string>(); int shared = 0;
+            foreach (var t in UnityEngine.Object.FindObjectsOfType<tankscript>())
+            {
+                if (t == null || (t.transform.position - pl).sqrMagnitude > radius * radius) continue;
+                if (EntOfRoot(t.transform.root) != null) { shared++; continue; }
+                rows.Add("{\"name\":" + Json.Str(t.name) + ",\"root\":" + Json.Str(t.transform.root.name) + ",\"poi\":" + (t.GetComponentInParent<poiScript>() != null ? "true" : "false") +
+                         ",\"litres\":" + Json.Num(t.F != null ? t.F.GetAmount() : -1f) + ",\"m\":" + Json.Num((t.transform.position - pl).magnitude) + "}");
+            }
+            var prefabs = new List<string>();
+            if (radius <= 0f && itemdatabase.s != null && itemdatabase.s.pois != null)
+                foreach (var go in itemdatabase.s.pois)
+                {
+                    if (go == null) continue;
+                    foreach (var t in go.GetComponentsInChildren<tankscript>(true))
+                        if (t != null && t.GetComponentInParent<tosaveitemscript>(true) == null) prefabs.Add(Json.Str(go.name + "/" + t.name));
+                }
+            return "{\"shared\":" + shared + ",\"unshared\":[" + string.Join(",", rows) + "],\"prefabs\":[" + string.Join(",", prefabs) + "]}";
+        }
+
         public static string SetForceHeld(uint net)
         {
             if (net == 0) { ForceHeld = null; return "{\"forceHeld\":null}"; }

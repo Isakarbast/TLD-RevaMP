@@ -306,7 +306,7 @@ namespace TLDRevamp.Net
             bool exact = br != null;
             var at = exact ? mainscript.GlobalFromUnityPos(br.transform.position) : se.HasState ? se.Pos : se.Where;
             double reach = kind == 1 || !exact ? HitCheck.ObjShotM : HitCheck.ObjForceM;
-            if (!HitCheck.AllowOnObject(from, $"breakable {bi} of object {net} ({(kind == 1 ? "shot" : kind == 3 ? "bite" : "blow")})", at, reach, exact ? 10f : HitCheck.ObjSizeM)) return;
+            if (!HitCheck.AllowOnObject(from, $"breakable {bi} of object {net} {(br != null ? br.transform.root.name : "not placed here")} ({(kind == 1 ? "shot" : kind == 3 ? "bite" : "blow")})", at, reach, exact ? 10f : HitCheck.ObjSizeM)) return;
             r.Pos = 0;
             WS.Reset(); WS.Bytes(r.Buf, 0, r.End);
             ServerSendTo(se.OwnerId, WS, true);

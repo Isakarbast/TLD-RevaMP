@@ -37,7 +37,7 @@ Copies keep their Key while streamed out. Epoch fences prevent replaying an earl
 pose. As with all network state, an abrupt teleport is recognized when its player-state update
 arrives; it does not wait for the five-second refresh.
 
-The current protocol is **60** (a copy's position in the census ask; a pour on a copy goes to the owner as a change; the census repair; a part unbolted from a member carried away from its group is named by the carrier's slot; the owner's engine temperature in the engine block; voice to everyone and the session's voice setting; ragdoll Frame / Key / Delta blocks; claim reasons for a moving item taking a still one; the terrain byte can name the old 2023 world; the host's terrain mode rides in Welcome; uniform six-byte Claims with diagnostic
+The current protocol is **61** (a glued member's place in the census; a copy's position in the census ask; a pour on a copy goes to the owner as a change; the census repair; a part unbolted from a member carried away from its group is named by the carrier's slot; the owner's engine temperature in the engine block; voice to everyone and the session's voice setting; ragdoll Frame / Key / Delta blocks; claim reasons for a moving item taking a still one; the terrain byte can name the old 2023 world; the host's terrain mode rides in Welcome; uniform six-byte Claims with diagnostic
 producer, ordinary held-state transitions, and the retained world-pose physlock mount address, stable mark session
 date/origin and authenticated rename relays). Interest changes are local
 send selection and cache/replay behavior; cached AI snapshots now replay reliably. Existing player states supply the
