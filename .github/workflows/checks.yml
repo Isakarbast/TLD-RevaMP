@@ -14,10 +14,14 @@ concurrency:
   cancel-in-progress: true
 jobs:
   tools:
-    runs-on: ubuntu-latest
+    # Python 3.9 can't be installed on ubuntu-latest (26.04) any more; the oldest Python the tools support stays checked
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        python: ["3.9", "3.x"]
+        include:
+          - { python: "3.9", os: ubuntu-24.04 }
+          - { python: "3.x", os: ubuntu-latest }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
