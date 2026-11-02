@@ -31,3 +31,4 @@ tools/test_tld_admit
 /tools/test_tld_admit
 /tools/test_overview_headset
 /tools/test_overview_headset_timing
+tools/sim/GameStubs.g.cs
