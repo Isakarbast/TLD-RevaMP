@@ -74,7 +74,12 @@ namespace TLDRevamp.Net
                 return true;
             }
             [HarmonyFinalizer]
-            private static System.Exception Finalizer(System.Exception __exception) { _hitDir = Vector3.zero; return __exception; }
+            private static System.Exception Finalizer(System.Exception __exception, breakablescript __instance, Rigidbody RB)
+            {
+                _hitDir = Vector3.zero;
+                if (__exception != null) BreakThrew(__exception, "TryBreak(Rigidbody)", __instance, RB, (object)RB == null);
+                return __exception;
+            }
         }
         public static bool CopyTouchFilter = true;   // A/B: false = before (a copy's every trigger touch went to its owner)
         public static long CopyTouchesIgnored, ZeroHitsIgnored;
@@ -108,10 +113,28 @@ namespace TLDRevamp.Net
                 return true;
             }
             [HarmonyFinalizer]
-            private static System.Exception Finalizer(System.Exception __exception) { _hitDir = Vector3.zero; return __exception; }
+            private static System.Exception Finalizer(System.Exception __exception, breakablescript __instance, Collision c)
+            {
+                _hitDir = Vector3.zero;
+                if (__exception != null) BreakThrew(__exception, "OnCollisionEnter", __instance, c != null ? c.collider : null, c == null);
+                return __exception;
+            }
         }
 
         public static long BreakBumpsNoCollider;
+        /// The game's error in these two methods (both machines, 1-3 a monkey run, sometimes none): the stack stops at the patched
+        /// method, so what was null never showed. The facts of the first ones, for the log and the tests.
+        public static string BreakThrewLast = "";
+        private static int _breakThrewLogs;
+        private static void BreakThrew(System.Exception ex, string where, breakablescript b, Object other, bool otherIsNull)
+        {
+            string body = otherIsNull ? "none" : other == null ? "destroyed" : other.name;
+            string self = b == null ? "destroyed" : b.transform.root.name;
+            string ai = b == null ? "" : (b.AI != null ? "AI" : b.newAI != null ? "newAI, target " + (b.newAI.target != null) : "no creature");
+            BreakThrewLast = $"{where}: {ex.GetType().Name}, other {body}, this {self}, {ai}";
+            if (_breakThrewLogs++ < 5) Plugin.Log.LogWarning("[breakable] " + BreakThrewLast);
+        }
+
         public static int BreakTrace;   // test: log the next N breaks with their call stack
         public static int HitTrace;     // test: log the next N hits forwarded to an object's owner, with their call stack
 

@@ -153,7 +153,9 @@ namespace TLDRevamp.Net
             {
                 var u = _uploads[i];
                 if (!_peers.ContainsValue(u.P)) { _uploads.RemoveAt(i); continue; }
-                for (int k = 0; k < 4 && u.Sent < u.Data.Length; k++)
+                // 4 x 48 KB a frame is far over what the connection takes (256 KB/s): only what Steam has room for. Without this
+                // the chunks refused at its 512 KB went missing from any mod over about that size (the sender counted them as sent)
+                for (int k = 0; k < 4 && u.Sent < u.Data.Length && !T.Outbox.Waits(u.P.Conn); k++)
                 {
                     int n = Math.Min(ModTransfer.ChunkBytes, u.Data.Length - u.Sent);
                     _w.Reset(); _w.U8(ModTransfer.ModChunk); _w.Str(u.Id); _w.U32((uint)u.Sent); _w.U32((uint)u.Data.Length);

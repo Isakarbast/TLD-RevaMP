@@ -115,7 +115,7 @@ namespace TLDRevamp
             {
                 case "stats": fields = "frames fps p50ms p99ms p999ms maxms hitches50ms gc0 managedMB bridgeMsTotal bridgeMaxMs time"; break;
                 case "mp status": fields = "server client bots remotePlayers id ready serverSeed mySeed statesIn posesIn bytesIn bytesOut ping peers statesRelayed posesRelayed batches batchedMsgs skipped tiers carStatesSent carStatesThinned carTiers rejected msgIn msgOut sendErrors count pingAvg pingMax"; break;
-                case "net stats": fields = "bytesIn bytesOut msgIn msgOut sendErrors conns ping qualityLocal qualityRemote outBps inBps sendRate pendingUnreliable pendingReliable unackedReliable queueUs"; break;
+                case "net stats": fields = "bytesIn bytesOut msgIn msgOut sendErrors sendQueued sendFlushed conns ping qualityLocal qualityRemote outBps inBps sendRate pendingUnreliable pendingReliable unackedReliable queueUs"; break;
                 case "mp entities": fields = "me count pendingShare serverEnts statesSent statesIn stale spawned ownerChanges handoffs claimsSent claimsRefused rebound membersRebound farRecordUpdates farAdds farResyncs farResyncItems farRechunked farAttachedMoved reshared orphansCleared leasesDone leasesFreed leaseRefusedWhy malformed requesterNotReady buildingKey buildingReach buildingType buildingTypeMismatch doneMalformed doneHolder spawnShared contactSent contactRelayed contactApplied partsReported partsApplied partsAppliedStored suppressedDamage suppressedFallOff silentTakeovers entities net car owner parent part attached epoch proxy upy items driven held dormant stored shown pos delayMs jitterMs extrapolating clk rt yaw rot vel engRunning engRpm fuel frames extrapFrames jumps maxDevCm physical partsColOff byBody seqOut recv why sentRest lastSent lastIn"; break;
                 case "mp aistats": fields = "breakHitsSent breakHitsRun breakFxSent breakFxApplied statesSent statesApplied soundsSent soundsApplied remoteSeen keptOnRemote remoteAttackFrames damageSent damageTaken"; break;
                 case "mp combat": fields = "shotsTested shotHits meleeHits damageSent damageTaken damageRefused hitCheck enabled checked allowed refused noHistory objects objChecked objAllowed objRefused"; break;
@@ -278,7 +278,7 @@ namespace TLDRevamp
             "refused rejected remoteAttackFrames remotePlayers remoteSeen removeDist render renderThreadMs renderers " +
             "renderersVisible reqRun reqSent reshared result revamp rigidbodies rigidbodiesAwake rigidbodiesDynamic roads " +
             "role rot rows rt sampleAgeS sampleSt sampled sand saving scanMs scene scenery screen scriptTimers scripts seat seats " +
-            "seconds seed selfAllocBytesPerFrame selfMs sendErrors sendHz sendRate sent sentHz sentRest seqOut server " +
+            "seconds seed selfAllocBytesPerFrame selfMs sendErrors sendFlushed sendHz sendQueued sendRate sent sentHz sentRest seqOut server " +
             "serverEnts serverKnown serverSeed setPass settings shadowCasters shadowLights shotHits shotsTested shown sid " +
             "silentTakeovers size skipped slide slot slots slowFrameMs slowFrames slowGpuBound slowThresholdMs slowWithGc " +
             "soundsApplied soundsSent spawnMethods spawnShared spawnSkipped spawned speed speedKmh st stSource stage stale " +

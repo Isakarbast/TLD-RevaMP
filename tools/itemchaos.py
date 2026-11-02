@@ -988,10 +988,11 @@ def scripted(h, L, car, tracked, cars):
         print("     host holds it:", str(h.s(f"mp holdnet {c}"))[:60], flush=True); time.sleep(1)
         h.try_act("inv_store", slot=0); time.sleep(3)
         print(f"     in the pocket: host {row(h, c)}", flush=True); print(f"                    joiner {row(L, c)}", flush=True)
+        if not row(h, c)["stored"]: note("INVALID aud-pocket-grab: the can never went into the pocket (playback keeps it in the hand)")
         print(f"     joiner's copy: {str(L.s(f'mp itemcheck {c}'))[:260]}", flush=True)
         print("     joiner grabs it:", str(L.s(f"mp holdnet {c}"))[:60], flush=True); time.sleep(4)
         print(f"     host {row(h, c)}", flush=True); print(f"     joiner {row(L, c)}, holds {L.held()}", flush=True)
-        L("dropheld"); time.sleep(3)
+        if L.held(): L("dropheld"); time.sleep(3)
         for w in range(4):
             print(f"     +{w * 8}: host {row(h, c)}", flush=True); print(f"          joiner {row(L, c)}", flush=True); time.sleep(8)
         check(h, L, tracked, cars, "aud-pocket-grab")
@@ -1728,7 +1729,7 @@ with game.ProtectedSession():
                 try: return s_(f"get {k}").get("value")
                 except RuntimeError as ex: return f"? {str(ex)[:40]}"
             if who == "host": print(f"streaming: spawn {got('itemPlaceRemoveScript.s.itemSpawnDist')} m, remove {got('itemPlaceRemoveScript.s.itemRemoveDist')} m, unfreeze {got('itemPlaceRemoveScript.s.itemUnFreezeDist')} m, freeze {got('itemPlaceRemoveScript.s.itemFreezeDist')} m", flush=True)
-            print(f"counters {who}: copies made kinematic again {got(T + '.CopyBodiesHealed')}, bumps without a collider {got(T + '.BreakBumpsNoCollider')}, sends refused {s_('net stats').get('sendErrors')}, queued {s_('net stats').get('sendQueued')}", flush=True)
+            print(f"counters {who}: copies made kinematic again {got(T + '.CopyBodiesHealed')}, bumps without a collider {got(T + '.BreakBumpsNoCollider')}, breakable threw {got(T + '.BreakThrewLast')!r}, sends refused {s_('net stats').get('sendErrors')}, queued {s_('net stats').get('sendQueued')}", flush=True)
             for l_ in a_.get("lines", []):
                 if "repair" in l_ or "parts differ" in l_: print("    ", l_[:300], flush=True)
         L("mp stop"); h("mp stop")
