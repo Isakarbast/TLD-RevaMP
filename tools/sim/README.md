@@ -40,7 +40,8 @@ It's kept as a narrow tool for ownership and message ordering, and the fake game
 ## `chaos` and `sweep`
 
 - **`chaos`:** several items, with grabs, drops, moves, spawns, removals, destroyed copies, players leaving and rejoining, refused sends and lost unreliable messages. At the end everyone lets go and waits, and every machine must agree. 600 seeds: 0 wrong.
-- **`sweep`:** turns off each switch that's on by default and counts what `chaos` notices.
+- **`sweep`:** turns off each switch that's on by default and counts what `chaos` notices. Of 179 switches, 111 were measured at 60 seeds each, and `chaos` noticed 1 (`RefetchLater`, 6 of 60). It missed `BreaksKept` and `HostGrabLetGo`, which their own scenarios catch, so a 0 here doesn't mean a switch does nothing.
+- **`sweep` is unreliable:** on the same machines, one process gave "no join" for every switch after `StoredRidesCar`, and another spun for hours after `CopyLockByContainer`. The causes haven't been looked for, so the other 68 switches have no result. Give any rerun a time limit.
 
 ## Not in CI
 
