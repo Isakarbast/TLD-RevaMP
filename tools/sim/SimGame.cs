@@ -253,6 +253,18 @@ public partial class savedatascript
     public tosaveitemscript InitAfterSpawn(UnityEngine.GameObject go, uint key) => items[key];
 }
 
+/// A new world for a joiner: the old scene's items go, as a scene load's would.
+public partial class menuhandler
+{
+    public void PressedRestart() => Reload(); public void PressedStart() => Reload();
+    static void Reload()
+    {
+        TLDRevamp.Net.Mp.SceneTearingDown = true;
+        mainscript.s.player.Drop();
+        foreach (var it in savedatascript.s.items.Values.ToArray()) UnityEngine.Object.Destroy(it.gameObject);
+        savedatascript.s.items.Clear();
+    }
+}
 public partial class fpscontroller
 {
     public void Drop() { if (pickedUp != null) { pickedUp.pickedUp = false; pickedUp = null; } }

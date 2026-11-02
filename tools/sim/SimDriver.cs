@@ -47,7 +47,8 @@ namespace TLDRevamp.Net
             foreach (System.Collections.DictionaryEntry d in Dict("ByNet"))
             {
                 var e = (Entities.Ent)d.Value;
-                o.Add($"{d.Key},{e.OwnerId},{e.Epoch},{(e.Proxy ? 1 : 0)},{(e.Root != null ? 1 : 0)},{(e.Root != null && mainscript.s.player.pickedUp == e.Root.P ? 1 : 0)}");
+                var at = e.Root != null ? e.Root.transform.position : default;
+                o.Add($"{d.Key},{e.OwnerId},{e.Epoch},{(e.Proxy ? 1 : 0)},{(e.Root != null ? 1 : 0)},{(e.Root != null && mainscript.s.player.pickedUp == e.Root.P ? 1 : 0)},{at.x:F2},{at.z:F2}");
             }
             return string.Join(";", o.OrderBy(x => x));
         }
@@ -87,6 +88,34 @@ namespace TLDRevamp.Net
                     }
                 case "break": return Entities.BreakEnt(uint.Parse(a[1]), 100000);
                 case "breakstate": return Entities.BreakState(uint.Parse(a[1]));
+                case "remove":
+                    {
+                        var e = (Entities.Ent)Dict("ByNet")[uint.Parse(a[1])];
+                        if (e == null || e.Root == null || e.Proxy) return "no";
+                        UnityEngine.Object.Destroy(e.Root.gameObject); return "removed";
+                    }
+                case "move":
+                    {
+                        var e = (Entities.Ent)Dict("ByNet")[uint.Parse(a[1])];
+                        if (e == null || e.Root == null || e.Proxy) return "no";
+                        e.Root.transform.position += new UnityEngine.Vector3(float.Parse(a[2]), 0, float.Parse(a[3])); return "moved";
+                    }
+                case "ghosts":
+                    {
+                        var known = new HashSet<tosaveitemscript>();
+                        foreach (System.Collections.DictionaryEntry d in Dict("ByNet")) foreach (var it in ((Entities.Ent)d.Value).Items) if (it != null) known.Add(it);
+                        return string.Join(",", savedatascript.s.items.Values.Where(i => i != null && !known.Contains(i)).Select(i => i.idInSave));
+                    }
+                case "switches":
+                    {
+                        // public static bools on by default that aren't state: only the mod's own net classes
+                        var o = new List<string>();
+                        foreach (var t in typeof(Mp).Assembly.GetTypes().Where(x => x.Namespace == "TLDRevamp.Net" && !x.IsGenericType && !x.Name.StartsWith("<") && !x.Name.StartsWith("Sim")))
+                            foreach (var f in t.GetFields(BindingFlags.Static | BindingFlags.Public))
+                                if (f.FieldType == typeof(bool) && !f.IsLiteral && !f.IsInitOnly && (bool)f.GetValue(null)) o.Add(t.Name + "." + f.Name);
+                        return string.Join(" ", o);
+                    }
+                case "joined": return Mp.Server != null || Mp.Client != null ? "1" : "0";
                 case "lose": return Entities.TestLoseCopy(uint.Parse(a[1]));
                 case "set":
                     {
@@ -125,14 +154,14 @@ static class SimMain
 
     sealed class World
     {
-        public M[] Ms; public float T = 10; public int Frame = 1; public Random Rng; public float MaxDelay; public int RefusePct; public long Msgs, Refused; public bool Watch;
+        public M[] Ms; public float T = 10; public int Frame = 1; public Random Rng; public float MaxDelay; public int RefusePct; public long Msgs, Refused, Lost; public int LossPct; public bool Watch; readonly HashSet<uint> _closed = new HashSet<uint>();
         readonly SortedList<(float, long), Action> _due = new SortedList<(float, long), Action>(); long _n;
         readonly Dictionary<uint, (M to, uint conn)> _links = new Dictionary<uint, (M, uint)>(); readonly Dictionary<uint, float> _linkDue = new Dictionary<uint, float>();
         readonly Dictionary<uint, ulong> _peer = new Dictionary<uint, ulong>(); uint _next = 1;
         void At(float t, Action a) => _due.Add((t, _n++), a);
-        public World(string path, int machines, int seed, float maxDelay, M[] reuse = null)
+        public World(string path, int machines, int seed, float maxDelay, M[] reuse = null, float startT = 10)
         {
-            Rng = new Random(seed); MaxDelay = maxDelay;
+            Rng = new Random(seed); MaxDelay = maxDelay; T = startT;
             Ms = reuse ?? Enumerable.Range(0, machines).Select(i => M.Load(path, i)).ToArray();
             if (reuse != null) foreach (var m in Ms) m.Do("stop");
             foreach (var m in Ms)
@@ -148,20 +177,34 @@ static class SimMain
                     },
                     (c, b, flags) =>
                     {
-                        if (RefusePct > 0 && Rng.Next(100) < RefusePct) { Refused++; return LimitExceeded; }
+                        if (_closed.Contains(c)) return 3;   // no connection
+                        bool reliable = (flags & 8) != 0;
+                        if (reliable && RefusePct > 0 && Rng.Next(100) < RefusePct) { Refused++; return LimitExceeded; }
                         Msgs++;
                         var l = _links[c];
+                        if (!reliable)
+                        {
+                            if (LossPct > 0 && Rng.Next(100) < LossPct) { Lost++; return OK; }
+                            At(T + (float)Rng.NextDouble() * MaxDelay, () => { if (!_closed.Contains(l.conn)) l.to.Arrive(l.conn, b); });   // any order
+                            return OK;
+                        }
                         if (Watch && (b[0] == 24 || b[0] == 25 || b[0] == 80 && false)) { int tl = T.GetHashCode(); Console.WriteLine($"{T:F3}   m{me.Id} sends {(b[0] == 24 ? "Claim net " + BitConverter.ToUInt32(b, 1) + " why " + b[5] : "Owner " + string.Join(" ", b.Skip(1)))}"); }
                         _linkDue.TryGetValue(c, out float last);
                         float due = Math.Max(last, T + (float)Rng.NextDouble() * MaxDelay); _linkDue[c] = due;   // a reliable link: delayed, in order
-                        At(due, () => l.to.Arrive(l.conn, b));
+                        At(due, () => { if (!_closed.Contains(l.conn)) l.to.Arrive(l.conn, b); });
                         return OK;
                     },
                     c =>
                     {
                         var l = _links[c];
                         At(T, () => { me.Status(c, Connected, Connecting, false); l.to.Status(l.conn, Connected, Connecting, false); });
-                    }, c => { });
+                    },
+                    c =>
+                    {
+                        if (!_links.TryGetValue(c, out var l) || !_closed.Add(c)) return;
+                        _closed.Add(l.conn);
+                        At(T + MaxDelay, () => l.to.Status(l.conn, 4, Connected, false));   // closed by peer
+                    });
             }
         }
         public void Step()
@@ -196,11 +239,110 @@ static class SimMain
                     if (r[5] == "1" && s[1] != me) return $"m{m.Id} holds net {r[0]}, owner {s[1]}";
                 }
             }
+            var rows0 = Ms.ToDictionary(m => m.Do("me"), m => m.Ents().Split(';', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Split(',')).ToDictionary(x => x[0]));
+            foreach (var kv in rows0) foreach (var r in kv.Value.Values)
+            {
+                if (r[4] != "1") return $"player {kv.Key}: net {r[0]} not placed";
+                if (!rows0.TryGetValue(r[1], out var ownerRows) || !ownerRows.TryGetValue(r[0], out var o)) continue;
+                double dx = double.Parse(r[6]) - double.Parse(o[6]), dz = double.Parse(r[7]) - double.Parse(o[7]);
+                if (dx * dx + dz * dz > 1) return $"player {kv.Key}: net {r[0]} {Math.Sqrt(dx * dx + dz * dz):F1} m from its owner's";
+            }
+            foreach (var m in Ms) { var g = m.Do("ghosts"); if (g != "") return $"m{m.Id}: items in no shared object: {g.Split(',').Length}"; }
             return null;
         }
     }
 
-    static string Path0;
+    static string Path0; static List<string> PerSeed;
+    static uint[] Nets(M m) => m.Ents().Split(';', StringSplitOptions.RemoveEmptyEntries).Select(r => uint.Parse(r.Split(',')[0])).ToArray();
+
+    /// Not in the same instant as the leave: the host hasn't heard of it yet and refuses ("already in this game").
+    static bool Rejoin(World w, M m)
+    {
+        w.Run(w.MaxDelay * 2 + 0.5f);
+        m.Do("join"); for (int k = 0; k < 4000 && m.Do("ready") != "1"; k++) w.Step();
+        return m.Do("ready") == "1";
+    }
+
+    /// Each switch that's on by default, off, for some seeds: which ones does this test notice? Part k of n, so it can share cores.
+    static void Sweep(int part, int parts, int seeds)
+    {
+        var names = new List<string>();
+        var probe = new World(Path0, 3, 0, 0.02f);
+        names.AddRange(probe.Ms[0].Do("switches").Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        Console.WriteLine($"{names.Count} switches on by default; this is part {part} of {parts}");
+        M[] kept = probe.Ms; float t = probe.T + 1;
+        int Batch(string flip, out string kinds)
+        {
+            if (flip != null) foreach (var m in kept) m.Do($"set {flip} False");
+            int bad = 0; var ks = new Dictionary<string, int>(); var rx = new System.Text.RegularExpressions.Regex(@"\d+(\.\d+)?");
+            for (int sd = 0; sd < seeds; sd++)
+            {
+                string wrong;
+                try { wrong = Chaos(kept, sd, out var w, t); t = w.T + 1; foreach (var m in w.Ms) m.DrainLog(); }
+                catch (Exception e) { wrong = "threw " + (e.InnerException ?? e).GetType().Name; t += 100; }
+                if (wrong != null) { bad++; string k = rx.Replace(wrong, "#"); ks.TryGetValue(k, out int c); ks[k] = c + 1; }
+            }
+            if (flip != null) foreach (var m in kept) m.Do($"set {flip} True");
+            kinds = string.Join("; ", ks.OrderByDescending(k => k.Value).Take(3).Select(k => k.Value + " x " + k.Key));
+            return bad;
+        }
+        Console.WriteLine($"baseline: {Batch(null, out var b0)} wrong of {seeds}: {b0}");
+        for (int i = part; i < names.Count; i += parts)
+        {
+            int bad = Batch(names[i], out var kinds);
+            Console.WriteLine($"{names[i]} off: {bad} wrong{(bad > 0 ? ": " + kinds : "")}"); Console.Out.Flush();
+        }
+    }
+
+    /// Everything at once, on several items: grabs, drops, moves, spawns, removals, copies the game destroys, a player leaving and
+    /// coming back, refused sends, lost unreliable messages. At the end everyone lets go and waits; every machine must agree.
+    static string Chaos(M[] kept, int seed, out World world, float start, bool trace = false)
+    {
+        float delay = new[] { 0.02f, 0.1f, 0.3f }[seed % 3];
+        var w = world = new World(Path0, 3, seed, delay, kept, start); var rng = w.Rng; w.LossPct = new[] { 0, 5, 20 }[seed / 3 % 3];
+        if (!w.Join()) return "no join";
+        w.Run(1); w.Ms[0].Do("spawn 5 5"); w.Ms[1].Do("spawn 8 5"); w.Run(2);
+        int spawned = 2;
+        void Log(string s) { if (trace) Console.WriteLine($"{w.T:F3} {s}"); }
+        for (int a = 0; a < 25; a++)
+        {
+            var i = rng.Next(3); var m = w.Ms[i];
+            if (i > 0 && m.Do("ready") != "1" ) { if (m.Do("joined") == "0") { Log($"m{i} joins again"); Rejoin(w, m); Log($"m{i} back"); } continue; }
+            var nets = Nets(m); uint net = nets.Length > 0 ? nets[rng.Next(nets.Length)] : 0;
+            int d = rng.Next(100); string r = "";
+            if (d < 25 && net != 0) { r = m.Do($"grab {net}"); Log($"m{i} grab {net}: {r}"); }
+            else if (d < 40) { m.Do("drop"); Log($"m{i} drop"); }
+            else if (d < 55 && net != 0) { r = m.Do($"move {net} {rng.Next(-5, 6)} {rng.Next(-5, 6)}"); Log($"m{i} move {net}: {r}"); }
+            else if (d < 67 && spawned < 8) { spawned++; r = m.Do($"spawn {rng.Next(20)} {rng.Next(20)}"); Log($"m{i} spawn: {r}"); }
+            else if (d < 75 && net != 0) { r = m.Do($"remove {net}"); Log($"m{i} remove {net}: {r}"); }
+            else if (d < 83 && net != 0) { r = m.Do($"lose {net}"); Log($"m{i} lose {net}: {r}"); }
+            else if (d < 92 && i > 0) { Log($"m{i} leaves"); m.Do("drop"); m.Do("stop"); }
+            else { w.RefusePct = 50; Log("refusing"); w.Run(0.5f); w.RefusePct = 0; Log("refusing ends"); }
+            w.Run((float)rng.NextDouble() * delay * 2);
+        }
+        w.RefusePct = 0; w.LossPct = 0;
+        foreach (var m in w.Ms) m.Do("drop");
+        foreach (var m in w.Ms.Skip(1)) if (m.Do("joined") == "0") { Log($"m{m.Id} joins for the end"); if (!Rejoin(w, m)) return $"m{m.Id} could not join again"; }
+        w.Run(45);
+        return w.Disagree();
+    }
+    static void ChaosRun(int seeds, bool reuse)
+    {
+        M[] kept = null; float t = 10; int bad = 0; var kinds = new Dictionary<string, List<int>>(); var errs = new Dictionary<string, int>();
+        var rx = new System.Text.RegularExpressions.Regex(@"\d+(\.\d+)?"); var clock = System.Diagnostics.Stopwatch.StartNew();
+        for (int seed = 0; seed < seeds; seed++)
+        {
+            string wrong = Chaos(kept, seed, out var w, t);
+            if (reuse) { kept = w.Ms; t = w.T + 1; }
+            if (wrong != null) { bad++; string k = rx.Replace(wrong, "#"); if (!kinds.TryGetValue(k, out var l)) kinds[k] = l = new List<int>(); l.Add(seed); }
+            foreach (var m in w.Ms) foreach (var g in m.DrainLog().Where(x => x.StartsWith("ERROR")).Select(x => { var ls = x.Split('\n'); var at = ls.FirstOrDefault(y => y.Contains(" at ") && y.Contains(".cs:")); return rx.Replace(ls[0], "#")[..Math.Min(60, rx.Replace(ls[0], "#").Length)] + " | " + (at != null ? at.Trim()[..Math.Min(100, at.Trim().Length)] : ""); }))
+            { errs.TryGetValue(g, out int c); errs[g] = c + 1; }
+        }
+        Console.WriteLine($"chaos{(reuse ? " (reused)" : " (fresh)")}: {seeds} seeds in {clock.ElapsedMilliseconds} ms, {bad} wrong");
+        foreach (var k in kinds.OrderByDescending(k => k.Value.Count)) Console.WriteLine($"   {k.Value.Count} x {k.Key}   seeds {string.Join(",", k.Value.Take(6))}");
+        Console.WriteLine($"errors in the logs: {errs.Values.Sum()}");
+        foreach (var g in errs.OrderByDescending(g => g.Value).Take(12)) Console.WriteLine($"   {g.Value} x {g.Key}");
+    }
     static int Main(string[] args)
     {
         Path0 = Assembly.GetExecutingAssembly().Location;
@@ -208,9 +350,29 @@ static class SimMain
         var clock = System.Diagnostics.Stopwatch.StartNew();
         if (which == "all" || which == "refused") { Refused(false); Refused(true); }
         if (which == "all" || which == "lost") { Lost(false); Lost(true); }
-        if (which == "all" || which == "race") { Race(60); }
+        if (which == "all" || which == "race") { Race(60); Race(60, true); }
         if (which == "all" || which == "late") { Late(false); Late(true); }
         if (which == "all" || which == "hostgrab") { HostGrab(false); HostGrab(true); }
+        if (which == "reuse")
+        {
+            PerSeed = new List<string>(); Race(30); var fresh = PerSeed;
+            PerSeed = new List<string>(); Race(30, true); var kept = PerSeed;
+            int same = 0; for (int i = 0; i < fresh.Count; i++) if (fresh[i] == kept[i]) same++; else if (same + 5 > i) Console.WriteLine($" fresh {fresh[i]}\n kept  {kept[i]}");
+            Console.WriteLine($"{same} of {fresh.Count} seeds the same");
+        }
+        if (which == "chaos") ChaosRun(args.Length > 1 ? int.Parse(args[1]) : 100, args.Length <= 2 || args[2] != "fresh");
+        if (which == "chaos1") { var wrong = Chaos(null, int.Parse(args[1]), out var cw, 10, true); Console.WriteLine(wrong ?? "agree"); foreach (var m in cw.Ms) Console.WriteLine($"m{m.Id} me {m.Do("me")}: {m.Ents()}"); Console.WriteLine($"srv {cw.Ms[0].Srv()}"); Show(cw, 8); }
+        if (which == "chaosat")   // a reused batch repeats as a whole: replay it up to one seed, and watch that one
+        {
+            int upto = int.Parse(args[1]); M[] kept = null; float t = 10;
+            for (int sd = 0; sd <= upto; sd++)
+            {
+                var wrong = Chaos(kept, sd, out var cw, t, sd == upto); kept = cw.Ms; t = cw.T + 1;
+                if (sd == upto) { Console.WriteLine(wrong ?? "agree"); foreach (var m in cw.Ms) Console.WriteLine($"m{m.Id} me {m.Do("me")}: {m.Ents()}"); Console.WriteLine($"srv {cw.Ms[0].Srv()}"); foreach (var m in cw.Ms) foreach (var l in m.DrainLog().Where(x => x.Contains("copy lost") || x.Contains("refetch") || x.Contains("no copy") || x.Contains("anomaly") || x.Contains("repair") || x.Contains("census"))) Console.WriteLine($"  m{m.Id} {l[..Math.Min(150, l.Length)]}"); }
+                else foreach (var m in cw.Ms) m.DrainLog();
+            }
+        }
+        if (which == "sweep") Sweep(int.Parse(args[1]), int.Parse(args[2]), int.Parse(args[3]));
         if (which == "trace") { Trace(int.Parse(args[1])); }
         Console.WriteLine($"{clock.ElapsedMilliseconds} ms");
         return 0;
@@ -300,13 +462,13 @@ static class SimMain
     /// Everyone grabs and drops one item at random, with the replies late. Many seeds in a row, each from a fresh join.
     static void Race(int seeds, bool reuse = false)
     {
-        M[] kept = null; long sig = 0;
+        M[] kept = null; long sig = 0; float clockNow = 10;
         int bad = 0; string first = null; var kinds = new Dictionary<string, int>(); var clock = System.Diagnostics.Stopwatch.StartNew(); long steps = 0;
         var rx = new System.Text.RegularExpressions.Regex(@"\d+");
         for (int seed = 0; seed < seeds; seed++)
         {
             float delay = new[] { 0.02f, 0.2f, 1f }[seed % 3];
-            var w = new World(Path0, 3, seed, delay, kept); if (reuse) kept = w.Ms;
+            var w = new World(Path0, 3, seed, delay, kept, clockNow); if (reuse) kept = w.Ms;
             if (!w.Join()) { Console.WriteLine("no join"); Show(w); return; }
             w.Run(1); w.Ms[0].Do("spawn 5 5"); w.Run(2);
             for (int a = 0; a < 12; a++)
@@ -319,9 +481,11 @@ static class SimMain
             w.Run(delay * 4 + 3);
             var wrong = w.Disagree();
             foreach (var m in w.Ms) sig = sig * 31 + StableHash(m.Ents());
+            if (PerSeed != null) PerSeed.Add($"{seed}: {string.Join(" | ", w.Ms.Select(m => m.Ents()))} srv {w.Ms[0].Srv()}");
             if (wrong != null) { bad++; string k = rx.Replace(wrong, "#"); kinds.TryGetValue(k, out int c); kinds[k] = c + 1; if (first == null) first = $"seed {seed}: {wrong}"; }
             if (seed == 0) Show(w);
             foreach (var m in w.Ms) m.DrainLog();
+            if (reuse) clockNow = w.T + 1;
         }
         Console.WriteLine($"race{(reuse ? " (machines reused)" : " (fresh machines)")}: {seeds} seeds in {clock.ElapsedMilliseconds} ms, {bad} wrong, results hash {sig}{(first != null ? "; first " + first : "")}");
         foreach (var k in kinds) Console.WriteLine($"   {k.Value} x {k.Key}");

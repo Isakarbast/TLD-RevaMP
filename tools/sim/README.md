@@ -1,8 +1,10 @@
 # Multiplayer simulator
 
-The whole mod running as several machines in one process, with no game and no Steam. It's a first version, built to find out whether this works at all.
+The whole mod running as several machines in one process, with no game and no Steam.
 
-`python3 tools/sim/run.py [all|refused|lost|late|hostgrab|race|trace <seed>]`
+It's kept as a narrow tool for ownership and message ordering, and the fake game isn't being grown (decided 2026-11-02). It only finds bugs in the mod's own logic, and only as far as `SimGame.cs` is right. Real play and `itemchaos` tell more about what goes wrong for players.
+
+`python3 tools/sim/run.py [all|refused|lost|late|hostgrab|race|trace <seed>|chaos <seeds>|chaosat <seed>|sweep <part> <parts> <seeds>]`
 
 ## How it works
 
@@ -27,10 +29,19 @@ The whole mod running as several machines in one process, with no game and no St
 
 - **Anything the game decides.** That covers physics, the load path, Steam and visuals. In the real game the host's copy was dropped again when it stood 2.6 m away; the sim has no such rule. A finding here is a question for `itemchaos`, not an answer.
 - **False alarms from the hand-written game.** It's only as right as `SimGame.cs`.
-- **Most items.** Items have only an id, a position, a body and a pickup, with no cars, parts, tanks or usables yet. `LoadStuff` does nothing, so edits and anything else in a record's other lists aren't tested.
-- **Lost or reordered messages.** The fake network can delay and refuse, but it doesn't drop or reorder unreliable ones yet.
+- **Most items.** Items have only an id, a position, a body and a pickup, with no cars, parts, tanks or usables. `LoadStuff` does nothing, so edits and anything else in a record's other lists aren't tested.
 
-## Open
+## Speed and repeats
 
-- **Reusing machines isn't clean.** A run on fresh machines costs about 1-2 s, nearly all of it JIT. Reusing them after `Mp.Stop` costs about 60 ms, but 5 of 60 seeds came out wrong against 1 of 60, so something survives the stop. Why isn't known, and it may be the sim. Use fresh machines for results until it's explained.
-- **Not in CI.** It would need the stubs committed, and that's a list of the game's API in a public repo.
+- **Fresh machines:** about 1-2 s a run, nearly all of it JIT. A seed repeats exactly.
+- **Reused machines:** about 110 ms a `chaos` run. A seed plays out differently from a fresh run, because what the last run left affects timing, so only a whole batch repeats. `chaosat <seed>` replays a batch up to one seed and shows its steps.
+- **Reuse and bugs:** the 5 of 60 wrong that reuse once gave against 1 of 60 were the host's copy bug, and both give 0 now. What carries over between runs hasn't been traced.
+
+## `chaos` and `sweep`
+
+- **`chaos`:** several items, with grabs, drops, moves, spawns, removals, destroyed copies, players leaving and rejoining, refused sends and lost unreliable messages. At the end everyone lets go and waits, and every machine must agree. 600 seeds: 0 wrong.
+- **`sweep`:** turns off each switch that's on by default and counts what `chaos` notices.
+
+## Not in CI
+
+It would need the stubs committed, and that's a list of the game's API in a public repo.
