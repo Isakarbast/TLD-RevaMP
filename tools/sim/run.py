@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The multiplayer simulator: the whole mod, several machines, no game. README.md says what it is and isn't.
 
-tools/sim/run.py [all|refused|lost|late|race|trace <seed>]
+tools/sim/run.py [all|refused|lost|late|hostgrab|race|trace <seed>]
 Stubs are made from lib/*.dll first. Heavy: run it under the memory cap like any build.
 """
 import os, subprocess, sys

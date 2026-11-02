@@ -13,7 +13,7 @@ Scripted runs of what the reports did, then a random monkey (--seed, --steps).
   tools/itemchaos.py [--no-build] [--relay off|iad] [--seed 1] [--steps 60] [--only NAME[,NAME]] [--no-monkey] [--monkey] [--oldglue]
 aud-break-late kills one rabbit a run: --break far|late --break-kept 0|1 (not --ab).
 aud-rabbit-locked: the game's lock and unlock on a rabbit's limbs, then its death (--ab).
-aud-host-grab: the host grabs what the joiner holds, standing beside them: a finding until that's fixed.
+aud-host-grab: the host grabs what the joiner holds, standing beside them (--ab).
 --only skips the monkey unless --monkey is there too. --slow waits the old fixed times instead of until the machines agree.
 --ab adds the census scenarios' round with the check off (40 s each: proves the gap stays without it; --slow has it too).
 The screen gets the scenario heads and a short result; everything else is in the run's folder (printed at the end, or
@@ -958,22 +958,29 @@ def scripted(h, L, car, tracked, cars):
     if want("aud-host-grab"):
         print("\n=== the host grabs what the joiner holds: refused at once, inside the pickup, before the hand has it", flush=True)
         beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(1)
-        n = spawn(L, "jerry"); tracked.add(n); until(lambda: n in h.ents(), 8); time.sleep(1)
-        print("     joiner holds:", str(L.s(f"mp holdnet {n}"))[:60], flush=True); time.sleep(2)
-        c0 = h.s(f"get {T_}.HandCopiesClaimed").get("value")
-        print("     host's row:", {k: v for k, v in h.ents()[n].items() if k in ("owner", "proxy", "held")}, "joiner's:", {k: v for k, v in L.ents()[n].items() if k in ("owner", "proxy", "held")}, flush=True)
-        at_ = L.ents()[n]["pos"]; h(f"tpground {at_[0] + 0.5} {at_[2] + 0.5}"); time.sleep(2)   # within the game's reach of where the joiner holds it
-        print("     host stands", round(math.dist(h.ents()[n]["pos"], at_), 2), "m from where the joiner's item was", flush=True)
-        try: print("     host grabs:", str(h.s(f"mp holdnet {n}"))[:80], flush=True)
-        except RuntimeError as e_: print("     host grabs, refused by the game:", str(e_)[-60:], flush=True)
-        time.sleep(0.2); held0, row0 = h.held(), h.ents()[n]
-        print("     host holds at once:", held0, {k: v for k, v in row0.items() if k in ("owner", "proxy", "held")}, flush=True)
-        if held0 and row0.get("proxy"): finding("aud-host-grab", f"the host holds a copy the joiner owns: {held0}", n)
-        time.sleep(7)
-        held = h.held(); row = h.ents()[n]
-        print(f"     after 7 s: host holds {held}, its row owner {row.get('owner')} proxy {row.get('proxy')}, joiner holds {L.held()}, copies in hands claimed {h.s(f'get {T_}.HandCopiesClaimed').get('value') - c0}", flush=True)
-        if h.held(): h.s("dropheld")
-        if L.held(): L.s("dropheld")
+        for on in (False, True) if AB else (True,):
+            h.s(f"set {T_}.HostGrabLetGo {on}")
+            n = spawn(L, "jerry"); tracked.add(n); until(lambda: n in h.ents(), 8); time.sleep(1)
+            print("     joiner holds:", str(L.s(f"mp holdnet {n}"))[:60], flush=True); time.sleep(2)
+            c0 = h.s(f"get {T_}.HandCopiesClaimed").get("value")
+            print("     host's row:", {k: v for k, v in h.ents()[n].items() if k in ("owner", "proxy", "held")}, "joiner's:", {k: v for k, v in L.ents()[n].items() if k in ("owner", "proxy", "held")}, flush=True)
+            at_ = L.ents()[n]["pos"]; h(f"tpground {at_[0] + 0.5} {at_[2] + 0.5}"); time.sleep(2)   # within the game's reach of where the joiner holds it
+            print("     host stands", round(math.dist(h.ents()[n]["pos"], at_), 2), "m from where the joiner's item was", flush=True)
+            try: print("     host grabs:", str(h.s(f"mp holdnet {n}"))[:80], flush=True)
+            except RuntimeError as e_: print("     host grabs, refused by the game:", str(e_)[-60:], flush=True)
+            time.sleep(0.2); held0, row0 = h.held(), h.ents()[n]
+            print("     host holds at once:", held0, {k: v for k, v in row0.items() if k in ("owner", "proxy", "held")}, flush=True)
+            print(f"     let go {on}: host holds {held0}, let go {h.s(f'get {T_}.HostGrabsLetGo').get('value')}", flush=True)
+            if on and held0 and row0.get("proxy"): finding("aud-host-grab", f"the host holds a copy the joiner owns: {held0}", n)
+            if not on and not held0: note("INVALID aud-host-grab: the hand was empty with it off: the game let go, nothing tested")
+            time.sleep(7)
+            held = h.held(); row = h.ents()[n]
+            print(f"     after 7 s: host holds {held}, its row owner {row.get('owner')} proxy {row.get('proxy')}, joiner holds {L.held()}, copies in hands claimed {h.s(f'get {T_}.HandCopiesClaimed').get('value') - c0}", flush=True)
+            if on and h.s(f"get {T_}.HandCopiesClaimed").get("value") != c0: finding("aud-host-grab", "the copy-in-hands claim still fired", n)
+            if h.held(): h.s("dropheld")
+            if L.held(): L.s("dropheld")
+            beside(h, h.ents()[car]); time.sleep(1)
+        h.s(f"set {T_}.HostGrabLetGo True")
     if want("aud-world-break"):
         print("\n=== a piece of the world breaks while the joiner is far, or isn't in the game", flush=True)
         def cacti(p, name, at): return [b for b in p(f"mp breakables 12 {name}")["breakables"] if math.dist(b["pos"], at) < 1.0]

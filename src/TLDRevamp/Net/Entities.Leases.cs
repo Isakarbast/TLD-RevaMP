@@ -483,7 +483,24 @@ namespace TLDRevamp.Net
                 hit.OwnerId = MyId;
                 W.Reset(); WriteClaim(W, hit.NetId, ClaimReason.Pickup); ToServer(W, true);
                 ClaimsSent++;
+                // a copy again already: on the host the refusal comes back inside this call, before the game sets pickedUp, so the
+                // lost grab's Drop (case Owner) found an empty hand and the game then put a copy in it. Held there until the
+                // copy-in-hands claim, 0.5 to 5 s later. This prefix can't stop the pick: the game sets pickedUp after it anyway.
+                if (HostGrabLetGo && hit.Proxy) _grabRefusedHere = __instance;
             }
+        }
+
+        /// A/B: false = before: the host kept a grab the server refused (found by tools/sim, `itemchaos --only aud-host-grab`).
+        public static bool HostGrabLetGo = true;
+        public static long HostGrabsLetGo;
+        private static pickupable _grabRefusedHere;
+        private static void GrabRefusedTick()
+        {
+            var p = _grabRefusedHere;
+            if (p == null) return;
+            _grabRefusedHere = null;
+            var hp = mainscript.s != null ? mainscript.s.player : null;
+            if (hp != null && hp.pickedUp == p) { hp.Drop(); GrabsLost++; HostGrabsLetGo++; }
         }
 
         /// A/B: a copy in this player's hands with no claim on its way is claimed (false: it stayed so). Picking up a copy claims

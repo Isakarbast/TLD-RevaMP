@@ -2,7 +2,7 @@
 
 The whole mod running as several machines in one process, with no game and no Steam. It's a first version, built to find out whether this works at all.
 
-`python3 tools/sim/run.py [all|refused|lost|late|race|trace <seed>]`
+`python3 tools/sim/run.py [all|refused|lost|late|hostgrab|race|trace <seed>]`
 
 ## How it works
 
@@ -21,7 +21,7 @@ The whole mod running as several machines in one process, with no game and no St
 | `lost`: a copy destroyed twice within 30 s (`RefetchLater`) | Still gone after 45 s | Back after 30 s | Gone after 41 s / back after 30 s |
 | `late`: a break before the joiner comes (`BreaksKept`) | Unbroken on the joiner | Broken | The same, on a rabbit |
 
-`race` has three machines grabbing and dropping one item with late replies. It found that the host can hold a copy: a refusal on the host arrives inside the pickup prefix, before the game sets `pickedUp`, so the lost-grab drop finds nothing to drop. `itemchaos --only aud-host-grab` shows the same in the real game when the host stands beside the player holding the item.
+`race` has three machines grabbing and dropping one item with late replies. It found that the host can hold a copy: a refusal on the host arrives inside the pickup prefix, before the game sets `pickedUp`, so the lost-grab drop finds nothing to drop. `itemchaos --only aud-host-grab` shows the same in the real game when the host stands beside the player holding the item. Fixed (`HostGrabLetGo`), and `hostgrab` checks it off and on.
 
 ## What it can't check
 

@@ -208,8 +208,9 @@ static class SimMain
         var clock = System.Diagnostics.Stopwatch.StartNew();
         if (which == "all" || which == "refused") { Refused(false); Refused(true); }
         if (which == "all" || which == "lost") { Lost(false); Lost(true); }
-        if (which == "all" || which == "race") { Race(60); Race(60); Race(60, true); }
+        if (which == "all" || which == "race") { Race(60); }
         if (which == "all" || which == "late") { Late(false); Late(true); }
+        if (which == "all" || which == "hostgrab") { HostGrab(false); HostGrab(true); }
         if (which == "trace") { Trace(int.Parse(args[1])); }
         Console.WriteLine($"{clock.ElapsedMilliseconds} ms");
         return 0;
@@ -229,6 +230,20 @@ static class SimMain
         w.RefusePct = 0;
         w.Run(8);
         Console.WriteLine($"   {w.Refused} sends refused, then: {w.Disagree() ?? "all agree"}; server has {w.Ms[0].Srv().Split(';', StringSplitOptions.RemoveEmptyEntries).Length} of 10, m1 has {w.Ms[1].Ents().Split(';', StringSplitOptions.RemoveEmptyEntries).Length}");
+        Show(w);
+    }
+
+    /// The host grabs what a player holds. Refused at once, inside the pickup: found here, seen in the game with the host beside them.
+    static void HostGrab(bool on)
+    {
+        var w = new World(Path0, 2, 1, 0.05f);
+        foreach (var m in w.Ms) m.Do($"set Entities.HostGrabLetGo {on}");
+        w.Join(); w.Run(1); w.Ms[0].Do("spawn 5 5"); w.Run(2);
+        w.Ms[1].Do("grab 1"); w.Run(2);
+        w.Ms[0].Do("grab 1");
+        string Hold(M m) => m.Ents().Split(';', StringSplitOptions.RemoveEmptyEntries).Any(r => r.Split(',')[5] == "1") ? "holds" : "empty";
+        string at0 = Hold(w.Ms[0]); w.Run(0.1f); string at1 = Hold(w.Ms[0]); w.Run(0.3f); string at4 = Hold(w.Ms[0]); w.Run(0.3f); string at7 = Hold(w.Ms[0]);
+        Console.WriteLine($"the host grabs what a player holds, let go {on}: host's hand at once {at0}, 0.1 s {at1}, 0.4 s {at4}, 0.7 s {at7}; the player {Hold(w.Ms[1])}; {w.Disagree() ?? "all agree"}; let go {w.Ms[0].Do("get Entities.HostGrabsLetGo")}, copies in hands claimed {w.Ms[0].Do("get Entities.HandCopiesClaimed")}");
         Show(w);
     }
 

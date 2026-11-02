@@ -387,6 +387,7 @@ namespace TLDRevamp.Net
             if (!InSession) return;
             WatchTick();
             AnomalyTick();
+            GrabRefusedTick();
             RefetchLaterTick();
             BreakWaitTick();
             WorldBreakTick();
