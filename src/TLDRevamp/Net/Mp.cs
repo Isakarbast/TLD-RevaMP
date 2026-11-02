@@ -139,7 +139,7 @@ namespace TLDRevamp.Net
                          ",\"queueUs\":" + q.QueueTimeUsec + "}");
             }
             return "{\"role\":" + Json.Str(Client != null ? "client" : "host") + ",\"bytesIn\":" + t.BytesIn + ",\"bytesOut\":" + t.BytesOut + ",\"msgIn\":" + t.MessagesIn +
-                   ",\"msgOut\":" + t.MessagesOut + ",\"sendErrors\":" + t.SendErrors + ",\"line\":" + Json.Str(NetStatsLine() ?? "") + ",\"conns\":[" + string.Join(",", rows) + "]}";
+                   ",\"msgOut\":" + t.MessagesOut + ",\"sendErrors\":" + t.SendErrors + ",\"sendQueued\":" + t.Outbox.Queued + ",\"sendFlushed\":" + t.Outbox.Flushed + ",\"line\":" + Json.Str(NetStatsLine() ?? "") + ",\"conns\":[" + string.Join(",", rows) + "]}";
         }
 
         private static string Between(string s, string a, string b)
@@ -1054,7 +1054,7 @@ namespace TLDRevamp.Net
                    ",\"skipped\":" + StatesSkipped + ",\"tiers\":[" + TierSends[0] + "," + TierSends[1] + "," + TierSends[2] + "]" +
                    ",\"carStatesSent\":" + CarStatesSent + ",\"carStatesThinned\":" + CarStatesThinned + ",\"carTiers\":[" + CarTierSends[0] + "," + CarTierSends[1] + "," + CarTierSends[2] + "," + CarTierSends[3] + "]" +
                    ",\"rejected\":" + Rejected + ",\"bytesIn\":" + T.BytesIn + ",\"bytesOut\":" + T.BytesOut + ",\"msgIn\":" + T.MessagesIn +
-                   ",\"msgOut\":" + T.MessagesOut + ",\"sendErrors\":" + T.SendErrors + ",\"last\":" + Json.Str(T.LastEvent) + "}";
+                   ",\"msgOut\":" + T.MessagesOut + ",\"sendErrors\":" + T.SendErrors + ",\"sendQueued\":" + T.Outbox.Queued + ",\"sendFlushed\":" + T.Outbox.Flushed + ",\"last\":" + Json.Str(T.LastEvent) + "}";
         }
 
         public void Dispose() => T.Dispose();

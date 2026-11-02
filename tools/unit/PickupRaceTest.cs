@@ -41,6 +41,7 @@ namespace TLDRevamp.Net
         static long ClaimsSent;
         static byte[] Uploaded;
         static void ToServer(NetWriter w, bool reliable) { Uploaded = new byte[w.Len]; Array.Copy(w.Buf, Uploaded, w.Len); }
+        private static bool PartApart(Ent e, int i) => false;
         static bool HitchTrailer(Ent e) => false;
         static bool IsProxy(pickupable p) => p != null && ProxyItems.Count > 0 && (ProxyItems.Contains(p.gameObject) || ProxyItems.Contains(p.transform.root.gameObject));
         static NetReader ClaimReader(NetWriter w) => new NetReader { Buf = w.Buf, Pos = 1, End = w.Len };

@@ -1361,7 +1361,7 @@ namespace TLDRevamp.Net
             }
             else
             {
-                foreach (var it in e.Items) if (it != null) ProxyItems.Remove(it.gameObject);
+                for (int i = 0; i < e.Items.Count; i++) if (e.Items[i] != null && !PartApart(e, i)) ProxyItems.Remove(e.Items[i].gameObject);
                 ProxyItems.Remove(e.Root.gameObject);
                 if (HitchTrailer(e)) ProxyItems.Remove(e.Root.attachable.gameObject);
                 RagdollRelease(e);   // its limbs: the game's again (made dynamic below with the other bodies)
@@ -1400,9 +1400,10 @@ namespace TLDRevamp.Net
                 // The game's own unfreeze, now, for what it would unfreeze (within its distance; ground check included).
                 var ips = itemPlaceRemoveScript.s;
                 var plp = mainscript.s != null && mainscript.s.player != null ? mainscript.s.player.transform.position : Vector3.zero;
-                foreach (var it in e.Items)
+                for (int i = 0; i < e.Items.Count; i++)
                 {
-                    if (it == null || it.RB == null || !it.RB.isKinematic || it.buried) continue;
+                    var it = e.Items[i];
+                    if (it == null || PartApart(e, i) || it.RB == null || !it.RB.isKinematic || it.buried) continue;
                     if (ips != null && (it.transform.position - plp).sqrMagnitude > ips.itemUnFreezeDist * ips.itemUnFreezeDist) continue;
                     it.DistUnFreezeRB();
                     if (!it.RB.isKinematic) { GameFrozenReleased++; if (!keepMotion) it.RB.velocity = e.LastVel; }
@@ -1422,14 +1423,22 @@ namespace TLDRevamp.Net
             if (proxy && e.PoseLocked && e.ReceivedStateEpoch == e.Epoch) EnsurePoseLock(e);
         }
 
+        /// A part that came off stays in its old group's Items (state goes by index) but is an object of its own now, with its own
+        /// owner. Its old car changing hands set it too: taken off the copies while it was still one, the game's unfreeze found
+        /// it dynamic every second and it fell until healed (4.9 m in a second: seed runs, "Bus02Tank 5 m apart at rest", from the
+        /// frame the car changed hands to when it changed back). The other way round a part we own became a frozen copy.
+        public static bool SplitPartsApart = true;   // A/B: false = before
+        private static bool PartApart(Ent e, int i) => SplitPartsApart && CameOff(e, i);
+
         /// Every body of every item in the group kinematic, the objects registered as display copies. Jointed parts
         /// (attachablescript.parentAtAttach off) are not children of the car — left dynamic, they were dragged into
         /// crash-level collisions and fell off.
         private static void ApplyProxyBodies(Ent e)
         {
-            foreach (var it in e.Items)
+            for (int i = 0; i < e.Items.Count; i++)
             {
-                if (it == null) continue;
+                var it = e.Items[i];
+                if (it == null || PartApart(e, i)) continue;
                 ProxyItems.Add(it.gameObject);
                 foreach (var rb in it.GetComponentsInChildren<Rigidbody>(true))
                     if (!rb.isKinematic) { rb.isKinematic = true; e.MadeKinematic.Add(rb); }
@@ -1476,7 +1485,7 @@ namespace TLDRevamp.Net
                 if (e.Items[i] != null || e.ItemIds[i] == 0) continue;
                 if (!savedatascript.s.items.TryGetValue(e.ItemIds[i], out var it) || it == null) continue;
                 e.Items[i] = it; any = true; MembersRebound++;
-                if (e.Proxy)
+                if (e.Proxy && !PartApart(e, i))
                 {
                     ProxyItems.Add(it.gameObject);
                     foreach (var rb in it.GetComponentsInChildren<Rigidbody>(true))

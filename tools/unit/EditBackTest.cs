@@ -45,6 +45,16 @@ namespace TLDRevamp.Net
             EditBackTick();
             check(Sent.Count == 1 && RefusedEditsAsked == 1, "asked once");
 
+            // an edit that went through: the same one record after the sender's hold
+            Sent.Clear(); t = 150; Time.realtimeSinceStartup = t;
+            EditBackAfterHold(car, 18); EditBackTick();
+            check(Sent.Count == 0, "accepted edit: nothing inside the hold");
+            EditBackAfterHold(car, 18);
+            Time.realtimeSinceStartup = t + EditHold + 0.21f; EditBackTick();
+            check(Sent.Count == 1, "accepted edit: one record after the hold");
+            EditBackTick();
+            check(Sent.Count == 1, "accepted edit: once");
+
             // a drag out of reach: a refused edit after another, one ask after the last one's hold
             Sent.Clear(); t = 200; Time.realtimeSinceStartup = t;
             for (int k = 0; k < 5; k++) { Time.realtimeSinceStartup = t + k; EditBackLater(car, 2, false); EditBackTick(); }

@@ -10,6 +10,10 @@ namespace TLDRevamp.Net
         /// moved it. The server asks the owner for that record again, after the sender's EditHold (a record inside it is ignored).
         public static bool RefusedEditsComeBack = true;   // A/B: false = before
         public static long RefusedEditsAsked, RefusedEditsResent;
+        /// The same hole for an edit that went through: a record that reaches the sender inside its EditHold is ignored, and the
+        /// owner counts it as sent. The owner changing another knob while a copy's edit is on its way left that knob different
+        /// for good (aud-fight, 2 of 10 rounds; --only aud-held). So every edit gets one record after its sender's hold.
+        public static bool HeldRecordsComeBack = true;   // A/B: false = before
         private const int EditBackMax = 256;
         private static readonly Dictionary<ulong, float> _editBack = new Dictionary<ulong, float>();
         private static readonly List<ulong> _editBackDue = new List<ulong>();
@@ -17,6 +21,11 @@ namespace TLDRevamp.Net
         private static void EditBackLater(SEnt se, int idx, bool malformed)
         {
             if (!RefusedEditsComeBack || malformed || idx < 0) return;
+            EditBackAfterHold(se, idx);
+        }
+
+        private static void EditBackAfterHold(SEnt se, int idx)
+        {
             ulong key = (ulong)se.NetId << 32 | (uint)idx;
             if (_editBack.Count < EditBackMax || _editBack.ContainsKey(key)) _editBack[key] = Time.realtimeSinceStartup + EditHold + 0.2f;
         }

@@ -234,6 +234,7 @@ namespace TLDRevamp.Net
             r.Pos = 0;
             WS.Reset(); WS.Bytes(r.Buf, 0, r.End);
             ServerSendTo(se.OwnerId, WS, true);
+            if (HeldRecordsComeBack) EditBackAfterHold(se, idx);
         }
 
         private static bool AtObject(int player, SEnt se)

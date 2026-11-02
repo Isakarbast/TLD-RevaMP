@@ -169,6 +169,7 @@ namespace TLDRevamp.Net
                     Plugin.Log.LogInfo($"net: connection {s.m_info.m_szConnectionDescription} ended{(LastEndUnreached ? " before it connected" : "")}: {s.m_info.m_eState}, reason {LastEnd}");
                     SteamNetworkingSockets.CloseConnection(c, 0, null, false);
                     Connections.Remove(c);
+                    Outbox.Forget(c);
                     Disconnected?.Invoke(c);
                     break;
             }
@@ -178,21 +179,99 @@ namespace TLDRevamp.Net
         internal bool SendBackground(HSteamNetConnection c, NetWriter w)
         {
             var status = Status(c);
-            return status.PendingReliable == 0 && status.QueueTimeUsec < 20000 && Send(c, w, SendReliable);
+            return !Outbox.Waits(c) && status.PendingReliable == 0 && status.QueueTimeUsec < 20000 && Send(c, w, SendReliable);
+        }
+
+        public static bool QueueRefusedSends = true;   // A/B: false = before (a refused message was gone, with only SendErrors counting it)
+        public static int TestRefuseSends;             // test: Steam "refuses" the next N sends
+        public const long OutboxMaxBytes = 64 << 20;
+        internal readonly SendOutbox<HSteamNetConnection> Outbox = new SendOutbox<HSteamNetConnection>(OutboxMaxBytes);
+        private long _sendErrorsLogged;
+        private float _sendErrorLogAt;
+
+        private void CopyToSendBuf(byte[] buf, int len)
+        {
+            if (len > _sendCap)
+            {
+                if (_sendBuf != IntPtr.Zero) Marshal.FreeHGlobal(_sendBuf);
+                _sendCap = Math.Max(len, 4096);
+                _sendBuf = Marshal.AllocHGlobal(_sendCap);
+            }
+            Marshal.Copy(buf, 0, _sendBuf, len);
+        }
+
+        private EResult SendNative(HSteamNetConnection c, int len, int flags)
+        {
+            if (TestRefuseSends > 0) { TestRefuseSends--; return EResult.k_EResultLimitExceeded; }
+            return SteamNetworkingSockets.SendMessageToConnection(c, _sendBuf, (uint)len, flags, out _);
+        }
+
+        // the first 20, then one every 10 s: how often this happens in play has never been known
+        private void LogSendError(EResult r, byte[] buf, int len, string what)
+        {
+            float now = UnityEngine.Time.realtimeSinceStartup;
+            if (_sendErrorsLogged >= 20 && now - _sendErrorLogAt < 10f) return;
+            _sendErrorsLogged++; _sendErrorLogAt = now;
+            Plugin.Log.LogWarning($"net: send {r}: message type {(len > 0 ? buf[0] : 0)}, {len} B, {what} ({SendErrors} so far, {Outbox.Queued} queued, {Outbox.Flushed} sent later)");
+        }
+
+        private SendOutbox<HSteamNetConnection>.Result FlushOne(HSteamNetConnection c, byte[] m)
+        {
+            CopyToSendBuf(m, m.Length);
+            var r = SendNative(c, m.Length, SendReliable);
+            if (r == EResult.k_EResultLimitExceeded) return SendOutbox<HSteamNetConnection>.Result.Full;
+            if (r != EResult.k_EResultOK)
+            {
+                SendErrors++; LogSendError(r, m, m.Length, "waited, dropped");
+                return SendOutbox<HSteamNetConnection>.Result.Failed;
+            }
+            MessagesOut++;
+            BytesOut += m.Length;
+            NetMeter.Sent(m, m.Length, c.m_HSteamNetConnection, NetMeter.Now(), ServerSide);
+            return SendOutbox<HSteamNetConnection>.Result.Sent;
+        }
+
+        // ended from Poll: Send is called inside loops over the players
+        private readonly List<HSteamNetConnection> _outboxFull = new List<HSteamNetConnection>();
+        private void OutboxFull(HSteamNetConnection c) { if (!_outboxFull.Contains(c)) _outboxFull.Add(c); }
+        private void EndOutboxFull()
+        {
+            foreach (var c in _outboxFull)
+            {
+                Plugin.Log.LogError($"net: over {OutboxMaxBytes >> 20} MB waiting to go to one connection: it is closed, whatever else was sent wouldn't arrive");
+                LastEnd = "send queue full";
+                SteamNetworkingSockets.CloseConnection(c, 0, "send queue full", false);
+                Connections.Remove(c);
+                Outbox.Forget(c);
+                Disconnected?.Invoke(c);
+            }
+            _outboxFull.Clear();
         }
 
         public bool Send(HSteamNetConnection c, NetWriter w, int flags)
         {
-            if (w.Len > _sendCap)
+            bool reliable = (flags & SendReliable) != 0;
+            // nothing reliable overtakes what is waiting
+            if (reliable && Outbox.Waits(c))
             {
-                if (_sendBuf != IntPtr.Zero) Marshal.FreeHGlobal(_sendBuf);
-                _sendCap = Math.Max(w.Len, 4096);
-                _sendBuf = Marshal.AllocHGlobal(_sendCap);
+                if (!Outbox.Add(c, w.Buf, w.Len)) OutboxFull(c);
+                return true;
             }
-            Marshal.Copy(w.Buf, 0, _sendBuf, w.Len);
+            CopyToSendBuf(w.Buf, w.Len);
             long t0 = NetMeter.Now();
-            var r = SteamNetworkingSockets.SendMessageToConnection(c, _sendBuf, (uint)w.Len, flags, out _);
-            if (r != EResult.k_EResultOK) { SendErrors++; return false; }
+            var r = SendNative(c, w.Len, flags);
+            if (r != EResult.k_EResultOK)
+            {
+                SendErrors++;
+                if (reliable && QueueRefusedSends && r == EResult.k_EResultLimitExceeded)
+                {
+                    LogSendError(r, w.Buf, w.Len, "waits");
+                    if (!Outbox.Add(c, w.Buf, w.Len)) OutboxFull(c);
+                    return true;
+                }
+                if (reliable) LogSendError(r, w.Buf, w.Len, "lost");
+                return false;
+            }
             MessagesOut++;
             BytesOut += w.Len;
             NetMeter.Sent(w.Buf, w.Len, c.m_HSteamNetConnection, t0, ServerSide);
@@ -213,6 +292,8 @@ namespace TLDRevamp.Net
         public int Poll()
         {
             int total = 0;
+            if (_outboxFull.Count > 0) EndOutboxFull();
+            Outbox.Flush(FlushOne);
             bool timed = MaxPollMs > 0;
             if (timed) _pollWork.Begin(UnityEngine.Time.frameCount, MaxPollMs);
             for (int ci = 0; ci < Connections.Count; ci++)
@@ -276,6 +357,7 @@ namespace TLDRevamp.Net
         public void Close(HSteamNetConnection c, string reason)
         {
             if (!Connections.Remove(c)) return;
+            Outbox.Forget(c);
             SteamNetworkingSockets.CloseConnection(c, 0, reason, true);
         }
 
@@ -283,6 +365,7 @@ namespace TLDRevamp.Net
         {
             if (_disposed) return;
             _disposed = true;
+            Outbox.Clear();
             foreach (var c in Connections) SteamNetworkingSockets.CloseConnection(c, 0, "closed", false);
             Connections.Clear();
             if (_listen != HSteamListenSocket.Invalid) SteamNetworkingSockets.CloseListenSocket(_listen);

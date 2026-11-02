@@ -56,6 +56,8 @@ Client–server, one authority:
 - One-process test (`net pair`): 1,000–5,000 messages each way, reliable + unreliable, through the real network stack
   (loopback): all delivered, reliable in order, every byte correct. Bursts above the default 512 KB send buffer are
   refused (k_EResultLimitExceeded) → the protocol must budget sends (send-rate config per connection, next step).
+  Since 2026-11: a refused reliable message waits in `Net/SendOutbox`, in order, with everything reliable behind it, and goes
+  out from `Poll`; a connection over 64 MB behind is closed. The first failures of each transport are logged with their type.
 
 ### 3b. Milestone 1 skeleton (v0.36.0)
 - `Net/Protocol` + `Net/Mp`: listen server (IP) + clients; Hello (protocol + mod version must match) → Welcome (id,

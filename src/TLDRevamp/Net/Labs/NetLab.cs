@@ -94,7 +94,7 @@ namespace TLDRevamp.Net
                    ",\"count\":" + _count + ",\"size\":" + _size +
                    ",\"reliable\":[" + GotRel[0] + "," + GotRel[1] + "],\"unreliable\":[" + GotUnrel[0] + "," + GotUnrel[1] + "]" +
                    ",\"outOfOrder\":" + _outOfOrder + ",\"badPayload\":" + _badPayload + ",\"malformed\":" + _malformed +
-                   ",\"msgIn\":" + _t.MessagesIn + ",\"msgOut\":" + _t.MessagesOut + ",\"bytesIn\":" + _t.BytesIn + ",\"sendErrors\":" + _t.SendErrors +
+                   ",\"queued\":" + _t.Outbox.Queued + ",\"flushed\":" + _t.Outbox.Flushed + ",\"waitingMaxB\":" + _t.Outbox.MaxBytesSeen + ",\"msgIn\":" + _t.MessagesIn + ",\"msgOut\":" + _t.MessagesOut + ",\"bytesIn\":" + _t.BytesIn + ",\"sendErrors\":" + _t.SendErrors +
                    ",\"ping\":" + rt.Ping + ",\"state\":" + rt.State + ",\"compat\":" + Json.Str(SteamCompat.Info) + "}";
         }
 

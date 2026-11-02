@@ -93,6 +93,9 @@ namespace TLDRevamp.Net
             [HarmonyPrefix]
             private static bool Prefix(breakablescript __instance, Collision c)
             {
+                // the game reads c.collider.gameObject for anything with a creature on it, and a collider destroyed in this physics
+                // step is gone by then: NullReferenceException in OnCollisionEnter (monkey runs, 1-3 a run, on both machines)
+                if ((__instance.AI != null || __instance.newAI != null) && c.collider == null) { BreakBumpsNoCollider++; return false; }
                 if (!InSession || !IsProxy(__instance)) return true;
                 if (c.rigidbody == null || IsProxy(c.rigidbody)) return false;
                 if (HitTrace > 0)
@@ -108,6 +111,7 @@ namespace TLDRevamp.Net
             private static System.Exception Finalizer(System.Exception __exception) { _hitDir = Vector3.zero; return __exception; }
         }
 
+        public static long BreakBumpsNoCollider;
         public static int BreakTrace;   // test: log the next N breaks with their call stack
         public static int HitTrace;     // test: log the next N hits forwarded to an object's owner, with their call stack
 

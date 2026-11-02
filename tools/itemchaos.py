@@ -661,6 +661,108 @@ def scripted(h, L, car, tracked, cars):
                 print(f"     told back {on}: {'the same after %.1f s' % (time.time() - t0) if same() else 'STILL different after %.0f s' % (time.time() - t0)}: host {v(h)} joiner {v(L)}", flush=True)
                 if on and not same(): finding("aud-refused", f"{u['itemName']} usable {u['usable']}: host {v(h)}, joiner {v(L)} 60 s after the refusal", car)
                 if not on and same(): note("INVALID aud-refused: the same with the telling back off")
+    if want("aud-held"):
+        print("\n=== the owner turns one knob, a copy another right after: does the owner's reach the copy, inside the copy's hold?", flush=True)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0))
+        L.s(f"mp claim {car}"); wait(3, lambda: not L.ents()[car]["proxy"] and h.ents()[car]["proxy"])
+        by = {}
+        for u in h.s(f"mp usables {car}")["usables"]: by.setdefault(u["item"], []).append(u)
+        pick = next(((i, us) for i, us in by.items() if len(us) >= 2 and "radio" in us[0]["itemName"]), None) or next(((i, us) for i, us in by.items() if len(us) >= 2), None)
+        if pick is None: note("INVALID aud-held: no item with two usables")
+        else:
+            i, us = pick; a, b = us[0], us[-1]
+            def v(p): return {(x["item"], x["usable"]): x["value"] for x in p.s(f"mp usables {car}")["usables"] if x["item"] == i}
+            same = lambda: all(abs(float(x) - float(y)) < 0.01 for k, ra in v(h).items() for x, y in zip(ra, v(L)[k]))
+            for on in (False, True) if AB else (True,):
+                got = 0; rnd = 0
+                h.s(f"set {T_}.HeldRecordsComeBack {on}")
+                # the copy's edit, then the owner's on the same knob: 1 round in 18 stayed different over gaps of 0.05-1.3 s, at 0.2 s
+                for other in (a,):
+                    for d in (0.1, 0.15, 0.2, 0.25, 0.3) * 8:
+                        rnd += 1
+                        x1, x2 = 0.2 + 0.07 * (rnd % 9), 0.9 - 0.07 * (rnd % 9)
+                        h.try_act("usable", net=car, item=i, slot=a["usable"], x=x1); time.sleep(d)
+                        L.try_act("usable", net=car, item=i, slot=other["usable"], x=x2); time.sleep(6.5)
+                        ok = same(); got += not ok
+                        print(f"     on {on} {'same knob' if other is a else 'other knob'} {d} s: {'the same' if ok else 'DIFFERENT host %s joiner %s' % (v(h), v(L))}"[:230], flush=True)
+                        if on and not ok: finding("aud-held", f"{us[0]['itemName']} {d} s: host {v(h)}, joiner {v(L)} 6.5 s after both edits", car)
+                print(f"     came back {on}: {got} of {rnd} rounds stayed different", flush=True)
+                if not on and got == 0: note("INVALID aud-held: no round stayed different with it off")
+    if want("aud-split"):
+        print("\n=== a part off a car, its old car changes hands: does the part stay what it was on each machine?", flush=True)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(1)
+        def healed(p): return p.s(f"get {T_}.CopyBodiesHealed").get("value")
+        def kin(p, n):
+            w = p.lock(n)
+            return (w or {}).get("rb", {}).get("kin") if isinstance((w or {}).get("rb"), dict) else None
+        for on in (False, True) if AB else (True,):
+            for p in (h, L): p.s(f"set {T_}.SplitPartsApart {on}")
+            # the joiner owns car and part, the host takes the car: the host's copy of the part stays a copy
+            L.s(f"mp claim {car}"); wait(3, lambda: not L.ents()[car]["proxy"] and h.ents()[car]["proxy"])
+            # glued, with a body the game knows (tosaveitemscript.RB). A door or a wheel gets its body only when it comes off: the game's unfreeze doesn't reach those
+            ms = [m for m in glued(L, car) if m["i"] > 0 and m.get("lp") and math.hypot(*m["lp"]) < 30]
+            print("     glued on the car:", " ".join(m["name"].replace("(Clone)", "") for m in ms)[:200], flush=True)
+            m = next((m for m in ms if "Car03Tank" in m["name"]), None) or next((m for m in ms if "HeadLight" in m["name"]), ms[0] if ms else None)
+            if m is None: note("INVALID aud-split: nothing left to take off"); break
+            known = set(L.ents()); L.act("detach", net=car, item=m["i"]); time.sleep(2)
+            part = next((k for k, v in L.ents().items() if k not in known), None); tracked.add(part)
+            if part is None: note("INVALID aud-split: no new object after the detach"); break
+            if L.ents()[part]["proxy"]: L.s(f"mp claim {part}"); wait(3, lambda: not L.ents()[part]["proxy"])
+            if L.held(): L.s("dropheld")
+            # away from the host, the joiner with it: a player beside an item takes it (ItemNear)
+            print("     moved:", str(L.s(f"mp moveitem {part} 45 0 ground"))[:50], flush=True); g = L("gpos"); L(f"tpground {g['gx'] + 43} {g['gz']}"); time.sleep(4)
+            h0 = healed(h)
+            h.s(f"mp claim {car}"); wait(3, lambda: not h.ents()[car]["proxy"] and L.ents()[car]["proxy"])
+            time.sleep(6)
+            dyn = healed(h) - h0
+            eh, el = h.ents()[part], L.ents()[part]
+            gap = max(abs(a - b) for a, b in zip(eh["pos"], el["pos"]))
+            print(f"     apart {on} ({m['name']}, part {part}, owner {el['owner']}, proxy host {eh['proxy']} joiner {el['proxy']}): the host took the car: its copy of the part made kinematic again {dyn} times, gap {gap:.2f} m", flush=True)
+            if not eh["proxy"]: note("INVALID aud-split: the host took the part as well")
+            # the other way: the joiner's own part, the joiner's car goes to the host: is the joiner's part still a body?
+            L.s(f"mp claim {car}"); wait(5, lambda: not L.ents()[car]["proxy"] and h.ents()[car]["proxy"])
+            time.sleep(1); h0 = healed(h); h.s(f"mp claim {car}"); wait(5, lambda: not h.ents()[car]["proxy"] and L.ents()[car]["proxy"])
+            time.sleep(1)
+            if L.ents()[part]["proxy"]: note("INVALID aud-split: the joiner lost the part"); continue
+            fell = []
+            for k in range(6):
+                fell.append(round(h.ents()[part]["pos"][1] - L.ents()[part]["pos"][1], 2)); time.sleep(1)
+            dyn2 = healed(h) - h0
+            print(f"     apart {on}: the car away and back to the host: the host's copy of the part made kinematic again {dyn2} times, height against the owner's each second {fell}", flush=True)
+            if on and dyn2: finding("aud-split", f"the host's copy of a part went dynamic {dyn2} times after its old car changed hands", part)
+            if not on and not dyn2: note("INVALID aud-split: no dynamic copy with it off")
+            print("    ", str(L.s(f"mp moveitem {part} 0 0"))[:50], flush=True); y1 = L.ents()[part]["pos"][1]
+            time.sleep(2); y2 = L.ents()[part]["pos"][1]
+            print(f"     apart {on}: the joiner's own part after its old car left it: lifted to {y1:.2f}, 2 s later {y2:.2f} ({'fell' if y2 < y1 - 0.3 else 'stayed in the air'}), proxy {L.ents()[part]['proxy']}", flush=True)
+            if on and y2 >= y1 - 0.3: finding("aud-split", f"the joiner's own part stays in the air after its old car left it: {y1:.2f} to {y2:.2f}", part)
+            if not on and y2 < y1 - 0.3: note("this direction passes with it off too")
+            beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(1)
+    if want("aud-send"):
+        print("\n=== sends Steam refuses: a burst over its send buffer, then refusals in a live session", flush=True)
+        ST = "TLDRevamp.Net.SteamTransport"
+        for on in (False, True) if AB else (True,):
+            h.s(f"set {ST}.QueueRefusedSends {on}")
+            print("     burst:", str(h.s("net pair 1500 1000 loopback"))[:120], flush=True)
+            t0 = time.time(); st = {}
+            while time.time() - t0 < 14:
+                st = h.s("net status"); time.sleep(0.5)
+                if not st.get("running"): break
+            print(f"     queue {on}: reliable {st.get('reliable')} of 1500, unreliable {st.get('unreliable')}, out of order {st.get('outOfOrder')}, bad {st.get('badPayload')}, refused {st.get('sendErrors')}, queued {st.get('queued')}, sent later {st.get('flushed')}, most waiting {st.get('waitingMaxB')} B, {st.get('elapsedMs')} ms", flush=True)
+            if on and (st.get("reliable") != [1500, 1500] or st.get("outOfOrder") or st.get("badPayload")): finding("aud-send", f"burst: {str(st)[:200]}")
+            if not on and st.get("reliable") == [1500, 1500]: note("INVALID aud-send: nothing lost with the queue off")
+        h.s(f"set {ST}.QueueRefusedSends True")
+        for p in (h, L):
+            before = p.s("net stats")
+            p.s(f"set {ST}.TestRefuseSends 300"); time.sleep(6)
+            after = p.s("net stats")
+            print(f"     {p.label} 300 sends refused: errors {after.get('sendErrors')}, queued {after.get('sendQueued')}, sent later {after.get('sendFlushed')}, in session {str(p.s('mp status').get('ready'))}", flush=True)
+            if after.get("sendQueued") != after.get("sendFlushed"): finding("aud-send", f"{p.label}: queued {after.get('sendQueued')}, sent later {after.get('sendFlushed')}")
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(2)
+        rows = h.s(f"mp usables {car}")["usables"]; u = next((x for x in rows if "radio" in x["itemName"]), rows[0])
+        L.s(f"set {ST}.TestRefuseSends 40"); L.try_act("usable", net=car, item=u["item"], slot=u["usable"], x=0.33); time.sleep(5)
+        def v(p): return {(x["item"], x["usable"]): x["value"] for x in p.s(f"mp usables {car}")["usables"]}[(u["item"], u["usable"])]
+        print(f"     an edit while sends are refused: host {v(h)}, joiner {v(L)}", flush=True)
+        if any(abs(float(a) - float(b)) > 0.01 for a, b in zip(v(h), v(L))): finding("aud-send", f"edit while refused: host {v(h)}, joiner {v(L)}")
     if want("aud-wheel-far"):
         print("\n=== a tyre unbolted from a wheel, beside its car and 3 km from it: the same on both?", flush=True)
         def tyres(p): return p.s("mp namecount TireGumi 0")
