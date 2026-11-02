@@ -299,18 +299,16 @@ static class ObjectPanelsTest
     }
     static void Docs()
     {
-        string protocol = System.IO.File.ReadAllText("src/TLDRevamp/Net/Protocol.cs"), docs = System.IO.File.ReadAllText("docs/TELEMETRY.md");
-        string version = System.Text.RegularExpressions.Regex.Match(protocol, @"Version\s*=\s*(\d+)").Groups[1].Value;
-        Check("panel tools target protocol 61", version == "61");
-        Check("transfer heading matches actual protocol", docs.Contains("introduced in protocol 33; current protocol " + version + ")"));
-        Check("panel wire documentation matches actual protocol", docs.Contains("Protocol **" + version + "** uses reliable request/cancel"));
+        string docs = System.IO.File.ReadAllText("docs/TELEMETRY.md");
+        Check("transfer heading says where it began", docs.Contains("introduced in protocol 33)"));
+        Check("panel wire documentation names its messages", docs.Contains("uses reliable request/cancel"));
         Check("README has one debug tools paragraph", System.Text.RegularExpressions.Regex.Matches(System.IO.File.ReadAllText("README.md"), @"\*\*Debug tools:\*\*").Count == 1);
         foreach (string path in System.IO.Directory.GetFiles("docs", "*.md").Concat(new[] { "README.md" }))
         {
             string text = System.IO.File.ReadAllText(path).Replace("**", "");
             foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(text,
                 @"(?:Protocol\.Version is |[Pp]rotocol (?:is |stays )|current protocol )(\d+)|Protocol (\d+) is required"))
-                Check("current protocol in " + path, (match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value) == version);
+                Check("no current protocol number in " + path + " (docs/PROTOCOL.md has it): " + match.Value, false);
         }
     }
     static void Allocations()

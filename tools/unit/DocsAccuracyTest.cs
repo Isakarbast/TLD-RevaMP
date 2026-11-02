@@ -12,21 +12,17 @@ static class DocsAccuracyTest
         string Read(string path) => File.ReadAllText(Path.Combine(root, path));
         string protocol = Regex.Match(Read("src/TLDRevamp/Net/Protocol.cs"), @"const ushort Version = (\d+);").Groups[1].Value;
         Check("current protocol is " + protocol, protocol.Length > 0);
-        // The explicit pin: the protocol this branch works with. The derived comparisons below follow the code, but
-        // the pin says which protocol the docs and the tools are written for, so a bump that misses a doc fails here.
-        const string pinned = "61";
-        Check("the protocol is pinned to " + pinned, protocol == pinned);
-        Check("the pin is in the protocol's own history", Read("src/TLDRevamp/Net/Protocol.cs").Contains("56:"));
+        // The number and its history live in one file, so a raised number that misses it fails here; other docs link there.
+        Check("the top of the protocol's history is the code's number", Regex.Match(Read("docs/PROTOCOL.md"), @"^## (\d+)$", RegexOptions.Multiline).Groups[1].Value == protocol);
         string wire = Read("src/TLDRevamp/Net/ObjectPanelWire.cs");
         Check("comparison retains message ids 105-109", wire.Contains("Ask = 105, Query = 106, Answer = 107, Row = 108, Roster = 109"));
         Check("join manifest and end marker avoid comparison ids", Read("src/TLDRevamp/Net/Protocol.cs").Contains("JoinLoading = 110;") &&
             Read("docs/MULTIPLAYER-ARCHITECTURE.md").Contains("Reliable message 110 sends phase 0"));
         string readme = Read("README.md"), sync = Read("docs/SYNC-CONTROLS.md");
-        Check("README requires the current wire protocol", protocol.Length > 0 && readme.Contains($"Protocol **{protocol}** is required"));
         Check("README limits panel renames to own notes", readme.Contains("rename your own notes in the panel") && !readme.Contains("Browse and rename notes in the panel"));
         Check("sync controls retains authenticated rename relays", sync.Contains("host-authenticated renamer index"));
         Check("sync controls describes uniform diagnostic claims", sync.Contains("every Claim is six bytes") && sync.Contains("producer byte to every Claim") && sync.Contains("held transitions use ordinary State flags") && !sync.Contains("pickup Claim epoch") && !sync.Contains("held-release flag"));
-        Check("sync controls describes current protocol and retained lock address", sync.Contains($"Protocol.Version is {protocol}") && sync.Contains("physlocks retain their mount address"));
+        Check("sync controls describes the retained lock address", sync.Contains("physlocks retain their mount address"));
         string telemetry = Read("docs/TELEMETRY.md");
 
         // ---- the status document must stay true about the tree it describes
@@ -63,8 +59,7 @@ static class DocsAccuracyTest
             Check("the developer docs link the status", Read("docs/DEVELOPERS.md").Contains("PROJECT-STATUS.md"));
             Check("the contributing docs link the status", Read("docs/CONTRIBUTING.md").Contains("PROJECT-STATUS.md"));
         }
-        Check("telemetry describes current protocol and Claim size", telemetry.Contains($"Protocol.Version is **{protocol}**") && telemetry.Contains("6 for every Claim") && telemetry.Contains($"current protocol {protocol})"));
-        Check("interest describes current protocol", Read("docs/INTEREST.md").Contains($"protocol is **{protocol}**"));
+        Check("telemetry describes the Claim size", telemetry.Contains("6 for every Claim"));
         string architecture = Read("docs/MULTIPLAYER-ARCHITECTURE.md"), interest = Read("docs/INTEREST.md");
         Check("architecture describes current ragdoll protocol and retained claims", architecture.Contains("Protocol 56 adds the owner's engine temperature") && architecture.Contains("Protocol 55 adds voice to everyone") && architecture.Contains("Protocol 54 adds Frame / Key / Delta ragdoll blocks") && architecture.Contains("Protocol 53 adds two claim reasons") && architecture.Contains("Protocol 52 uses uniform six-byte Claims"));
         Check("architecture describes cumulative ragdoll blocks", architecture.Contains("u8 n") && architecture.Contains("u16 limb-name hash") && architecture.Contains("ceil(n/8)") && architecture.Contains("Key plus any one Delta") && architecture.Contains("36 + 13n"));

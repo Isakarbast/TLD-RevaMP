@@ -512,6 +512,7 @@ synthetic headers; tests also create report zips and corrupt inputs in temporary
   Each panel degrades on its own: a probe that fails shows its own error and leaves the other panels alone.
 - `tools/quick.py [commit] [--list]`: the unit tests a change can break, not all of them (6 minutes): a project whose `.csproj`,
   test files or extract script name a changed file. One line per project, a failure's output in a file, exit code = failures. CI still runs all.
+- `tools/hooks/pre-push`: runs `quick.py` on what a push changes. Not installed by default; install with `git config core.hooksPath tools/hooks`, skip one push with `git push --no-verify`.
 - Without the game: `python3 -m unittest tools/test_tools.py` tests the tools' own helpers, and
   `tools/privacy_scan.py` checks the repository for personal paths, LAN addresses, Steam IDs, keys, binaries and
   decompiled game code. CI runs both on every pull request, with the network reader's unit test

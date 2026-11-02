@@ -1,0 +1,15 @@
+#!/bin/sh
+# The unit tests the pushed commits can break, before CI runs them all (git push --no-verify skips this).
+# Install once: git config core.hooksPath tools/hooks
+zero=0000000000000000000000000000000000000000
+base=
+while read -r _local_ref _local_sha _remote_ref remote_sha; do
+    [ "$remote_sha" != "$zero" ] && git cat-file -e "$remote_sha" 2>/dev/null && base=$remote_sha
+done
+[ -n "$base" ] || base=HEAD~1
+quick="$(git rev-parse --show-toplevel)/tools/quick.py"
+# builds and test runs stay in a memory cap of their own where the machine has one
+if systemd-run --user --scope -q true 2>/dev/null; then
+    exec systemd-run --user --scope -q -p MemoryMax=8G -p MemorySwapMax=0 python3 "$quick" "$base"
+fi
+exec python3 "$quick" "$base"
