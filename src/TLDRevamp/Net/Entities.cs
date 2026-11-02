@@ -394,7 +394,7 @@ namespace TLDRevamp.Net
             PushTick(dt);
             RadioTick(dt);
             KeyTick(); KeyTestTick();
-            HitchTick();
+            HitchTick(); EditBackTick();
             PhysLockTick(dt);
             PushGripTick();
             StormTick(dt);

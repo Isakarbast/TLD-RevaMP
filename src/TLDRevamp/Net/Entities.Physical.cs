@@ -64,7 +64,7 @@ namespace TLDRevamp.Net
         public static void FixedTick()
         {
             if (!InSession) return;
-            HitchTick();
+            HitchTick(); EditBackTick();
             HitchPhysicsTelemetry();
             TraceTick();
             TelemetryPhysicsTick();

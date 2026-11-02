@@ -193,11 +193,13 @@ namespace TLDRevamp.Net
                 ServerSendTo(from, WS, true);
                 return;
             }
+            int idx = (int)r.VarU32(), kinds = (int)r.VarU32(), len = (int)r.VarU32();
             if (EditValidation && from != 0 && !TakeToken(_editBuckets, from, EditRatePerS, EditBurst))
             {
                 EditsRejected++;
                 Refuse(ref EditRefusedRate, "edit rate", $"edit from player {from}: over {EditRatePerS:F0} a second");
                 SessionLog.Event("edit-refused", net, from: from, to: se.OwnerId, result: "edit rate");
+                EditBackLater(se, idx, r.Bad);
                 return;
             }
             if (EditRangeCheck && from != 0 && !AtObject(from, se))
@@ -205,9 +207,9 @@ namespace TLDRevamp.Net
                 EditsRejected++;
                 Refuse(ref EditsOutOfReach, "edit reach", $"edit from player {from}: they aren't at net {net}");
                 SessionLog.Event("edit-refused", net, from: from, to: se.OwnerId, result: "edit reach");
+                EditBackLater(se, idx, r.Bad);
                 return;
             }
-            int idx = (int)r.VarU32(), kinds = (int)r.VarU32(), len = (int)r.VarU32();
             if (r.Bad || len < 0 || len > r.Remaining || idx < 0) { SessionLog.Event("edit-refused", net, item: idx, from: from, result: "malformed record"); EditsRejected++; return; }
             if (EditValidation && from != 0)
             {
@@ -224,6 +226,7 @@ namespace TLDRevamp.Net
                     EditsRejected++;
                     if (why.StartsWith("kinds")) Refuse(ref EditRefusedKinds, "edit kinds", $"edit from player {from} of net {net} item {idx}: {why}");
                     else Refuse(ref EditRefusedValues, "edit values", $"edit from player {from} of net {net} item {idx} (kinds {kinds}): {why}");
+                    EditBackLater(se, idx, false);
                     return;
                 }
             }

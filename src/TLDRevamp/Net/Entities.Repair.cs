@@ -289,6 +289,7 @@ namespace TLDRevamp.Net
             for (uint k = 0; k < n && k < 4096 && !r.Bad; k++) off.Add((int)r.VarU32());
             int asker = (int)r.VarU32();
             if (r.Bad || !ByNet.TryGetValue(net, out var e) || e.Proxy || e.Epoch != epoch || !Resolve(e) || e.Root == null) return;
+            if ((flags & 8) != 0) { foreach (int i in off) ForgetResyncHash(e, i); RefusedEditsResent++; return; }   // Entities.EditBack
             float now = Time.realtimeSinceStartup;
             if (_repairRunAt.TryGetValue(net, out float at) && now - at < RepairRunEveryS) return;
             if (_repairRunAt.Count > 512) _repairRunAt.Clear();

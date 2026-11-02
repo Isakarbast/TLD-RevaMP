@@ -611,6 +611,18 @@ def scripted(h, L, car, tracked, cars):
     if want("aud-fight"):
         print("\n=== both players change usables of one item within a second: the same on both after?", flush=True)
         beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(1)
+        if arg("--fight-owner", "") == "host":
+            h.s(f"mp claim {car}"); wait(3, lambda: not h.ents()[car]["proxy"] and L.ents()[car]["proxy"])
+        print("     car owner", h.ents()[car]["owner"], flush=True)
+        if "--fight-rabbit" in sys.argv:    # the run that gave refusals had a rabbit claiming the car and parts coming off
+            for k in range(3):
+                known = set(h.ents()); h.s(f"set {T_}.RabbitNextSize 0.9"); h.s("devspawn 103")
+                born = lambda: [n for n, e in h.ents().items() if n not in known and "Nyul" in e.get("name", "")]
+                until(born, 10)
+                for rn in born():
+                    c = h.ents()[car]["pos"]; print("     rabbit", rn, str(h.s(f"mp rabbitdo {rn} charge {c[0]} {c[2]} 12 6"))[:60], flush=True)
+                time.sleep(4)
+                print(f"     the car after rabbit {k + 1}: {[round(v) for v in h.ents()[car]['pos']]}, attached {h.ents()[car]['attached']}", flush=True)
         rows = h.s(f"mp usables {car}")["usables"]
         by = {}
         for u in rows: by.setdefault(u["item"], []).append(u)
@@ -626,6 +638,29 @@ def scripted(h, L, car, tracked, cars):
                 print(f"     item {i} {a['itemName']} usables {a['usable']}/{b['usable']} round {rnd + 1}: {'same' if not bad else bad}"[:260], flush=True)
                 print(f"     the car on the host {[round(v) for v in h.ents()[car]['pos']]}, the joiner there {[[round(v) for v in q['target']] for q in h.s('mp players')['players']]}, on the joiner {[round(v) for v in L('mp players')['me']]}, edits out of reach {h.s(f'get {T_}.EditsOutOfReach').get('value')}", flush=True)
                 if bad: finding(f"aud-fight {a['itemName']} {rnd + 1}", f"different after 10 s: {str(bad)[:160]}")
+    if want("aud-refused"):
+        print("\n=== a usable refused for reach: does the player's screen go back to what the owner has?", flush=True)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0))
+        h.s(f"mp claim {car}"); wait(3, lambda: not h.ents()[car]["proxy"] and L.ents()[car]["proxy"])
+        rows = h.s(f"mp usables {car}")["usables"]
+        picks = [next((u for u in rows if w in u["itemName"]), None) for w in ("radio", "Door")]
+        if not any(picks): note("INVALID aud-refused: no usable")
+        for u in filter(None, picks):
+            k = (u["item"], u["usable"])
+            def v(p): return {(x["item"], x["usable"]): x["value"] for x in p.s(f"mp usables {car}")["usables"]}[k]
+            same = lambda: all(abs(float(a) - float(b)) < 0.01 for a, b in zip(v(h), v(L)))
+            for rnd, on in enumerate((False, True) if AB else (True,)):
+                h.s(f"set {T_}.RefusedEditsComeBack {on}")
+                out0 = h.s(f"get {T_}.EditsOutOfReach").get("value")
+                h.s(f"set {T_}.EditRangeM 0.1")
+                print(f"     {u['itemName']} usable {u['usable']} ({u['kind']}), told back {on}: before host {v(h)} joiner {v(L)}", flush=True)
+                L.try_act("usable", net=car, item=u["item"], slot=u["usable"], x=0.6 + 0.1 * rnd); time.sleep(1.5)
+                h.s(f"set {T_}.EditRangeM 15")
+                print(f"     refused {h.s(f'get {T_}.EditsOutOfReach').get('value') - out0}, host {v(h)} joiner {v(L)}", flush=True)
+                t0 = time.time(); until(same, 30 if not on else 60, 0.5)
+                print(f"     told back {on}: {'the same after %.1f s' % (time.time() - t0) if same() else 'STILL different after %.0f s' % (time.time() - t0)}: host {v(h)} joiner {v(L)}", flush=True)
+                if on and not same(): finding("aud-refused", f"{u['itemName']} usable {u['usable']}: host {v(h)}, joiner {v(L)} 60 s after the refusal", car)
+                if not on and same(): note("INVALID aud-refused: the same with the telling back off")
     if want("aud-wheel-far"):
         print("\n=== a tyre unbolted from a wheel, beside its car and 3 km from it: the same on both?", flush=True)
         def tyres(p): return p.s("mp namecount TireGumi 0")
