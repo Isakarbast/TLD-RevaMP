@@ -23,6 +23,7 @@ The public release v0.69.1 carries 28. The numbers above that were raised on dev
 - a Refetch can end with a byte: the asker still has the part's car and needs the part itself (`RefetchParts`)
 - a breakable's number in BreakHit and BreakFx counts the unbroken ones (`BreaksKept`)
 - a BreakFx ends with a byte: keep this break for whoever gets the object later, and this is such a replay
+- the world clock (97) ends with the host's world total (f64) and a sleeping player's cloud curve (f32, -1: nobody); a SleepSync (38) ends with the sleeper's curve (`Fixes.CloudClock`)
 
 ## 60
 

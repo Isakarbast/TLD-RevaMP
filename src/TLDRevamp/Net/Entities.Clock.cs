@@ -14,6 +14,8 @@ namespace TLDRevamp.Net
         private static bool _worldHasEpoch, _worldAwaitingWake;
         private static ushort _worldEpoch, _worldSeenEpoch;
         private static napszakvaltakozas _worldInstance;
+        private static float _sleepProgress = -1f;   // a sleeping player's cloud curve, for the world clock (Fixes.CloudClock)
+        private static double _sleepProgressAt = -100;
 
         /// Sample at the send frame, rather than exporting the last physics step's stale t.
         private static float WorldTimeNow()
@@ -45,11 +47,16 @@ namespace TLDRevamp.Net
             W.Reset(); W.U8(WorldClock); W.F64(ModObjects.ClockTime); W.F32(WorldTimeNow());
             bool frozen = settingsscript.s != null && settingsscript.s.S.BDevMode && kaposztaleves.s != null && !kaposztaleves.s.settings.daynight;
             W.F32(frozen ? 0f : _hostRate); W.U16(_worldEpoch); W.Bool(snap);
+            // the clouds (Fixes.CloudClock): the host's running world time, days and sleeps included, and
+            // a sleeping player's cloud curve (-1: nobody asleep; a sleeper gone quiet for 5 s counts as awake)
+            W.F64(Fixes.CloudClock.WorldTotal);
+            W.F32(ModObjects.ClockTime - _sleepProgressAt < 5 ? _sleepProgress : -1f);
         }
 
         private static void ReceiveWorldClock(NetReader r)
         {
             double stamp = r.F64(); float position = r.F32(), rate = r.F32(); ushort epoch = r.U16(); bool snap = r.Bool();
+            double total = r.Remaining >= 8 ? r.F64() : double.NaN; float sleepProgress = r.Remaining >= 4 ? r.F32() : float.NaN;
             if (r.Bad || IsHost || !Finite(position) || !Finite(rate) || rate < 0f || double.IsNaN(stamp) || double.IsInfinity(stamp)) return;
             if (!Fixes.SessionClocks.WorldEnabled) { ApplyWorldTime(position, snap); return; }
             if (!ClockMath.AcceptWorldSample(stamp, _worldStamp, _worldWakeStamp, snap, _worldAwaitingWake, epoch, _worldSeenEpoch)) { Fixes.SessionClocks.WorldStale++; return; }
@@ -57,6 +64,8 @@ namespace TLDRevamp.Net
             _worldSnap |= snap || !_worldHasEpoch || epoch != _worldSeenEpoch;
             _worldSeenEpoch = epoch; _worldHasEpoch = true; _worldAwaitingWake = false;
             Fixes.SessionClocks.WorldReceived++;
+            if (Finite(total)) Fixes.CloudClock.HostTotal(total, position, stamp, rate);
+            if (!float.IsNaN(sleepProgress)) Fixes.CloudClock.SleepProgress(sleepProgress);
         }
 
         /// Replace only the sky's local time advance; physics and gameplay keep their own time scale.
@@ -85,6 +94,7 @@ namespace TLDRevamp.Net
             _worldStamp = _worldWakeStamp = -1; _worldFollowing = _worldSnap = false; _worldInstance = null;
             _worldHasEpoch = _worldAwaitingWake = false; _worldEpoch = _worldSeenEpoch = 0;
             _timeSyncAcc = 0f; _wasSleeping = false; _wokeAt = -100f;
+            _sleepProgress = -1f; _sleepProgressAt = -100;
             _worldSentAt = _radioSentAt = -100;
             _radioLast = new int[0]; _radioStartLast = new float[0]; _radioAcc = 0f; _radioAnchors.Clear(); _radioStamp = -1;
         }

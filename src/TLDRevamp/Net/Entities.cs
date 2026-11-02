@@ -415,7 +415,7 @@ namespace TLDRevamp.Net
                 _worldWakeStamp = ModObjects.ClockTime; _worldStamp = -1; _worldFollowing = false;
                 _worldAwaitingWake = !IsHost && Fixes.SessionClocks.WorldEnabled;
                 float wt = Fixes.SessionClocks.WorldEnabled ? WorldTimeNow() : mainscript.s != null ? mainscript.s.GetCurrentT() : -1f;
-                if (wt >= 0f) { W.Reset(); W.U8(SleepSync); W.F32(wt); W.F64(ModObjects.ClockTime); ToServer(W, true); }
+                if (wt >= 0f) { W.Reset(); W.U8(SleepSync); W.F32(wt); W.F64(ModObjects.ClockTime); W.F32(-1f); ToServer(W, true); }
             }
             // while asleep, the clock goes out as it runs (the game turns it ~8 hours in a few seconds): the others' sky
             // followed only once the sleep was over, and the host's periodic clock pauses while it sleeps (playtest
@@ -428,7 +428,7 @@ namespace TLDRevamp.Net
                     _sleepClockAcc = 0f;
                     float wt = Fixes.SessionClocks.WorldEnabled ? WorldTimeNow() : mainscript.s.GetCurrentT();
                     // the same wire form as the wake-up one above: SleepSync carries the session stamp since protocol 34
-                    if (wt >= 0f && Finite(wt)) { W.Reset(); W.U8(SleepSync); W.F32(wt); W.F64(ModObjects.ClockTime); ToServer(W, true); SleepClocksSent++; }
+                    if (wt >= 0f && Finite(wt)) { W.Reset(); W.U8(SleepSync); W.F32(wt); W.F64(ModObjects.ClockTime); W.F32(Fixes.CloudClock.MySleepProgress()); ToServer(W, true); SleepClocksSent++; }
                 }
             }
             else _sleepClockAcc = SleepClockS;   // the first one at once
@@ -775,7 +775,7 @@ namespace TLDRevamp.Net
                 case PoiUsable: ServerPoiUsable(from, r); break;
                 case RemoveItem: { uint net = r.U32(); if (!r.Bad) ServerRemoveItem(from, net); break; }
                 case Refetch: { uint net = r.U32(); bool itself = !r.Bad && r.Remaining > 0 && r.Bool(); if (!r.Bad) ServerRefetch(from, net, itself); break; }
-                case SleepSync: { float wt = r.F32(); double st = r.F64(); if (!r.Bad && Finite(wt) && !double.IsNaN(st) && !double.IsInfinity(st)) ServerSleepSync(from, wt, st); break; }
+                case SleepSync: { float wt = r.F32(); double st = r.F64(); float sp = r.Remaining >= 4 ? r.F32() : float.NaN; if (!r.Bad && Finite(wt) && !double.IsNaN(st) && !double.IsInfinity(st)) ServerSleepSync(from, wt, st, sp); break; }
                 case ContactImpulse:
                 {
                     uint net = r.U32();

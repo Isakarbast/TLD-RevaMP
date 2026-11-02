@@ -66,7 +66,7 @@ breakables, trailers or mod objects.
 | 35 | RemoveItem | both | state | `ServerRemoveItem` drops the record, so no later Add | No refusal: any ready player may remove, receivers always apply. |
 | 36 | ContactImpulse | both | effect | - | Unreliable to the owner. |
 | 37 | DetachReq | both | ask | - | Also carries a stale owner's detach; refused by reach or rate, the census then settles it. |
-| 38 | SleepSync | both | stream | `ServerTimeTick` next clock replaces it | With the world clock on, the server answers with WorldClock. |
+| 38 | SleepSync | both | stream | `ServerTimeTick` next clock replaces it | With the world clock on, the server answers with WorldClock. Ends with the sleeper's cloud curve (-1 on waking). |
 | 39 | ShotgunIn | both | ask | - | Passenger input, repeats at 20 Hz. |
 | 40 | PlayerDamage | both | ask | - | Refused by the hit check: victim's health unchanged, nothing differs. |
 | 41 | AttachSync | both | state | `ServerCensusRepair` within 200 m; `ReplayAttaches` for later players | Trailers have a fixed census row. Unshared parent: nothing sent. |
@@ -124,7 +124,7 @@ breakables, trailers or mod objects.
 | 94 | ShareState | c>s | session | - | |
 | 95 | SharedChunk | s>c | session | - | |
 | 96 | IgnitionKey | both | ask | - | A held key repeats; a hold ends on its own. |
-| 97 | WorldClock | s>c | stream | `ServerTimeTick` every 2 s | |
+| 97 | WorldClock | s>c | stream | `ServerTimeTick` every 2 s | Ends with the host's world total and a sleeper's cloud curve (`Fixes.CloudClock`). |
 | 98 | CompactState | both | stream | `SendSettledState` on entering range; `CheckCopyPlace` compares where it rests | Refused if not owner or old epoch. Place check only for still objects within 200 m. |
 | 99 | HitchRequest | c>s | ask | - | Refused: nothing changed locally, the result goes to everyone's log. |
 | 100 | HitchCommand | s>c | ask | - | Not answered in 5 s: the server releases the hitch. |
