@@ -136,7 +136,7 @@ A join is refused, with the reason shown in the multiplayer screen, when:
 | Kicked before | "You were kicked from this game." |
 | Full | "The game is full (16 players)." |
 
-The wire protocol and its history: [PROTOCOL.md](PROTOCOL.md). A different *game* build is not a refusal: the
+The wire protocol and its history: [PROTOCOL.md](PROTOCOL.md). Every message and what heals it: [MESSAGES.md](MESSAGES.md); a new message needs a row there. A different *game* build is not a refusal: the
 host announces it in chat instead, because the worlds can differ (buildings) but the session still works.
 
 ### What is shared
