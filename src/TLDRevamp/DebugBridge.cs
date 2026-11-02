@@ -939,6 +939,7 @@ namespace TLDRevamp
                         case "places": return Net.Entities.PlacesJson();
                         case "trail": return ObjectTrail.Rows(uint.Parse(ma[1], mic));
                         case "handcopy": return Net.Entities.TestHandCopy(uint.Parse(ma[1]));
+                        case "losecopy": return Net.Entities.TestLoseCopy(uint.Parse(ma[1]));
                         case "nudgemember": return Net.Entities.TestNudgeMember(uint.Parse(ma[1]), int.Parse(ma[2]), float.Parse(ma[3], System.Globalization.CultureInfo.InvariantCulture));
                         case "poitanks": return Net.Entities.TestPoiTanks(float.Parse(ma[1], System.Globalization.CultureInfo.InvariantCulture));
                         case "dropstates": Net.Entities.TestDropStates = uint.Parse(ma[1]); return "{\"dropping\":" + ma[1] + "}";

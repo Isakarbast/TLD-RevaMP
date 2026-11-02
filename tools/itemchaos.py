@@ -148,7 +148,9 @@ def differences(h, L, tracked, cars):
         if not held and not a.get("stored") and not b.get("stored"):
             d = math.dist(a["pos"], b["pos"])
             moving = max(abs(x) for x in (a.get("vel") or [0])) > 0.3 or max(abs(x) for x in (b.get("vel") or [0])) > 0.3
-            if d > 0.6 and not moving: out[f"place {n}"] = f"{name} net {n} owner {a['owner']}: {d:.2f} m apart at rest ({a['pos']} / {b['pos']})"
+            # held in a car it reads 0 while it rides along: a car rolling on after its driver left is 3 m behind on the copy (seed 9)
+            near_car = lambda es, r: any(c in es and c != n and max(abs(x) for x in (es[c].get("vel") or [0])) > 0.3 and math.dist(es[c]["pos"], r["pos"]) < 60 for c in cars)
+            if d > 0.6 and not moving and not near_car(eh, a) and not near_car(el, b): out[f"place {n}"] = f"{name} net {n} owner {a['owner']}: {d:.2f} m apart at rest ({a['pos']} / {b['pos']})"
         if n in tracked and not held and not a["car"] and not a.get("stored") and not b.get("stored"):
             la, lb = h.lock(n), L.lock(n)
             if la and lb:
@@ -763,6 +765,50 @@ def scripted(h, L, car, tracked, cars):
         def v(p): return {(x["item"], x["usable"]): x["value"] for x in p.s(f"mp usables {car}")["usables"]}[(u["item"], u["usable"])]
         print(f"     an edit while sends are refused: host {v(h)}, joiner {v(L)}", flush=True)
         if any(abs(float(a) - float(b)) > 0.01 for a, b in zip(v(h), v(L))): finding("aud-send", f"edit while refused: host {v(h)}, joiner {v(L)}")
+    if want("aud-lost"):
+        print("\n=== a copy this machine's game destroyed on its own, twice within 30 s: does it come back?", flush=True)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0))
+        for on in (False, True) if AB else (True,):
+            L.s(f"set {T_}.RefetchLater {on}")
+            n = spawn(h, "jerry"); tracked.add(n); until(lambda: n in L.ents(), 8)
+            print(f"     came later {on}: {n}, joiner's copy lost:", str(L.s(f"mp losecopy {n}"))[:40], flush=True)
+            t0 = time.time(); until(lambda: n in L.ents() and not L.ents()[n].get("dormant"), 8, 0.25)
+            print(f"     back after {time.time() - t0:.1f} s; lost again:", str(L.s(f"mp losecopy {n}"))[:40], flush=True)
+            t0 = time.time(); time.sleep(1); until(lambda: n in L.ents(), 40, 0.5)
+            back = n in L.ents()
+            print(f"     came later {on}: {'back after %.0f s' % (time.time() - t0) if back else 'STILL gone after %.0f s, and on the host: %s' % (time.time() - t0, n in h.ents())}", flush=True)
+            if on and not back: finding("aud-lost", f"a copy lost twice stays gone: {n}", n)
+            if not on and back: note("INVALID aud-lost: it came back with it off")
+            if not back: tracked.discard(n)
+    if want("aud-tail"):
+        print("\n=== the recorder fills up: does a report still have what the player did just before it?", flush=True)
+        import tldenv, zipfile
+        h.s("set TLDRevamp.ReproPlayback.Active False")   # the harness's `repro act` keeps it on, and the recorder stays off in playback
+        until(lambda: h.s("bug status").get("recording"), 10)
+        st = h.s("bug status"); print("     recording", st.get("recording"), "full", st.get("full"), flush=True)
+        if not st.get("recording"): note(f"INVALID aud-tail: not recording: {str(st)[:200]}")
+        else:
+            t0 = time.time()
+            h.s("set TLDRevamp.ReproRecorder.TestFullAt 1"); time.sleep(12)
+            st = h.s("bug status"); print("     full now:", st.get("full"), flush=True)
+            h.s("bug report the recorder was full")
+            until(lambda: h.s("bug status").get("phase") in ("Saved", "Failed"), 60)
+            print("     report:", h.s("bug status").get("phase"), flush=True)
+            h.s("set TLDRevamp.ReproRecorder.TestFullAt 0"); h.s("set TLDRevamp.ReproPlayback.Active True")
+            zips = [p for p in (tldenv.GAME_DIR / "BepInEx" / "tldrevamp-feedback").glob("TLDRevamp-bug-*.zip") if p.stat().st_mtime >= t0 - 2]
+            if not zips: finding("aud-tail", "no bundle")
+            else:
+                with zipfile.ZipFile(max(zips, key=lambda p: p.stat().st_mtime)) as z:
+                    names = z.namelist()
+                    if "repro-tail.json" not in names: finding("aud-tail", f"no repro-tail.json in {names[:12]}")
+                    else:
+                        tail = json.loads(z.read("repro-tail.json")); head = json.loads(z.read("repro.json")); report = z.read("REPORT.md").decode("utf-8", "replace")
+                        rows = tail["rows"]; poses = sum(1 for r_ in rows if r_[2] == 1)
+                        print(f"     repro.json {len(head['rows'])} rows, complete {head['complete']}; repro-tail.json {len(rows)} rows, {poses} poses, {rows[0][0]:.1f} to {rows[-1][0]:.1f} s, complete {tail['complete']}", flush=True)
+                        for l_ in report.split("\n"):
+                            if "tail" in l_: print("     REPORT.md:", l_[:170], flush=True)
+                        if tail["complete"] is not False or poses < 50 or "repro-tail.json" not in report: finding("aud-tail", f"tail {len(rows)} rows, {poses} poses, complete {tail['complete']}")
+                        if any(rows[i][0] > rows[i + 1][0] for i in range(len(rows) - 1)): finding("aud-tail", "rows out of order")
     if want("aud-wheel-far"):
         print("\n=== a tyre unbolted from a wheel, beside its car and 3 km from it: the same on both?", flush=True)
         def tyres(p): return p.s("mp namecount TireGumi 0")
@@ -1646,6 +1692,10 @@ with game.ProtectedSession():
             a_ = s_.s("mp anomalies")
             print(f"census {who}: asks {a_.get('censusAsks')}, differ {a_.get('censusDiffers')}, repairs asked {a_.get('repairsAsked')}, healed {a_.get('repairsHealed')}, failed {a_.get('repairsFailed')}, run {a_.get('repairsRun')}", flush=True)
             print(f"places {who}: {s_('mp places')}", flush=True)
+            def got(k):
+                try: return s_(f"get {k}").get("value")
+                except RuntimeError as ex: return f"? {str(ex)[:40]}"
+            print(f"counters {who}: copies made kinematic again {got(T + '.CopyBodiesHealed')}, bumps without a collider {got(T + '.BreakBumpsNoCollider')}, sends refused {s_('net stats').get('sendErrors')}, queued {s_('net stats').get('sendQueued')}", flush=True)
             for l_ in a_.get("lines", []):
                 if "repair" in l_ or "parts differ" in l_: print("    ", l_[:300], flush=True)
         L("mp stop"); h("mp stop")

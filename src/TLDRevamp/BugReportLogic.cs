@@ -16,6 +16,7 @@ namespace TLDRevamp
             public bool InSession, Seated, CarFile, StuckCarFile, LockFile;
             public double X, Y, Z;
             public bool ReproPresent, ReproComplete = true, ReproFull;
+            public int ReproTailRows; public double ReproTailFrom, ReproTailTo;
             public int ReproRows, ReproSkipped, ReproDropped;
             public double ReproSeconds;
             /// File name only (never a path). Null: a new world that was never saved, or a client.
@@ -24,7 +25,7 @@ namespace TLDRevamp
             public double AutosaveAgeSeconds = -1;
         }
 
-        internal const string CarFile = "car.json", StuckCarFile = "car-stuck.json", LockFile = "lock.json", ReproFile = "repro.json", StartWorldDir = "world/start/", AutosaveDir = "world/latest-autosave/";
+        internal const string CarFile = "car.json", StuckCarFile = "car-stuck.json", LockFile = "lock.json", ReproFile = "repro.json", ReproTailFile = "repro-tail.json", StartWorldDir = "world/start/", AutosaveDir = "world/latest-autosave/";
 
         /// REPORT.md: what happened, in which build and world, and what the bundle needs to be replayed. No names, no paths.
         internal static string Report(Facts f)
@@ -51,7 +52,11 @@ namespace TLDRevamp
                 sb.Append("- ").Append(f.ReproRows.ToString(inv)).Append(" rows over ").Append(Minutes(f.ReproSeconds)).Append(", from the moment this session started recording\n");
                 sb.Append("- ").Append(f.ReproComplete ? "complete" : "INCOMPLETE (dropped " + f.ReproDropped.ToString(inv) + " rows; the replay tool refuses it)")
                   .Append(", skipped (unresolvable) ").Append(f.ReproSkipped.ToString(inv)).Append('\n');
-                if (f.ReproFull) sb.Append("- The recorder was full: it kept the beginning, so a bug late in a very long session is not in it.\n");
+                if (f.ReproFull) sb.Append("- The recorder was full: this file is the beginning of the session.\n");
+                if (f.ReproTailRows > 0)
+                    sb.Append("- `").Append(ReproTailFile).Append("`: the latest ").Append(f.ReproTailRows.ToString(inv)).Append(" rows, from ").Append(Minutes(f.ReproTailFrom)).Append(" to ")
+                      .Append(Minutes(f.ReproTailTo)).Append(" into the recording, for reading. It does not replay (rows are missing before it).\n");
+                else if (f.ReproFull) sb.Append("- Nothing was recorded after it filled, so a bug after that is not in it.\n");
                 sb.Append('\n');
             }
 

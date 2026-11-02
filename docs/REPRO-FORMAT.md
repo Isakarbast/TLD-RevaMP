@@ -34,7 +34,7 @@ metres, angles degrees. A `bind` precedes the first use of each nonzero object r
 addresses increment `skipped`; the remaining recording stays complete and the runner warns.
 Malformed rows, backwards time and buffer exhaustion increment `dropped` and make `complete:false`; replay refuses
 these files. Stop shows both counts. Older format-1 files without `skipped` remain supported. The recorder retains the
-beginning, never a ring-buffer tail with missing actions. It stops at 60,000 rows.
+beginning, never a ring-buffer tail with missing actions. It stops at 60,000 rows. An automatic recording goes on from there into the bundle's `repro-tail.json`, the latest 30,000 rows, `complete:false`: readable, not replayable.
 
 | kind | Action | Values beyond the common addresses |
 |---|---|---|

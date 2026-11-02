@@ -86,7 +86,7 @@ namespace TLDRevamp
         /// that writes the extra files into the report folder.
         internal static Action Prepare(string dir, string note)
         {
-            var repro = ReproRecorder.Snapshot();
+            var repro = ReproRecorder.Snapshot(); var reproTail = ReproRecorder.TailSnapshot();
             var facts = new BugReportLogic.Facts
             {
                 Note = note ?? "", Version = Plugin.Version, Commit = Plugin.CommitLabel, Build = Plugin.BuildHash, Game = Plugin.GameBuild,
@@ -95,6 +95,7 @@ namespace TLDRevamp
                 ReproPresent = repro != null, ReproFull = ReproRecorder.Full,
             };
             if (repro != null) { facts.ReproRows = repro.Count; facts.ReproSkipped = repro.Skipped; facts.ReproDropped = repro.Dropped; facts.ReproComplete = repro.Dropped == 0; facts.ReproSeconds = repro.Seconds; }
+            if (reproTail != null) { facts.ReproTailRows = reproTail.Count; facts.ReproTailFrom = reproTail.FirstT; facts.ReproTailTo = reproTail.Seconds; }
             try
             {
                 var p = mainscript.s != null ? mainscript.s.player : null;
@@ -133,6 +134,9 @@ namespace TLDRevamp
                     if (repro != null)
                         using (var stream = new FileStream(Path.Combine(dir, BugReportLogic.ReproFile), FileMode.Create, FileAccess.Write))
                         using (var w = new StreamWriter(stream, new UTF8Encoding(false)) { NewLine = "\n" }) repro.Write(w, Net.Protocol.Version);
+                    if (reproTail != null)
+                        using (var stream = new FileStream(Path.Combine(dir, BugReportLogic.ReproTailFile), FileMode.Create, FileAccess.Write))
+                        using (var w = new StreamWriter(stream, new UTF8Encoding(false)) { NewLine = "\n" }) reproTail.Write(w, Net.Protocol.Version);
                     if (startDir != null && Directory.Exists(startDir))
                         facts.WorldStartCopied = CopyFiles(Directory.GetFiles(startDir), Path.Combine(dir, "world", "start")) > 0;
                     if (autosaveData != null && File.Exists(autosaveData))

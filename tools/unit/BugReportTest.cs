@@ -131,9 +131,33 @@ static class BugReportTest
         Check(sw.ToString().EndsWith("," + ((long)f).ToString() + ",3200.5,0.25]"), "written as plain numbers: " + sw);
     }
 
+    static void ReproTailRing()
+    {
+        var tail = new ReproTail(4);
+        Check(tail.Snapshot() == null && tail.Count == 0, "nothing yet: no file");
+        ReproRow Row(double t) => new ReproRow { Kind = ReproKind.Pose, T = t };
+        for (int i = 0; i < 3; i++) tail.Add(Row(i));
+        var d = tail.Snapshot();
+        Check(d.Count == 3 && d.FirstT == 0 && d.Seconds == 2, "not yet round: all of them");
+        for (int i = 3; i < 10; i++) tail.Add(Row(i));
+        d = tail.Snapshot();
+        Check(tail.Seen == 10 && d.Count == 4 && d.FirstT == 6 && d.Seconds == 9, "the latest rows, oldest first");
+        var sw = new StringWriter(); d.Write(sw, 61);
+        Check(sw.ToString().Contains("\"complete\":false"), "never complete: replay refuses it");
+        tail.Add(new ReproRow { Kind = ReproKind.Pose, T = double.NaN });
+        Check(tail.Seen == 10, "a malformed row stays out");
+        tail.Add(Row(10)); d = tail.Snapshot();
+        Check(d.FirstT == 7 && d.Seconds == 10 && d.Dropped == 1, "goes on after a snapshot");
+        var f = Sample(); f.ReproFull = true; f.ReproTailRows = 30000; f.ReproTailFrom = 3000; f.ReproTailTo = 3900;
+        string r = BugReportLogic.Report(f);
+        Check(r.Contains("repro-tail.json") && r.Contains("30000 rows") && r.Contains("does not replay") && !r.Contains("Nothing was recorded"), "the report names the tail");
+        f.ReproTailRows = 0; r = BugReportLogic.Report(f);
+        Check(!r.Contains("repro-tail.json") && r.Contains("Nothing was recorded after it filled"), "full with no tail says so");
+    }
+
     static int Main()
     {
-        CarState(); ReportText(); WorldFiles(); Command(); Chords(); ReproCopy();
+        CarState(); ReportText(); WorldFiles(); Command(); Chords(); ReproCopy(); ReproTailRing();
         Console.WriteLine("ALL PASS (" + checks + " checks)");
         return 0;
     }

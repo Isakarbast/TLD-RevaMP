@@ -1941,6 +1941,15 @@ namespace TLDRevamp.Net
             return "{\"moved\":" + carNet + "}";
         }
 
+        /// Test: this machine's game destroys a copy on its own, as streaming races do.
+        public static string TestLoseCopy(uint net)
+        {
+            if (!ByNet.TryGetValue(net, out var e) || e.Root == null) return "{\"error\":\"no such object here\"}";
+            if (!e.Proxy) return "{\"error\":\"not a copy\"}";
+            UnityEngine.Object.Destroy(e.Root.gameObject);
+            return "{\"lost\":" + net + "}";
+        }
+
         public static string MoveItem(uint net, float dx, float dz, bool onGround = false)
         {
             if (!ByNet.TryGetValue(net, out var e) || e.Root == null) return "{\"error\":\"no such object here\"}";

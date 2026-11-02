@@ -96,9 +96,14 @@ namespace TLDRevamp.Net
                             finally { SuppressDestroyEcho = false; }
                         }
                         float now2 = Time.realtimeSinceStartup;
-                        bool again = _refetchedAt.TryGetValue(e.NetId, out float last) && now2 - last < 30f;
-                        Plugin.Log.LogWarning($"copy lost here: {__instance.name} (net {e.NetId}, owner {e.OwnerId}) — {(again ? "lost again within 30 s, not fetched" : "fetched again")}");
-                        if (again) return;
+                        bool again = _refetchedAt.TryGetValue(e.NetId, out float last) && now2 - last < RefetchEveryS;
+                        Plugin.Log.LogWarning($"copy lost here: {__instance.name} (net {e.NetId}, owner {e.OwnerId}) — {(again ? "lost again within 30 s, fetched later" : "fetched again")}");
+                        if (again)
+                        {
+                            // not now, but not never: it left ByNet, so no census, and the server has it as known, so no Add
+                            if (RefetchLater) _refetchLater[e.NetId] = last + RefetchEveryS;
+                            return;
+                        }
                         _refetchedAt[e.NetId] = now2;
                         W.Reset(); W.U8(Refetch); W.U32(e.NetId);
                         ToServer(W, true);
@@ -275,6 +280,25 @@ namespace TLDRevamp.Net
         public const byte Refetch = 58;
         public static long Replaced, CopiesLost, Refetched;
         private static readonly Dictionary<uint, float> _refetchedAt = new Dictionary<uint, float>();
+        public static bool RefetchLater = true;   // A/B: false = before (a copy lost twice within 30 s stayed away for the session)
+        public static float RefetchEveryS = 30f;
+        public static long RefetchedLater;
+        private static readonly Dictionary<uint, float> _refetchLater = new Dictionary<uint, float>();
+        private static readonly List<uint> _refetchDue = new List<uint>();
+        private static void RefetchLaterTick()
+        {
+            if (_refetchLater.Count == 0) return;
+            float now = Time.realtimeSinceStartup;
+            _refetchDue.Clear();
+            foreach (var kv in _refetchLater) if (now >= kv.Value) _refetchDue.Add(kv.Key);
+            foreach (uint net in _refetchDue)
+            {
+                _refetchLater.Remove(net);
+                if (ByNet.ContainsKey(net)) continue;
+                _refetchedAt[net] = now; RefetchedLater++;
+                W.Reset(); W.U8(Refetch); W.U32(net); ToServer(W, true);
+            }
+        }
 
         /// The server relays the removal to everyone (the destroyer already cleaned itself), drops the entity and
         /// its detached-part entities, and destroys its own live copy — its OnDestroy cleans the host's save.

@@ -36,6 +36,36 @@ namespace TLDRevamp
         }
         private static void Number(TextWriter w, double n) => w.Write(n.ToString("R", CultureInfo.InvariantCulture));
     }
+    /// The last rows after ReproData is full, for reading: what the player did just before a bug late in a long session. A real
+    /// session of 73 minutes filled the 60,000 rows in 28. Replay needs the unbroken beginning, so this is another file, never
+    /// complete. Its array exists only once the recording is full.
+    internal sealed class ReproTail
+    {
+        internal const int Capacity = 30000;
+        private readonly int _capacity;
+        private ReproRow[] _rows;
+        private int _next;
+        internal int Count { get; private set; }
+        internal long Seen { get; private set; }
+        internal ReproTail(int capacity = Capacity) { if (capacity < 1) throw new ArgumentOutOfRangeException(); _capacity = capacity; }
+        internal void Add(ReproRow row)
+        {
+            if (!row.WellFormed || row.Unresolved) return;
+            if (_rows == null) _rows = new ReproRow[_capacity];
+            _rows[_next] = row; _next = (_next + 1) % _capacity; Seen++;
+            if (Count < _capacity) Count++;
+        }
+        /// In order, oldest first, as a recording that can't be replayed (complete:false).
+        internal ReproData Snapshot()
+        {
+            if (Count == 0) return null;
+            var data = new ReproData(Count);
+            for (int i = 0; i < Count; i++) data.Add(_rows[(_next - Count + i + _capacity) % _capacity]);
+            data.Truncated();
+            return data;
+        }
+    }
+
     /// A recording ends at the cap instead of overwriting the beginning of a repro. Only typed numbers reach disk.
     internal sealed class ReproData
     {
@@ -56,6 +86,7 @@ namespace TLDRevamp
             return copy;
         }
         internal double Seconds => Count > 0 ? _rows[Count - 1].T : 0;
+        internal double FirstT => Count > 0 ? _rows[0].T : 0;
         internal bool Add(ReproRow row)
         {
             if (!row.WellFormed || Count == _rows.Length || Count > 0 && row.T < _rows[Count - 1].T) { Dropped++; return false; }

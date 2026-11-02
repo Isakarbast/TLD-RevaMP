@@ -48,7 +48,7 @@ namespace TLDRevamp
             if (_save != null && !_save.IsCompleted) return "{\"error\":\"previous repro is saving\"}";
             var p = mainscript.s != null ? mainscript.s.player : null;
             if (p == null || !Net.Entities.InSession) return "{\"error\":\"join a multiplayer world first\"}";
-            _data = new ReproData(); Bound.Clear(); _player = p; _sid = SessionLog.Sid; _folder = SessionLog.MarksFolder;
+            _data = new ReproData(); _tail = null; Bound.Clear(); _player = p; _sid = SessionLog.Sid; _folder = SessionLog.MarksFolder;
             _auto = auto; _full = false; _autoSid = _sid;
             _start = Time.realtimeSinceStartupAsDouble; _next = _start; _count = _dropped = _skipped = 0; _failed = false; _ticks = _calls = _max = 0;
             _appendTicks = _appendCalls = _appendMax = 0;
@@ -68,7 +68,7 @@ namespace TLDRevamp
             if (!Recording || _stopping) return State();
             _stopping = true;
             if (_data.Count < ReproData.Capacity - 64) Net.Entities.ReproFinish();
-            var data = _data; _data = null; _count = data.Count; _dropped = data.Dropped; _skipped = data.Skipped; _player = null; Bound.Clear();
+            var data = _data; _data = null; _tail = null; _count = data.Count; _dropped = data.Dropped; _skipped = data.Skipped; _player = null; Bound.Clear();
             Net.Entities.ReproClear();
             _stopping = false;
             string folder = _folder;
@@ -121,20 +121,23 @@ namespace TLDRevamp
         internal static void DiscardAutomatic() { if (Recording && _auto) Stop(false); }
         /// The recording so far, copied, while it keeps going. Null when nothing is recording.
         internal static ReproData Snapshot() => _data?.Copy();
+        internal static ReproData TailSnapshot() => _tail?.Snapshot();
+        public static int TestFullAt;   // test: full at this many rows
+        private static ReproTail _tail;
         private static void Cost(long begin) { long elapsed = Stopwatch.GetTimestamp() - begin; _ticks += elapsed; _calls++; _max = Math.Max(_max, elapsed); }
         internal static void Add(ReproRow row)
         {
             if (!Recording || ReproPlayback.Active) return;
             long begin = Stopwatch.GetTimestamp();
-            if (_full) return;
             row.T = Math.Max(0, Time.realtimeSinceStartupAsDouble - _start); row.St = SessionLog.St;
+            if (_full) { _tail?.Add(row); return; }
             if (Bind(row.Net, row.T, row.St) && Bind(row.Other, row.T, row.St)) _data.Add(row);
             else _data.Skip();
             long elapsed = Stopwatch.GetTimestamp() - begin; _appendTicks += elapsed; _appendCalls++; _appendMax = Math.Max(_appendMax, elapsed);
-            if (_data.Count >= ReproData.Capacity)
+            if (_data.Count >= (TestFullAt > 0 ? TestFullAt : ReproData.Capacity))
             {
-                // A report keeps the beginning, which replays; an automatic recording stays on screen as full.
-                if (_auto) { _full = true; Plugin.Instance.Overlay.Toast("The action recorder is full; it keeps the first part of this session", 6f); }
+                // A report keeps the beginning, which replays, and the latest rows; an automatic recording stays on screen as full.
+                if (_auto) { _full = true; _tail = new ReproTail(); Plugin.Instance.Overlay.Toast("The action recorder is full; it keeps the first part of this session and the latest minutes", 6f); }
                 else { _data.Truncated(); Stop(); }
             }
         }
@@ -203,7 +206,7 @@ namespace TLDRevamp
             if (!Recording) return false;
             kind = OverlayKind.Warning;
             string key = Plugin.KeyName(Plugin.KeyRepro);
-            if (_keyName != key) { _keyName = key; _autoStatus = "for bug reports · " + key + " reports a bug"; _fullStatus = "keeps the first part · " + key + " reports a bug"; }
+            if (_keyName != key) { _keyName = key; _autoStatus = "for bug reports · " + key + " reports a bug"; _fullStatus = "keeps the first part and the latest minutes · " + key + " reports a bug"; }
             if (_full) { title = "RevaMP · Action recorder full"; status = _fullStatus; return true; }
             if (_auto) { title = "RevaMP · Recording actions"; status = _autoStatus; return true; }
             title = "RevaMP · Recording repro"; status = "Recording actions"; return true;

@@ -16,7 +16,8 @@ Do it right after the bug: the recording is already running, so there is nothing
 - While the action recorder runs, a banner says **Recording actions · for bug reports**. It starts by itself when a
   multiplayer session starts and ends with the session. Switch it off with *Record actions for bug reports*
   (Settings → Revamp → Debugging); then reports have no actions.
-- When the recorder is full (60,000 rows, about 100 minutes) the banner says so; it keeps the first part of the session.
+- When the recorder is full (60,000 rows: about 100 minutes standing around, 28 in one busy real session) the banner says so; it
+  keeps the first part of the session, which replays, and the latest 30,000 rows, which don't.
 - Taking a report shows **Bug report · saving…**, then **saved** with the file name for twelve seconds, and a toast with
   the folder. A failure says **failed** the same way.
 
@@ -28,6 +29,7 @@ Do it right after the bug: the recording is already running, so there is nothing
 |---|---|
 | `REPORT.md` | The note, build, commit, wire protocol, role, position, what the recording covers, and how to replay |
 | `repro.json` | The actions since the session started (format 1, docs/REPRO-FORMAT.md) |
+| `repro-tail.json` | Only when the recorder filled: the latest 30,000 rows, same format, `complete:false`: for reading what happened just before the bug, not for replay |
 | `world/start/` | The save the session started from (host only), copied before autosaves can replace it |
 | `world/latest-autosave/` | The newest autosave (host or solo; flagged when over an hour old), not what the actions replay from |
 | `car.json` | The car the reporter sits in (else the nearest within 15 m) as the physics engine has it at report time: body (kinematic, constraints, mass, drag), every wheel (torque, brake, rpm, mass, grounded), joints, colliders inside the body, the wheel lock and the mod's authority over the car. Take the report while still sitting in the stuck car |
