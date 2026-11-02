@@ -809,6 +809,38 @@ def scripted(h, L, car, tracked, cars):
                             if "tail" in l_: print("     REPORT.md:", l_[:170], flush=True)
                         if tail["complete"] is not False or poses < 50 or "repro-tail.json" not in report: finding("aud-tail", f"tail {len(rows)} rows, {poses} poses, complete {tail['complete']}")
                         if any(rows[i][0] > rows[i + 1][0] for i in range(len(rows) - 1)): finding("aud-tail", "rows out of order")
+    if want("aud-letgo"):
+        print("\n=== a player lets go of something inside the other's car, overlapping what's there: does the car take a blow?", flush=True)
+        take_car(h, car); beside(h, h.ents()[car], (-8, 0, 0)); time.sleep(1)
+        print("     car owner", h.ents()[car]["owner"], "attached", h.ents()[car]["attached"], flush=True)
+        worst = 0.0
+        for seated in (True, False):
+            if seated:
+                L.try_act("seat_in", net=car, slot=1); wait(3, L.seated); print("     joiner seated:", L.seated(), flush=True)
+            else:
+                if L.seated(): L("driveout"); time.sleep(1)
+                beside(L, L.ents()[car], (-2.0, 0, 0))
+            for what in ("lamp", "can", "jerry"):
+                for yaw in (0, 90, 180, 270):
+                    n = spawn(L, what); tracked.add(n)
+                    c0 = h.ents()[car]
+                    g = L("gpos"); L.act("pose", x=g["gx"], y=g["gy"], z=g["gz"], a=yaw)
+                    time.sleep(0.2)
+                    try: L(f"mp holdnet {n}")
+                    except RuntimeError as ex: note(f"holdnet {n}: {str(ex)[:60]}"); continue
+                    time.sleep(0.5)
+                    e = L.ents().get(n); fr = [round(x, 2) for x in car_frame(L.ents()[car], e["pos"])] if e else None
+                    L.try_act("drop", net=n, item=0)
+                    t0 = time.time(); top = 0.0
+                    while time.time() - t0 < 2.5:
+                        v = h.ents()[car].get("vel") or [0, 0, 0]; top = max(top, math.sqrt(sum(x * x for x in v))); time.sleep(0.03)
+                    c1 = h.ents()[car]; moved = math.dist(c0["pos"], c1["pos"])
+                    worst = max(worst, top)
+                    print(f"     {'seated' if seated else 'beside'} {what} facing {yaw} at {fr} in the car: speed up to {top:.2f} m/s, moved {moved:.2f} m, attached {c0['attached']} -> {c1['attached']}, item owner {h.ents()[n]['owner'] if n in h.ents() else '?'}", flush=True)
+                    if top > 4 or c1["attached"] < c0["attached"]: finding("aud-letgo", f"{what} let go at {fr}: the car reached {top:.1f} m/s, moved {moved:.1f} m, attached {c0['attached']} -> {c1['attached']}", car)
+                    if moved > 1.5: time.sleep(3)
+        print(f"     the worst: {worst:.2f} m/s", flush=True)
+        if L.seated(): L("driveout")
     if want("aud-wheel-far"):
         print("\n=== a tyre unbolted from a wheel, beside its car and 3 km from it: the same on both?", flush=True)
         def tyres(p): return p.s("mp namecount TireGumi 0")
@@ -1695,6 +1727,7 @@ with game.ProtectedSession():
             def got(k):
                 try: return s_(f"get {k}").get("value")
                 except RuntimeError as ex: return f"? {str(ex)[:40]}"
+            if who == "host": print(f"streaming: spawn {got('itemPlaceRemoveScript.s.itemSpawnDist')} m, remove {got('itemPlaceRemoveScript.s.itemRemoveDist')} m, unfreeze {got('itemPlaceRemoveScript.s.itemUnFreezeDist')} m, freeze {got('itemPlaceRemoveScript.s.itemFreezeDist')} m", flush=True)
             print(f"counters {who}: copies made kinematic again {got(T + '.CopyBodiesHealed')}, bumps without a collider {got(T + '.BreakBumpsNoCollider')}, sends refused {s_('net stats').get('sendErrors')}, queued {s_('net stats').get('sendQueued')}", flush=True)
             for l_ in a_.get("lines", []):
                 if "repair" in l_ or "parts differ" in l_: print("    ", l_[:300], flush=True)
