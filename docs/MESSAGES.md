@@ -4,7 +4,8 @@ Every message the mod sends, and what happens when one has no effect. Whether it
 refused sends queue (`SendOutbox`), so a reliable message gets there. The question is what happens when it arrives and
 is refused or ignored, or is dropped because the player hasn't finished loading.
 
-Read from the code at commit ce60aee, not from a test run. `tools/unit/MessageTableTest.cs` compares this table with the
+Read from the code at commit ce60aee, not from a test run, except that the heals of BreakFx, Refetch, Restore and
+WorldBreak were checked in the game with `tools/itemchaos.py` (`aud-break-late`, `aud-part-lost`, `aud-restore`, `aud-world-break`). `tools/unit/MessageTableTest.cs` compares this table with the
 code: every routed message has a row, and each id and direction are what the dispatchers do. A new message needs a row.
 
 **Kind**
@@ -76,7 +77,7 @@ breakables, trailers or mod objects.
 | 46 | ExplodeReq | both | ask | - | Refused by the hit check: nothing happens anywhere. |
 | 47 | ExplosionFx | both | effect | - | Not kept: players loading or arriving later see nothing. |
 | 48 | BreakHit | both | ask | - | Refused by the hit check: nothing happens anywhere. |
-| 49 | BreakFx | both | state | gap | Copy stored far or not yet known stays unbroken, later players too: not in records or census. |
+| 49 | BreakFx | both | state | `SendBreaksTo` for later copies; `BreakWaitTick` for a copy stored far | Kept for the session, made again when the game places the object anew; a creature whose Die throws is tried 5 times. A breakable that is an item of its own goes as MemberGone. |
 | 50 | AiState | both | stream | `SendCreatureSnapshots` on entering range; 1 s keepalive | Unreliable, within 1000 m. A dead creature's flag goes once. |
 | 51 | AiSound | both | effect | - | |
 | 52 | PoiUsable | both | state | `ServerCatchUpTick` for others; `PoiTellBack` for a refused sender | Refused, nothing known and building not loaded on the host: the sender's door stays moved. |
@@ -85,7 +86,7 @@ breakables, trailers or mod objects.
 | 55 | PhysLockSync | s>c | stream | `PhysLockTick` on change and every 5 s | |
 | 56 | StormSync | s>c | stream | `StormTick` every 2 s | |
 | 57 | PlayerSound | both | effect | - | |
-| 58 | Refetch | c>s | ask | - | Lost twice in 30 s: asked again after 30 s. A lost part copy stays gone: its car's Add is a duplicate. |
+| 58 | Refetch | c>s | ask | - | Lost twice in 30 s: asked again after 30 s. A lost part comes from the host's copy; not loaded on the host, or lost on the host itself: stays gone. |
 | 59 | HandoverState | both | stream | `ResyncTick` new owner's first pass sends everything | Late or refused: the old owner's last changes are lost, machines still agree. |
 | 60 | ReportAsk | s>c | session | - | Ignored if not sharing, or within 30 s of the last. |
 | 61 | ReportChunk | c>s | session | - | Only from players who share. |
@@ -94,7 +95,7 @@ breakables, trailers or mod objects.
 | 65 | CensusAsk | both | ask | - | Copies within 200 m. Refused silently on a stale epoch or by an owner with it stored far. |
 | 66 | CensusReply | both | ask | - | Also carries an owner's place findings and glued members' poses. |
 | 67 | Record | c>s | stream | `SendRecord` periodic | Rows for objects the sender doesn't own are skipped. |
-| 68 | Restore | s>c | state | gap | Client can't read or spawn it: pocket items are gone, the server emptied its record when sending. |
+| 68 | Restore | s>c | state | `ConfirmHanded` keeps what the record doesn't name; `TakeHandedBack` when they leave | An item that can't spawn stays with the host and is sent again at each join. |
 | 69 | GoMsg | s>c | session | - | Invalid destination: logged, no move. |
 | 70 | ModShare | c>s | state | gap | Over budget or before Ready: object stays on the sharer only, a pending entry blocks a resend. |
 | 71 | ModAssigned | s>c | state | `ModRemove` follows if the object is already gone | |
@@ -138,14 +139,14 @@ breakables, trailers or mod objects.
 | 109 | Roster | s>c | session | - | |
 | 110 | JoinLoading | s>c | session | - | Manifest, then an end marker for the join screen. |
 | 111 | SessionSettings | s>c | session | - | Refused unless it carries this host's token. Sent again at Ready. |
-| 112 | WorldBreak | both | state | gap | Piece not generated or not found here stays standing; not kept, later players see it standing too. |
+| 112 | WorldBreak | both | state | `ServerWorldBreaksTo` for later players; `WorldBreakTick` when near | Kept for the session, 4096 at most. A piece that never appears here is looked for less and less often. |
 
 ## Not settled by the code
 
 - **LeaseReq (28), LeaseFreed (34):** the code settles that a request made before Ready gets no reply and is never asked again. Whether the game's building spawn runs before Ready in real play rests on one code comment; nothing else confirms it.
 - **Share (20):** the quota refusal is settled. The spawn hook checks only that a session id exists, so a spawn between Welcome and Ready would be dropped too. Whether the game calls that spawn in that window is not visible here, as the game's code is outside this repository.
-- **BreakFx (49):** breakable state is in no record and no census row, so the difference is settled. How many breakables outlive their break is unknown; one that destroys its object goes out as RemoveItem instead.
-- **WorldBreak (112):** whether a stored world piece comes back when its area is generated again, on either machine, is game behaviour not visible here.
+- **BreakFx (49):** which breakables outlive their break without being an item of their own isn't listed. A rabbit does; a bus's toilet is an item of its own.
+- **WorldBreak (112):** a piece stayed down on both machines after both went 3 km away and back. Whether it stays down across a restart of the host is not established.
 - **ModEvent (78):** lasting or not is up to each mod. The only in-tree user sends TV keys, which end up as page text on the other machines. Marked as state and gap on that basis; a mod using it only for effects would have no lasting difference.
 - **ModShare (70):** dropping before Ready is settled. Whether a mod has objects to share in that window depends on the mod.
 - **PartOff (26), carried part form:** a refused part named by its carrier's slot was not traced through the census. The group's owner may not have the group loaded, and then it answers nothing, so a heal is not established for that form.

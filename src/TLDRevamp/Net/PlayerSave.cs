@@ -24,12 +24,19 @@ namespace TLDRevamp.Net
         public static bool ShareWornLate = true;   // A/B: false = before v0.68.5 (shared loose, then put on)
         public static bool KeepWorn = true;   // A/B: false = before v0.68.2 (what they wore stayed in the world without them)
         public const int MaxRecordBytes = 4 << 20, MaxItems = 64;
+        /// A/B: false = before: the host forgot a pocket the moment it sent it, so a joiner whose game stopped while it loaded,
+        /// or who couldn't spawn an item, lost it for good (docs/MESSAGES.md). Now the host keeps what it handed back until the
+        /// joiner's record names it as restored.
+        public static bool RestoreConfirmed = true;
+        public static string TestRestoreDrop = "";   // test: "all" = this joiner ignores a Restore, a number = it can't spawn that many of the items
+        public static long RestoreKept, RestoreConfirmedItems;
         public static long RecordsSent, RecordsIn, RecordsRefused, Pocketed, Restored, ItemsRestored, ItemsDropped, FilesWritten, SaveFiltered, WornRestored;
         public static string Last = "";
 
         // ------------------------------------------------------------------ joiner
 
         private static NetReader _pending;   // a Restore that came before Ready: applied once the world is ours to play in
+        private static List<uint> _restoredReport;   // the old ids that came back, for the next record
 
         /// The death state machine (DeathState.cs) holds the phase AND the record budget. The budget belongs to
         /// the session, so it lives with the phase: when they were two objects they could disagree, and a death
@@ -152,8 +159,11 @@ namespace TLDRevamp.Net
             w.VarU32((uint)rows.Count);
             foreach (var (id, net, rec) in rows) { w.U32(id); w.U32(net); w.VarU32((uint)rec.Length); w.Bytes(rec, 0, rec.Length); }
             w.VarU32((uint)worn.Count); foreach (var id in worn) w.U32(id);   // (an older host stops reading before this)
+            w.Bool(_restoredReport != null);
+            if (_restoredReport != null) { w.VarU32((uint)_restoredReport.Count); foreach (var id in _restoredReport) w.U32(id); }
             if (w.Len > MaxRecordBytes) { Last = "record too large: " + w.Len + " B"; return false; }
             c.SendRaw(w, SteamTransport.SendReliable);
+            _restoredReport = null;
             RecordsSent++;
             Last = $"record sent: {rows.Count} items ({worn.Count} worn), {w.Len} B{(dead ? ", dead" : "")}{(missed.Count > 0 ? ", not kept " + string.Join(" ", missed) : "")}; ids {string.Join(",", ids)}, held {(held != null ? held.name + "/" + held.idInSave : "none")} (hand {(pl.inHandP != null ? pl.inHandP.name : "-")}, picked {(pl.pickedUp != null ? pl.pickedUp.name : "-")})";
             return true;
@@ -164,6 +174,7 @@ namespace TLDRevamp.Net
         {
             var c = Mp.Client;
             if (!Enabled || c == null || c.Bot != null || !c.Ready) return;
+            if (_pending != null) ClientReady();   // the player wasn't there yet
             // A dead player leaves: the record that goes out is the death one (at the anchor), not a fresh one.
             if (SessionRules.HasDeathAnchor) { SendDeathRecord(); return; }
             SendRecord();
@@ -172,6 +183,7 @@ namespace TLDRevamp.Net
         internal static void ClientRestoreIn(NetReader r)
         {
             if (!Enabled || Mp.Client == null || Mp.Client.Bot != null) return;
+            if (TestRestoreDrop == "all") { Last = "restore: ignored (test)"; return; }
             var copy = new NetReader(); copy.Load(r.Remaining); Buffer.BlockCopy(r.Buf, r.Pos, copy.Buf, 0, r.Remaining);
             _pending = copy;
             if (Mp.Client.Ready) ClientReady();
@@ -188,12 +200,13 @@ namespace TLDRevamp.Net
         internal static void ClientReady()
         {
             Budget().SchedulePeriodic(Time.unscaledTimeAsDouble + 5.0);   // the first periodic record comes soon after the join
-            var r = _pending; _pending = null;
+            var r = _pending;
             if (r == null) return;
-            string json = r.Str(); var g = Protocol.ReadPos(r); bool dead = r.U8() == 1; int n = (int)r.VarU32();
-            if (r.Bad || n < 0 || n > MaxItems) { Last = "restore: bad message"; return; }
             var pl = mainscript.s != null ? mainscript.s.player : null;
-            if (pl == null || savedatascript.s == null) { Last = "restore: no player"; return; }
+            if (pl == null || savedatascript.s == null) { Last = "restore: no player"; return; }   // Tick tries again
+            _pending = null;
+            string json = r.Str(); var g = Protocol.ReadPos(r); bool dead = r.U8() == 1; int n = (int)r.VarU32();
+            if (r.Bad || n < 0 || n > MaxItems) { Last = "restore: bad message"; _restoredReport = new List<uint>(); return; }
             save_player sp = null;
             try { if (!string.IsNullOrEmpty(json)) sp = JsonUtility.FromJson<save_player>(json); } catch (Exception e) { Last = "restore json: " + e.Message; }
             var here = Mp.LocalGlobal();
@@ -215,10 +228,12 @@ namespace TLDRevamp.Net
                 if (r.Bad) wornOld.Clear();
             }
             var shareAfterWear = new List<tosaveitemscript>();
+            int.TryParse(TestRestoreDrop, out int testDrop);
             foreach (var (oldId, bytes) in bodies)
             {
                 try
                 {
+                    if (testDrop-- > 0) continue;
                     var d = RecordCodec.Decode(bytes);
                     if (d == null || d.items == null || d.items.Count == 0) continue;
                     uint rootOld = d.items[0].id;
@@ -257,7 +272,8 @@ namespace TLDRevamp.Net
             Restored++;
             Last = $"restored: {map.Count}/{n} items ({wornOld.Count} worn){(dead ? " on the ground (died: fresh)" : "")}";
             Plugin.Log.LogInfo("player save " + Last);
-            SendRecord();   // the host's record now names the new copies
+            _restoredReport = new List<uint>(map.Keys);
+            SendRecord();   // the host's record now names the new copies, and what came back
         }
 
         // ------------------------------------------------------------------ host
@@ -268,6 +284,9 @@ namespace TLDRevamp.Net
             public string Name = "", Json = ""; public Vector3d G; public bool Dead, Present; public int PlayerId = -1;
             public List<Item> Items = new List<Item>();
             public List<uint> Worn = new List<uint>();   // local ids (Item.Id) of the items they wore
+            public List<Item> Handed = new List<Item>();   // handed back, not confirmed: still theirs if they leave (RestoreConfirmed)
+            public List<uint> HandedWorn = new List<uint>();
+            public int HandedSent;   // the first so many of Handed went out; the rest stay for the next join (MaxItems)
         }
         private static readonly Dictionary<ulong, Rec> _recs = new Dictionary<ulong, Rec>();
         private static int _seed;
@@ -347,6 +366,14 @@ namespace TLDRevamp.Net
                 for (int i = 0; i < m && i < MaxItems && !r.Bad; i++) { uint id = r.U32(); if (!r.Bad && rec.Items.Exists(x => x.Id == id)) rec.Worn.Add(id); }
                 if (r.Bad) rec.Worn.Clear();
             }
+            if (_recs.TryGetValue(steam, out var before)) { rec.Handed = before.Handed; rec.HandedWorn = before.HandedWorn; rec.HandedSent = before.HandedSent; }
+            if (!r.Bad && r.Remaining > 0 && r.Bool())
+            {
+                int back = (int)r.VarU32();
+                var restored = new HashSet<uint>();
+                for (int i = 0; i < back && !r.Bad; i++) restored.Add(r.U32());
+                if (!r.Bad) ConfirmHanded(rec, restored);
+            }
             _recs[steam] = rec;
             RecordsIn++;
             // The host's view of the player: the record says the player is dead, so the remote body goes away and
@@ -369,6 +396,7 @@ namespace TLDRevamp.Net
             }
             rec.Items = keep;
             rec.Worn.RemoveAll(id => !keep.Exists(x => x.Id == id));
+            TakeHandedBack(rec);
             Last = $"player {playerId} left: {keep.Count} items in their pocket ({rec.Worn.Count} worn)";
             Plugin.Log.LogInfo("player save: " + Last);
             if (keep.Count > 0 && !WithSaveFile) WriteFile(SeedFilePath(_seed));   // else: on disk with the next save of the world
@@ -397,16 +425,38 @@ namespace TLDRevamp.Net
         {
             if (!Enabled || steam == 0 || !_recs.TryGetValue(steam, out var rec) || rec.Present) return;
             var w = new NetWriter();
+            int count = Math.Min(rec.Items.Count, MaxItems);   // a pocket of MaxItems and an item that couldn't come back last time: the rest next time
             w.U8(Restore); w.Str(rec.Dead ? "" : rec.Json); Protocol.WritePos(w, rec.G); w.U8((byte)(rec.Dead ? 1 : 0));
-            w.VarU32((uint)rec.Items.Count);
-            foreach (var it in rec.Items) { w.U32(it.Id); w.VarU32((uint)it.Rec.Length); w.Bytes(it.Rec, 0, it.Rec.Length); }
+            w.VarU32((uint)count);
+            for (int i = 0; i < count; i++) { var it = rec.Items[i]; w.U32(it.Id); w.VarU32((uint)it.Rec.Length); w.Bytes(it.Rec, 0, it.Rec.Length); }
             var worn = rec.Dead ? new List<uint>() : rec.Worn;   // died: everything lies where they fell
             w.VarU32((uint)worn.Count); foreach (var id in worn) w.U32(id);
             send(w);
             ItemsDropped += rec.Dead ? rec.Items.Count : 0;
             // handed back: from here their own game has them (its next record names the new copies)
+            if (RestoreConfirmed) { rec.Handed = rec.Items; rec.HandedWorn = rec.Worn; rec.HandedSent = count; }
             rec.Items = new List<Item>(); rec.Worn = new List<uint>(); rec.Present = true; rec.PlayerId = playerId; rec.Dead = false;
             Plugin.Log.LogInfo($"player save: {rec.Name} is back");
+        }
+
+        /// The joiner's record says what came back: the rest of what was handed back stays theirs, for the next time they join.
+        private static void ConfirmHanded(Rec rec, HashSet<uint> restored)
+        {
+            var (kept, gone) = RestoreHandover.StillOwed(rec.Handed, x => x.Id, rec.HandedSent, restored);
+            RestoreConfirmedItems += gone;
+            RestoreKept += kept.Count;
+            if (kept.Count > 0) Plugin.Log.LogWarning($"player save: {kept.Count} of {rec.Handed.Count} items of {rec.Name} didn't come back in their game: kept for their next join");
+            rec.Handed = kept;
+            rec.HandedWorn.RemoveAll(id => !kept.Exists(x => x.Id == id));
+            rec.HandedSent = 0;
+        }
+
+        /// They left: what they never confirmed goes back with their pocket.
+        private static void TakeHandedBack(Rec rec)
+        {
+            if (rec.Handed.Count == 0) return;
+            rec.Items.AddRange(rec.Handed); rec.Worn.AddRange(rec.HandedWorn);
+            rec.Handed = new List<Item>(); rec.HandedWorn = new List<uint>(); rec.HandedSent = 0;
         }
 
         // ------------------------------------------------------------------ disk
@@ -467,9 +517,10 @@ namespace TLDRevamp.Net
                 {
                     var rec = kv.Value;
                     w.U64(kv.Key); w.Str(rec.Name); w.Str(rec.Json); w.F64(rec.G.x); w.F64(rec.G.y); w.F64(rec.G.z); w.Bool(rec.Dead);
-                    w.VarU32((uint)rec.Items.Count);
+                    w.VarU32((uint)(rec.Items.Count + rec.Handed.Count));   // the game can stop before the joiner confirmed
                     foreach (var it in rec.Items) { w.U32(it.Id); w.VarU32((uint)it.Rec.Length); w.Bytes(it.Rec, 0, it.Rec.Length); }
-                    w.VarU32((uint)rec.Worn.Count); foreach (var id in rec.Worn) w.U32(id);
+                    foreach (var it in rec.Handed) { w.U32(it.Id); w.VarU32((uint)it.Rec.Length); w.Bytes(it.Rec, 0, it.Rec.Length); }
+                    w.VarU32((uint)(rec.Worn.Count + rec.HandedWorn.Count)); foreach (var id in rec.Worn) w.U32(id); foreach (var id in rec.HandedWorn) w.U32(id);
                 }
                 using (var fs = new FileStream(path + ".tmp", FileMode.Create, FileAccess.Write)) fs.Write(w.Buf, 0, w.Len);
                 // swapped in one step, the previous file kept as .bak (a delete then a move left no file between them)

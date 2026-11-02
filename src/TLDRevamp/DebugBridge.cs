@@ -949,6 +949,8 @@ namespace TLDRevamp
                         case "pcs": return Net.Entities.PartConds(uint.Parse(ma[1]));
                         case "wheelpose": return Net.Entities.WheelPose(uint.Parse(ma[1]));
                         case "farrec": return Net.Entities.FarRec(uint.Parse(ma[1]));
+                        case "breakstate": return Net.Entities.BreakState(uint.Parse(ma[1]));
+                        case "ragdollcycle": return Net.Entities.RagdollCycle(uint.Parse(ma[1]));
                         case "breakent": return Net.Entities.BreakEnt(uint.Parse(ma[1]), ma.Length > 2 ? float.Parse(ma[2], System.Globalization.CultureInfo.InvariantCulture) : 1e6f);
                         case "shotfx": return Net.Entities.ShotFxStats();
                         case "blasts": return Net.Entities.ExplosionStats();

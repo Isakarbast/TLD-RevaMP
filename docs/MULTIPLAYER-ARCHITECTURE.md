@@ -564,6 +564,8 @@ and yaw there, before `Death2` creates and launches the ragdoll and before the d
 under the corpse. The corpse itself is shared through the ordinary item lifecycle only after `Death` completes, so the
 existing limb transport carries its fall and final rest pose.
 
+A pocket handed back to a returning joiner stays with the host until the joiner's record names what came back. A joiner whose game stops while loading, or who can't spawn an item, gets it again at the next join; it can't be lost in between (`PlayerSave.RestoreConfirmed`). The cost: a joiner whose game stops in the moment between spawning its items and sending that record gets them twice.
+
 The per-player record is not a periodic stream during a death. The death sends exactly one record, at the recorded
 death point; the periodic record waits for the respawn, so the moving follow-camera pose can never replace it. The
 respawn sends a fresh alive record at the new point. The rules are `PlayerSaveBudget` (a pure state machine, tested in

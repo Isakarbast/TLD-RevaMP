@@ -179,6 +179,7 @@ namespace TLDRevamp.Net
             public HashSet<int> RepairOff;                                            // members a copy reports on and the owner has off (Entities.Repair)
             public uint CarrierNet; public int CarrierSlot = -1;                      // off a member carried away from its group (Entities.PartOff)
             public readonly List<uint> Parts = new List<uint>();                     // parts that came off this car, in order
+            public List<int> Broken;                                                  // breakables its owner broke, in order (BreaksKept)
             public readonly HashSet<int> SplitOff = new HashSet<int>();             // kept even if the detached entity is later removed
             public int CrashReturnTo = -1; public float CrashUntil;                  // crash lease (Entities.CrashAuthority): owner to return to
             public bool Hitch; public uint HitchCar; public int HitchSlot;
@@ -248,7 +249,7 @@ namespace TLDRevamp.Net
             ByNet.Clear(); Server.Clear(); PendingShare.Clear(); _nextNet = 1;
             // keyed by copies and network ids (which start at 1 again next session). (Known, the server's "sent to player N"
             // sets, needs nothing here: ServerOnJoin starts every joiner with an empty one - rehost.py)
-            PhysicalCars.Clear(); _refetchedAt.Clear(); _refetchLater.Clear();
+            PhysicalCars.Clear(); _refetchedAt.Clear(); _refetchLater.Clear(); _lostParts.Clear(); BreaksReset();
             _tankTold.Clear(); _tankAddsOut.Clear(); _censusFirst.Clear(); _censusDue.Clear(); _repairWait.Clear(); _repairCycle.Clear(); _repairCursor = 0; _repairRunAt.Clear(); _placeRunAt.Clear(); _placeWait.Clear();
             ResetPoiCensus(); Leases.Clear(); LeaseTypes.Clear(); LeaseUntil.Clear(); LeaseAsked.Clear(); _leaseRetryAt.Clear(); PendingGrants.Clear(); _leasesDone.Clear(); _captureKnown = null; Captures.Clear();
             ShotgunReset();
@@ -387,6 +388,8 @@ namespace TLDRevamp.Net
             WatchTick();
             AnomalyTick();
             RefetchLaterTick();
+            BreakWaitTick();
+            WorldBreakTick();
             PoiCensusTick();
             float dt = Time.unscaledDeltaTime;
             HostClockTick();
@@ -747,8 +750,8 @@ namespace TLDRevamp.Net
                 case ExplosionFx: ServerExplosionFx(from, r); break;
                 case PlayerSound: ServerPlayerSound(from, r); break;
                 case BreakHit: ServerBreakHit(from, r); break;
-                case BreakFx: ServerFwdAll(from, r, true); break;
-                case WorldBreak: ServerFwdAll(from, r, true); break;
+                case BreakFx: ServerKeepBreak(r); ServerFwdAll(from, r, true); break;
+                case WorldBreak: ServerKeepWorldBreak(r); ServerFwdAll(from, r, true); break;
                 case AiState:
                 {
                     // the creature's owner's stream, like State: a machine that just lost it doesn't keep steering the copies
@@ -770,7 +773,7 @@ namespace TLDRevamp.Net
                 case RabbitFx: ServerFwdAll(from, r, true); break;
                 case PoiUsable: ServerPoiUsable(from, r); break;
                 case RemoveItem: { uint net = r.U32(); if (!r.Bad) ServerRemoveItem(from, net); break; }
-                case Refetch: { uint net = r.U32(); if (!r.Bad) ServerRefetch(from, net); break; }
+                case Refetch: { uint net = r.U32(); bool itself = !r.Bad && r.Remaining > 0 && r.Bool(); if (!r.Bad) ServerRefetch(from, net, itself); break; }
                 case SleepSync: { float wt = r.F32(); double st = r.F64(); if (!r.Bad && Finite(wt) && !double.IsNaN(st) && !double.IsInfinity(st)) ServerSleepSync(from, wt, st); break; }
                 case ContactImpulse:
                 {
@@ -899,6 +902,7 @@ namespace TLDRevamp.Net
             _hitchDeparted.Remove(playerId);
             ServerRadioTo(playerId);
             ServerPoiUsablesTo(playerId);   // building doors/gates changed this session
+            ServerWorldBreaksTo(playerId);
         }
 
         /// A player left: their cars go to the host (it keeps simulating them from the last state).
@@ -1025,7 +1029,7 @@ namespace TLDRevamp.Net
                     var d = RecordCodec.Decode(rec);
                     if (d == null || d.items.Count == 0) { AddReject(net, d == null ? "undecodable" : "empty"); return; }
                     JoinReceived(net, d.items[0].prefabID);
-                    if (FarFromHere(hasState ? pos : d.items[0].transform.pos)) { AddFar(net, owner, epoch, d, hasState, pos, rot); Tpa.ObjectApplied(net); break; }
+                    if (FarFromHere(hasState ? pos : d.items[0].transform.pos)) { LostPartBack(AddFar(net, owner, epoch, d, hasState, pos, rot)); Tpa.ObjectApplied(net); break; }
                     uint rootOld = d.items[0].id;
                     var prefabs = new List<int>(); foreach (var r0 in d.items) prefabs.Add(r0.prefabID);
                     var order = new List<uint>();
@@ -1045,6 +1049,7 @@ namespace TLDRevamp.Net
                         if (CopyMembersMissing <= 30) Plugin.Log.LogWarning($"copy of net {net} ({root.name}): member {i} ({PrefabName(prefabs[i])}) didn't spawn here - its place stays empty");
                     }
                     ByNet[net] = e;
+                    LostPartBack(e);
                     Bind(e);
                     if (owner != MyId)
                     {

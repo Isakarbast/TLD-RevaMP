@@ -11,6 +11,8 @@ is a finding, with the steps that led to it.
   Nothing refused (part-off), no exceptions.
 Scripted runs of what the reports did, then a random monkey (--seed, --steps).
   tools/itemchaos.py [--no-build] [--relay off|iad] [--seed 1] [--steps 60] [--only NAME[,NAME]] [--no-monkey] [--monkey] [--oldglue]
+aud-break-late kills one rabbit a run: --break far|late --break-kept 0|1 (not --ab).
+aud-rabbit-locked: the game's lock and unlock on a rabbit's limbs, then its death (--ab).
 --only skips the monkey unless --monkey is there too. --slow waits the old fixed times instead of until the machines agree.
 --ab adds the census scenarios' round with the check off (40 s each: proves the gap stays without it; --slow has it too).
 The screen gets the scenario heads and a short result; everything else is in the run's folder (printed at the end, or
@@ -209,6 +211,8 @@ def check(h, L, tracked, cars, tag, settle=SETTLE):
     for who, s in (("host", h), ("joiner", L)):
         e = s("errors raw")   # the game's own texts: this log can hold private data, it stays on this machine
         n = e.get("errors", 0) + e.get("exceptions", 0)
+        # the game's own, 13 for each rabbit locked in a car (ragdollchildpos.Freeze): nothing of ours
+        n -= sum(k.get("n", 0) for k in e.get("kinds") or () if "because CharacterJoint depends on it" in str(k.get("what")))
         if n > _counts.get(who, 0):
             finding(tag + " / errors", f"{who}: {n - _counts.get(who, 0)} new: {str(e.get('kinds'))[:2500]}")
             _counts[who] = n
@@ -468,7 +472,8 @@ def scripted(h, L, car, tracked, cars):
                     beside(h, h.ents()[car]); h(f"mp holdnet {n}")
                     sample(n, f"{n} r{rnd + 1}")
                     check(h, L, tracked, cars, f"barrel-out {n} round {rnd + 1} wait {wait_s}")
-                    h("dropheld"); time.sleep(2)
+                    if h.held(): h("dropheld")
+                    time.sleep(2)
     if want("barrel-seat"):
         print("\n=== the same with the joiner sitting in the car (random seed 5): the copy must leave the container", flush=True)
         n = spawn(h, "can"); tracked.add(n)
@@ -771,15 +776,218 @@ def scripted(h, L, car, tracked, cars):
         for on in (False, True) if AB else (True,):
             L.s(f"set {T_}.RefetchLater {on}")
             n = spawn(h, "jerry"); tracked.add(n); until(lambda: n in L.ents(), 8)
-            print(f"     came later {on}: {n}, joiner's copy lost:", str(L.s(f"mp losecopy {n}"))[:40], flush=True)
+            h.s(f"mp claim {n}"); wait(3, lambda: not h.ents()[n]["proxy"]); until(lambda: L.ents().get(n, {}).get("proxy"), 5, 0.25)   # only a copy can be lost
+            try: print(f"     came later {on}: {n}, joiner's copy lost:", str(L.s(f"mp losecopy {n}"))[:40], flush=True)
+            except RuntimeError as e_: note(f"INVALID aud-lost: {str(e_)[-30:]}"); continue   # the joiner came to own it after all
             t0 = time.time(); until(lambda: n in L.ents() and not L.ents()[n].get("dormant"), 8, 0.25)
-            print(f"     back after {time.time() - t0:.1f} s; lost again:", str(L.s(f"mp losecopy {n}"))[:40], flush=True)
+            try: print(f"     back after {time.time() - t0:.1f} s; lost again:", str(L.s(f"mp losecopy {n}"))[:40], flush=True)
+            except RuntimeError as e_: note(f"INVALID aud-lost: {str(e_)[-30:]}"); continue
             t0 = time.time(); time.sleep(1); until(lambda: n in L.ents(), 40, 0.5)
             back = n in L.ents()
             print(f"     came later {on}: {'back after %.0f s' % (time.time() - t0) if back else 'STILL gone after %.0f s, and on the host: %s' % (time.time() - t0, n in h.ents())}", flush=True)
             if on and not back: finding("aud-lost", f"a copy lost twice stays gone: {n}", n)
             if not on and back: note("INVALID aud-lost: it came back with it off")
             if not back: tracked.discard(n)
+    if want("aud-restore"):
+        print("\n=== a joiner's pocket comes back: its game ignores the Restore, or can't spawn an item, or nothing goes wrong", flush=True)
+        PS = "TLDRevamp.Net.PlayerSave"
+        def rejoin_with(drop):
+            L.s(f"set {PS}.TestRestoreDrop {drop}")
+            L("mp stop"); time.sleep(6)
+            before = L.s(f"get {PS}.ItemsRestored").get("value")
+            L(f"mp joinid {h('net me')['steamId']}") if RELAY else L(f"mp join {DESKTOP_IP}:27070")
+            until(lambda: L("mp status")["client"]["ready"], 120); time.sleep(4)
+            L("set TLDRevamp.ReproPlayback.Active True"); L("set kaposztaleves.s.settings.god True")
+            return L.s(f"get {PS}.ItemsRestored").get("value") - before
+        def pocket():
+            n = spawn(L, "sponge"); L.s(f"mp holdnet {n}"); wait(5, lambda: L.held()); time.sleep(2)
+            return L.ents()[n]["name"]
+        def free():
+            if L.held():
+                try: L("dropheld")
+                except RuntimeError: pass
+        for on in (False, True) if AB else (True,):
+            h.s(f"set {PS}.RestoreConfirmed {on}")
+            for how in ("all", "1"):
+                pocket()
+                first = rejoin_with(how); second = rejoin_with("none")
+                print(f"     confirmed {on}, the joiner's game drops {how}: came back {first}, at the next join {second}, in the hand: {L.held()}", flush=True)
+                if on and second != 1: finding("aud-restore", f"drop {how}: {second} items at the next join")
+                if not on and second: note(f"INVALID aud-restore: drop {how} came back with it off")
+                free()
+            if on:
+                pocket()
+                once = rejoin_with("none"); twice = rejoin_with("none")
+                print(f"     nothing goes wrong: {once} item at one join, {twice} at the next, in the hand: {L.held()}", flush=True)
+                if once != 1 or twice != 1: finding("aud-restore", f"plain rejoin: {once}, then {twice} items: one each time is right")
+                free()
+            print("     host:", {k: h.s(f"get {PS}.{k}").get("value") for k in ("RestoreKept", "RestoreConfirmedItems")}, flush=True)
+    if want("aud-part-lost"):
+        print("\n=== the game destroys a joiner's copy of a part that came off a car: does it come back?", flush=True)
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(1)
+        h.s(f"mp claim {car}"); wait(3, lambda: not h.ents()[car]["proxy"])
+        for on in (False, True) if AB else (True,):
+            L.s(f"set {T_}.RefetchParts {on}")
+            ms = [m for m in glued(h, car) if m["i"] > 0 and m.get("lp") and math.hypot(*m["lp"]) < 30]
+            if not ms: note("INVALID aud-part-lost: nothing left to take off"); break
+            m = ms[0]; known = set(h.ents()); h.act("detach", net=car, item=m["i"]); time.sleep(2)
+            part = next((k for k, v in h.ents().items() if k not in known), None)
+            if part is None or part not in L.ents(): note(f"INVALID aud-part-lost: no part on the joiner: {part}"); break
+            if h.held(): h.s("dropheld")
+            if h.ents()[part]["proxy"]: h.s(f"mp claim {part}"); wait(3, lambda: not h.ents()[part]["proxy"])
+            time.sleep(1)
+            print(f"     refetch {on} ({m['name']}, part {part}): lost on the joiner:", str(L.s(f"mp losecopy {part}"))[:40], flush=True)
+            time.sleep(0.5); t0 = time.time(); until(lambda: part in L.ents() and not L.ents()[part].get("dormant"), 12, 0.25)
+            back = part in L.ents()
+            print(f"     refetch {on}: {'back after %.1f s' % (time.time() - t0) if back else 'STILL gone after %.0f s' % (time.time() - t0)}", flush=True)
+            if on and not back: finding("aud-part-lost", f"a lost part stays gone: {part} {m['name']}", part)
+            if not on and back: note("INVALID aud-part-lost: it came back with it off")
+            if not back: print("     the off round's part goes everywhere:", str(h(f"deleteshare {part}"))[:60], flush=True)
+            if back:
+                tracked.add(part)
+                h.s(f"mp moveitem {part} 3 0 ground"); time.sleep(3)
+                gap = max(abs(a - b) for a, b in zip(h.ents()[part]["pos"], L.ents()[part]["pos"]))
+                print(f"     moved by its owner: {gap:.2f} m apart, proxy {L.ents()[part]['proxy']}", flush=True)
+                if gap > 1: finding("aud-part-lost", f"the part that came back doesn't follow its owner: {gap:.2f} m", part)
+                L.s(f"mp losecopy {part}"); time.sleep(1)   # a second time inside 30 s comes later (aud-lost), not checked here
+                until(lambda: part in L.ents(), 40, 0.5); print(f"     lost again: back {part in L.ents()}", flush=True)
+        check(h, L, tracked, cars, "aud-part-lost")
+    if want("aud-break-late"):
+        # A bus's toilet doesn't test this: it is an item of its own, and its removal comes back through MemberGone (control, 2026-11-02).
+        # A rabbit's breakable has no item of its own and outlives its break. It dies once a run: --break far|late --break-kept 0|1 chooses.
+        how, on = arg("--break", "far"), arg("--break-kept", "1") == "1"
+        print(f"\n=== a rabbit dies while the joiner {'has it stored far' if how == 'far' else 'is not in the game'}: kept {on}", flush=True)
+        for p in (h, L): p.s(f"set {T_}.BreaksKept {on}")
+        # a fresh one each time: the games can outlive a run, and with them the rabbit the last one killed
+        known = set(h.ents()); print("     spawned:", str(h(f"devspawn {h('itemids Nyul')['items'][0][0]}"))[:60], flush=True)
+        got = []
+        until(lambda: got.extend(n for n, e in h.ents().items() if n not in known and "Nyul" in (e.get("name") or "") and not e.get("dormant")) or got, 10)
+        if not got:
+            note("INVALID aud-break-late: no rabbit came")
+        else:
+            rab = got[0]
+            def dead(p):
+                if p is L and rab in h.ents(): e_ = h.ents()[rab]; L(f"tpground {e_['pos'][0] - 3} {e_['pos'][2]}"); time.sleep(3)
+                try: st = p.s(f"mp breakstate {rab}")
+                except RuntimeError as e_: return str(e_)[-20:]   # not placed there
+                print(f"       {p.label}: {st}, {str({k: v for k, v in (p.ents().get(rab) or {}).items() if k in ('owner', 'proxy', 'dormant', 'name', 'pos')})[:110]}", flush=True)
+                return st.get("broken", st.get("error"))
+            h.s(f"mp claim {rab}"); wait(3, lambda: not h.ents()[rab]["proxy"])
+            until(lambda: rab in L.ents(), 10)
+            print("     before: dead on the host", dead(h), "on the joiner", dead(L), flush=True)
+            at = h.ents()[rab]["pos"]; L(f"tpground {at[0] + 1500} {at[2]}"); time.sleep(5)
+            if how == "late": L("mp stop"); time.sleep(5)
+            def rejoin():
+                L(f"mp joinid {h('net me')['steamId']}") if RELAY else L(f"mp join {DESKTOP_IP}:27070")
+                until(lambda: L("mp status")["client"]["ready"], 120)
+                L("set TLDRevamp.ReproPlayback.Active True"); L("set kaposztaleves.s.settings.god True")
+            try: killed = h.s(f"mp breakent {rab} 100000")
+            except RuntimeError as e_: killed = None; note(f"INVALID aud-break-late: the rabbit ran out of the host's range: {str(e_)[-30:]}")
+            print(f"     dormant on the joiner: {how == 'far' and (L.ents().get(rab) or {}).get('dormant')}; killed:", str(killed)[:50], flush=True); time.sleep(2)
+            if killed is None and how == "late": rejoin()
+            if killed is not None:
+                hd = dead(h)
+                if rab not in h.ents(): note("the rabbit left the world on the host after its death"); continue_ = False
+                else: continue_ = True
+                at = h.ents()[rab]["pos"] if continue_ else at
+                if how == "late":
+                    rejoin()
+                L(f"tpground {at[0] - 3} {at[2]}"); time.sleep(6); until(lambda: rab in L.ents() and not L.ents()[rab].get("dormant"), 15, 0.5)
+                time.sleep(3); ld = dead(L)
+                print(f"     kept {on}, {how}: dead on the host {hd}, on the joiner when it came near {ld}", flush=True)
+                print("     counters:", {k: h.s(f"get {T_}.{k}").get("value") for k in ("BreaksReplayed", "BreakFxSent")}, {k: L.s(f"get {T_}.{k}").get("value") for k in ("BreaksAppliedLate", "BreakFxApplied")}, flush=True)
+                # a record has no breaks in it: away and back, the game places it anew
+                if on:
+                    for p in (h, L): p(f"tpground {at[0] + 1500} {at[2]}")
+                    time.sleep(6)
+                    if rab not in h.ents(): note("the rabbit left the world on the host while both were away"); continue_ = False
+                    at = h.ents()[rab]["pos"] if rab in h.ents() else at   # where it lies now; it ran before it died
+                    for p in (h, L): p(f"tpground {at[0] - 3} {at[2]}")
+                    time.sleep(6); until(lambda: rab in L.ents() and rab in h.ents() and not L.ents()[rab].get("dormant") and not h.ents()[rab].get("dormant"), 15, 0.5); time.sleep(3)
+                    # made again by a once-a-second tick after the game places it: how long is it wrong, and does it settle?
+                    def broke(p):
+                        try: st_ = p.s(f"mp breakstate {rab}")
+                        except RuntimeError: return None
+                        # no breakable left at all isn't alive: 1 for "nothing here can still die"
+                        return st_.get("broken") if st_.get("breakables") else 1
+                    seen, t0, settled = [], time.time(), None
+                    print("     threw:", h.s(f"get {T_}.BreaksThrewLate").get("value"), L.s(f"get {T_}.BreaksThrewLate").get("value"), flush=True)
+                    while time.time() - t0 < 15:
+                        now_ = (broke(h), broke(L)); seen.append(now_)
+                        if now_ == (1, 1) and settled is None: settled = time.time() - t0
+                        if now_ != (1, 1): settled = None
+                        time.sleep(1)
+                    for p in (h, L):
+                        try: print(f"       {p.label} at the end: {p.s(f'mp breakstate {rab}')}", flush=True)
+                        except RuntimeError as e_: print(f"       {p.label} at the end: {str(e_)[-20:]}", flush=True)
+                    print(f"     both away and back: settled after {settled if settled is None else round(settled, 1)} s; host, joiner each second: {seen}", flush=True)
+                    if 0 not in seen[-1] and None in seen[-1]: note(f"INVALID aud-break-late: {how}: the rabbit isn't placed on both: {seen[-1]}")   # the game removes some dead rabbits
+                    elif settled is None or seen[-1] != (1, 1): finding("aud-break-late", f"{how}: alive again after both went away and back: {seen[-3:]}", rab)
+                if hd != 1: note(f"INVALID aud-break-late: not dead on the host: {hd}")
+                if on and ld != 1 and rab not in h.ents(): note(f"INVALID aud-break-late: {how}: the rabbit left the world on the host")
+                elif on and ld != 1: finding("aud-break-late", f"{how}: the rabbit lives on the joiner: {ld}", rab)
+                if not on and ld == 1: note(f"INVALID aud-break-late: {how}: dead on the joiner with it off")
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(4)
+    if want("aud-break-near"):
+        print("\n=== a rabbit dies with the joiner beside it: the live break still arrives", flush=True)
+        known = set(h.ents()); h(f"devspawn {h('itemids Nyul')['items'][0][0]}"); got = []
+        until(lambda: got.extend(n for n, e in h.ents().items() if n not in known and "Nyul" in (e.get("name") or "") and not e.get("dormant")) or got, 10)
+        rab = got[0]; h.s(f"mp claim {rab}"); wait(3, lambda: not h.ents()[rab]["proxy"]); until(lambda: rab in L.ents(), 10)
+        at = h.ents()[rab]["pos"]; L(f"tpground {at[0] - 3} {at[2]}"); time.sleep(3); b0 = L.s(f"get {T_}.BreakFxApplied").get("value")
+        print("     killed:", str(h.s(f"mp breakent {rab} 100000"))[:50], flush=True); time.sleep(2)
+        st = L.s(f"mp breakstate {rab}")
+        print(f"     joiner: applied {L.s(f'get {T_}.BreakFxApplied').get('value') - b0}, {st}", flush=True)
+        if st.get("broken") != 1: finding("aud-break-near", f"the rabbit lives on the joiner beside it: {st}", rab)
+    if want("aud-rabbit-locked"):
+        print("\n=== a rabbit that was once locked in a car dies: the lock destroyed its limbs' bodies, the ragdoll's list still names them", flush=True)
+        for on in (False, True) if AB else (True,):
+            for p in (h, L): p.s(f"set {T_}.RagdollListHealed {on}")
+            known = set(h.ents()); h(f"devspawn {h('itemids Nyul')['items'][0][0]}"); got = []
+            until(lambda: got.extend(n for n, e in h.ents().items() if n not in known and "Nyul" in (e.get("name") or "") and not e.get("dormant")) or got, 10)
+            if not got: note("INVALID aud-rabbit-locked: no rabbit came"); continue
+            rab = got[0]; h.s(f"mp claim {rab}"); wait(3, lambda: not h.ents()[rab]["proxy"]); until(lambda: rab in L.ents(), 10)
+            print("     before:", h.s(f"mp breakstate {rab}"), "cycle:", h.s(f"mp ragdollcycle {rab}"), flush=True); time.sleep(1)
+            try: killed = h.s(f"mp breakent {rab} 100000")
+            except RuntimeError as e_: killed = "threw: " + str(e_)[-60:]
+            time.sleep(2); st = h.s(f"mp breakstate {rab}")
+            print(f"     healed {on}: killed {str(killed)[:70]}; host {st}, lists healed {h.s(f'get {T_}.RagdollListsHealed').get('value')}", flush=True)
+            if on and (st.get("broken") != 1 or not st.get("ragdoll") or not st.get("limbsLoose")): finding("aud-rabbit-locked", f"a once locked rabbit didn't die properly: {st}", rab)
+            if not on and st.get("broken") == 1: note("INVALID aud-rabbit-locked: it died with the fix off: this isn't the cause")
+        for p in (h, L): p.s(f"set {T_}.RagdollListHealed True")
+    if want("aud-world-break"):
+        print("\n=== a piece of the world breaks while the joiner is far, or isn't in the game", flush=True)
+        def cacti(p, name, at): return [b for b in p(f"mp breakables 12 {name}")["breakables"] if math.dist(b["pos"], at) < 1.0]
+        def find(start):
+            for k in range(14):
+                x, z = start[0] + 170 * k, start[1] + 40 * (k % 3)
+                h(f"tpground {x} {z}"); time.sleep(3)
+                c = [b for b in h("mp breakables 150 cact")["breakables"] if not b["destroyed"] and "cact" in (b["gib"] + b["root"]).lower()]
+                if c: return c[0]
+            return None
+        rp = h("roadpoint"); start = (rp["gx"], rp["gz"]); far = (rp["gx"] - 6000, rp["gz"])
+        for on in (False, True) if AB else (True,):
+            for p in (h, L): p.s(f"set {T_}.WorldBreaksKept {on}")
+            L(f"tpground {far[0]} {far[1]}"); time.sleep(3)
+            c = find(start)
+            if not c: note("INVALID aud-world-break: no cactus found"); break
+            print(f"     kept {on}: cactus {c['root']} at {[round(v) for v in c['pos']]}", flush=True); h(f"tpground {c['pos'][0] + 1.5} {c['pos'][2]}"); time.sleep(2)
+            print("     ", str(h(f"mp breaknear {c['root']} 4"))[:100], flush=True); time.sleep(2)
+            L(f"tpground {c['pos'][0] + 6} {c['pos'][2]}"); time.sleep(6)
+            lc = cacti(L, c["root"], c["pos"]); hc_ = cacti(h, c["root"], c["pos"])
+            down = all(b["destroyed"] for b in lc)   # a broken one is destroyed: gone from the list, or there and marked
+            print(f"     kept {on}: the joiner came near: host's {[b['destroyed'] for b in hc_]}, joiner's {[b['destroyed'] for b in lc]}", flush=True)
+            if on and not down: finding("aud-world-break", f"far: the cactus stands on the joiner: {lc}")
+            if not on and down: note("INVALID aud-world-break: down on the joiner with it off")
+            # does the game bring a piece back when its area is made again? On both machines the same is all that matters
+            for p in (h, L): p(f"tpground {c['pos'][0] + 3000} {c['pos'][2]}")
+            time.sleep(8)
+            for p in (h, L): p(f"tpground {c['pos'][0] + 6} {c['pos'][2]}")
+            time.sleep(8)
+            hc2, lc2 = cacti(h, c["root"], c["pos"]), cacti(L, c["root"], c["pos"])
+            print(f"     kept {on}: both away 3 km and back: host's {[b['destroyed'] for b in hc2]}, joiner's {[b['destroyed'] for b in lc2]}", flush=True)
+            if on and [b["destroyed"] for b in hc2] != [b["destroyed"] for b in lc2]: finding("aud-world-break", f"after the area came back: host {hc2}, joiner {lc2}")
+            start = (c["pos"][0] + 400, c["pos"][2])
+        beside(h, h.ents()[car]); beside(L, L.ents()[car], (-2.6, 0, 0)); time.sleep(4)
     if want("aud-tail"):
         print("\n=== the recorder fills up: does a report still have what the player did just before it?", flush=True)
         import tldenv, zipfile

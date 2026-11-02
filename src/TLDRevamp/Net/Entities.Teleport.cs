@@ -24,9 +24,10 @@ namespace TLDRevamp.Net
         internal static void ResetTpaSync() { TpaSyncs.Clear(); TpaInbox.Clear(); TpaAdds.Clear(); BeginTpaRefresh(); }
 
         /// A missing detached part needs its parent's record before the part can be replayed.
-        internal static void ServerRefetch(int from, uint net)
+        internal static void ServerRefetch(int from, uint net, bool partItself = false)
         {
             if (!Server.TryGetValue(net, out var se)) return;
+            if (partItself && se.PartIndex >= 0) { ServerSendPart(from, se); return; }
             if (se.PartIndex >= 0 && !Server.TryGetValue(se.ParentNet, out se)) return;
             Refetched++;
             SendObject(from, se);
@@ -42,7 +43,7 @@ namespace TLDRevamp.Net
             if (ByNet.ContainsKey(net)) { Tpa.ObjectApplied(net); return; }
             // Known is lifetime knowledge. A second lost copy may no longer be in the client's registry.
             if (!TpaRefetched.Add(net)) return;
-            W.Reset(); W.U8(Refetch); W.U32(net); ToServer(W, true);
+            W.Reset(); W.U8(Refetch); W.U32(net); WriteLostPart(W, net); ToServer(W, true);
         }
 
         private static bool TpaDuplicate(uint net)

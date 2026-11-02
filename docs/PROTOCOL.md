@@ -19,6 +19,10 @@ The public release v0.69.1 carries 28. The numbers above that were raised on dev
 ## 61
 
 - a glued member's place in the census rows, its pose on request
+- a Record can end with the ids of what came back from a Restore (`PlayerSave.RestoreConfirmed`)
+- a Refetch can end with a byte: the asker still has the part's car and needs the part itself (`RefetchParts`)
+- a breakable's number in BreakHit and BreakFx counts the unbroken ones (`BreaksKept`)
+- a BreakFx ends with a byte: keep this break for whoever gets the object later, and this is such a replay
 
 ## 60
 

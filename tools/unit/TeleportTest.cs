@@ -89,6 +89,8 @@ namespace TLDRevamp.Net
         static double InterestM = 3000;
         static int InterestPerTick = 150;
         static void ServerLockedPose(SEnt se) { }
+        static bool ServerSendPart(int from, SEnt part) => false;
+        static void WriteLostPart(NetWriter w, uint net) { }
         static void SendObject(int player, SEnt se)
         {
             Sent.Add(se.NetId); Known.Add(se.NetId);

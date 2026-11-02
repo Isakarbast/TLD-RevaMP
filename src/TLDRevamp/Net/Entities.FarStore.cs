@@ -60,6 +60,7 @@ namespace TLDRevamp.Net
             InterestGotAll(playerId, se.NetId);
             if (playerId != 0) ReplayAttaches(playerId, se);   // the host's world has them already
             SendWornTo(playerId, se);   // on someone's head (Entities.Worn)
+            SendBreaksTo(playerId, se);   // broken before they had it
             InterestSent++;
         }
 

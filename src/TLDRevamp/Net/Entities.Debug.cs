@@ -577,6 +577,31 @@ namespace TLDRevamp.Net
         /// `mp breakent <net> [force]`: break a shared object as a player would. Here its owner: the game's Break(); a copy:
         /// TryBreak(force) — the hit a player's blow or shot makes, which goes to the owner (Entities.Ai CopyBreakForce).
         /// Lists what the group holds first (a crate's loot).
+        /// `mp breakstate <net>`: this machine's breakables of one object: how many, how many broken. Not placed here: an error.
+        public static string BreakState(uint net)
+        {
+            if (!ByNet.TryGetValue(net, out var e) || !Resolve(e) || e.Root == null) return "{\"error\":\"not placed here\"}";
+            int n = 0, broken = 0;
+            foreach (var br in e.Root.transform.GetComponentsInChildren<breakablescript>(true)) { n++; if (br.destroyed) broken++; }
+            var rag = e.Root.GetComponentInChildren<ragdollactivatescript>(true);
+            int limbs = 0, loose = 0;
+            if (rag != null && rag.RBs != null) foreach (var b in rag.RBs) if (b != null) { limbs++; if (!b.isKinematic) loose++; }
+            _breaksHere.TryGetValue(net, out var kept);
+            return "{\"breakables\":" + n + ",\"broken\":" + broken + ",\"kept\":" + (kept != null ? kept.Breaks.Count : 0) +
+                   ",\"ragdoll\":" + (rag != null && rag.ragdoll ? "true" : "false") + ",\"limbs\":" + limbs + ",\"limbsLoose\":" + loose +
+                   ",\"doneOnThis\":" + (kept != null && kept.Done == e.Root.transform ? "true" : "false") + ",\"id\":" + e.Root.GetInstanceID() + ",\"idInSave\":" + e.Root.idInSave + ",\"rootId\":" + e.RootId + "}";
+        }
+
+        /// `mp ragdollcycle <net>`: what a lock in a car does to a creature's limbs and what the unlock does: the game's own pair.
+        public static string RagdollCycle(uint net)
+        {
+            if (!ByNet.TryGetValue(net, out var e) || !Resolve(e) || e.Root == null) return "{\"error\":\"no such object here\"}";
+            var it = e.Root.GetComponentInChildren<tosaveitemscript>(true);
+            if (it == null || it.ragdollPos == null) return "{\"error\":\"no ragdoll on " + e.Root.name + "\"}";
+            it.ragdollPos.Freeze(); it.ragdollPos.UnFreeze();
+            return "{\"ok\":true}";
+        }
+
         public static string BreakEnt(uint net, float force)
         {
             if (!ByNet.TryGetValue(net, out var e) || !Resolve(e) || e.Root == null) return "{\"error\":\"no such object here\"}";

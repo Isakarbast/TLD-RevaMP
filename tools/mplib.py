@@ -100,6 +100,9 @@ class Agent:
     def __call__(self, cmd):
         self.p.stdin.write(cmd + "\n"); self.p.stdin.flush()
         r = self.read()
+        if "target guard refused" in r.get("error", ""):   # the check made on a new connection failed: once more before it ends a run
+            print("   [laptop] the target check failed:", r["error"][:80], flush=True); time.sleep(3)
+            self.p.stdin.write(cmd + "\n"); self.p.stdin.flush(); r = self.read()
         if "error" in r: raise RuntimeError(f"laptop {cmd}: {r['error']}")
         return r
 

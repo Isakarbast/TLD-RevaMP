@@ -30,6 +30,36 @@ namespace TLDRevamp.Net
         private static bool _aiSoundReplay;   // a copy playing the owner's creature voice
 
         // ================================================================ breakables
+        /// A/B: false = before: a creature that was ever locked in a car could not die. The lock destroys its limbs' bodies
+        /// (ragdollchildpos.Freeze) and the unlock makes new ones, but ragdollactivatescript.RBs still lists the destroyed ones:
+        /// SetRagdol throws out of aiscript.Die, on every machine. Not ours to leave: a break made again would throw each time.
+        public static bool RagdollListHealed = true;
+        public static long RagdollListsHealed;
+
+        [HarmonyPatch(typeof(ragdollactivatescript), nameof(ragdollactivatescript.SetRagdol))]
+        private static class RagdollBodiesNow
+        {
+            [HarmonyPrefix]
+            private static void Prefix(ragdollactivatescript __instance)
+            {
+                if (!RagdollListHealed || __instance.RBs == null) return;
+                bool gone = false;
+                foreach (var b in __instance.RBs) if (b == null) { gone = true; break; }
+                if (!gone) return;
+                var now = new List<Rigidbody>();
+                foreach (var b in __instance.RBs) if (b != null) now.Add(b);
+                var it = __instance.GetComponentInParent<tosaveitemscript>();   // the limbs that came back: the list can't say which
+                if (it != null && it.ragdollPos != null && it.ragdollPos.joints != null)
+                    foreach (var j in it.ragdollPos.joints)
+                    {
+                        var b = j != null ? j.GetComponent<Rigidbody>() : null;
+                        if (b != null && b != __instance.RB && !now.Contains(b)) now.Add(b);
+                    }
+                __instance.RBs = now.ToArray();
+                RagdollListsHealed++;
+            }
+        }
+
         [HarmonyPatch(typeof(breakablescript), nameof(breakablescript.TryBreakShoot))]
         private static class CopyBreakShoot
         {
@@ -160,10 +190,19 @@ namespace TLDRevamp.Net
             [HarmonyPostfix]
             private static void Postfix(breakablescript __instance, bool __state)
             {
-                if (__state || !InSession || _breakFxReplay || IsProxy(__instance)) return;
-                if (!BreakRef(__instance, out uint net, out int bi)) { if (WorldBreakGibs) WorldBreakOut(__instance); return; }
-                W.Reset(); W.U8(BreakFx); W.U32(net); W.VarU32((uint)bi);
+                if (__state || !InSession || _breakFxReplay) return;
+                if (IsProxy(__instance))
+                {
+                    if (BreaksKept) { var c0 = BreakOwner(__instance); SessionLog.Event("break-on-copy", c0 != null ? c0.NetId : 0, result: "not shared"); }
+                    return;
+                }
+                if (!BreakRef(__instance, out uint net, out int bi)) { if (BreaksKept) SessionLog.Event("break-no-object", result: __instance.name); if (WorldBreakGibs) WorldBreakOut(__instance); return; }
+                // a member that is an item of its own goes as a member (MemberGone): kept here too, its number would mean another one later
+                bool kept = BreaksKept && (__instance.GetComponent<tosaveitemscript>() == null || (ByNet.TryGetValue(net, out var broke) && broke.Root != null && broke.Root.gameObject == __instance.gameObject));
+                W.Reset(); W.U8(BreakFx); W.U32(net); W.VarU32((uint)bi); W.U8(kept ? BreakKeep : (byte)0);
                 ToServer(W, true); BreakFxSent++;
+                if (BreaksKept) SessionLog.Event("break-sent", net, item: bi, result: kept ? "kept" : "member");
+                if (kept) KeepBreakHere(net, bi, ByNet.TryGetValue(net, out var here) && here.Root != null ? here.Root.transform : null);
                 // the gib is the owner's: the copies replay the break without one, so it goes out as an object of its own
                 if (ReshareSurvivors && _spawnedGib(__instance) is GameObject gib && gib != null)
                     foreach (var t in gib.GetComponentsInChildren<tosaveitemscript>(true)) QueueReshare(t);
@@ -180,6 +219,57 @@ namespace TLDRevamp.Net
         public static bool WorldBreakGibs = true;   // A/B: false = before v0.69.2
         public static float WorldBreakM = 1.5f;
         public static long WorldBreaksSent, WorldBreaksApplied, WorldBreaksMissed, WorldGibsShared;
+        /// A/B: false = before: a piece not generated here when it broke, or a player who joined later, kept it standing.
+        public static bool WorldBreaksKept = true;
+        public static float WorldBreakNearM = 400f;
+        public const int MaxWorldBreaks = 4096;
+        public static long WorldBreaksReplayed, WorldBreaksLate, WorldBreakScans;
+        private sealed class KeptBreak { public Vector3d G; public string Name; public float NextTry; public float Wait = 2f; }
+        private static readonly List<KeptBreak> _worldBreaks = new List<KeptBreak>();          // server: every one of this session
+        private static readonly List<KeptBreak> _worldBreaksWaiting = new List<KeptBreak>();   // here: not found yet
+
+        private static void ServerKeepWorldBreak(NetReader r)
+        {
+            if (!WorldBreaksKept) return;
+            var g = new Vector3d(r.F64(), r.F64(), r.F64()); string name = r.Str();
+            if (r.Bad || string.IsNullOrEmpty(name) || _worldBreaks.Count >= MaxWorldBreaks) return;
+            _worldBreaks.Add(new KeptBreak { G = g, Name = name });
+        }
+
+        private static void ServerWorldBreaksTo(int playerId)
+        {
+            foreach (var b in _worldBreaks)
+            {
+                W.Reset(); W.U8(WorldBreak); W.F64(b.G.x); W.F64(b.G.y); W.F64(b.G.z); W.Str(b.Name);
+                ServerSendTo(playerId, W, true);
+                WorldBreaksReplayed++;
+            }
+        }
+
+        /// Per frame, cheap unless a kept break is near this player and due: one look over the world's breakables for all of them.
+        /// A piece that isn't there is looked for less and less often; it may never be (another build's world).
+        private static void WorldBreakTick()
+        {
+            if (_worldBreaksWaiting.Count == 0) return;
+            float now = Time.realtimeSinceStartup;
+            var here = Mp.LocalGlobal();
+            List<KeptBreak> due = null;
+            foreach (var b in _worldBreaksWaiting)
+            {
+                if (now < b.NextTry) continue;
+                double dx = b.G.x - here.x, dz = b.G.z - here.z;
+                if (dx * dx + dz * dz > WorldBreakNearM * WorldBreakNearM) continue;
+                (due ?? (due = new List<KeptBreak>())).Add(b);
+            }
+            if (due == null) return;
+            WorldBreakScans++;
+            var all = Object.FindObjectsOfType<breakablescript>();
+            foreach (var b in due)
+            {
+                if (BreakWorldPiece(all, b.G, b.Name)) { _worldBreaksWaiting.Remove(b); WorldBreaksLate++; continue; }
+                b.NextTry = now + b.Wait; b.Wait = Mathf.Min(b.Wait * 2f, 60f);
+            }
+        }
 
         private static void WorldBreakOut(breakablescript br)
         {
@@ -208,19 +298,27 @@ namespace TLDRevamp.Net
         {
             var g = new Vector3d(r.F64(), r.F64(), r.F64()); string name = r.Str();
             if (r.Bad || string.IsNullOrEmpty(name) || double.IsNaN(g.x) || double.IsNaN(g.y) || double.IsNaN(g.z)) return;
+            // a joiner gets every break of the session at once: all of them wait for the same one look, next frame
+            if (WorldBreaksKept) { _worldBreaksWaiting.Add(new KeptBreak { G = g, Name = name }); return; }
+            if (!BreakWorldPiece(Object.FindObjectsOfType<breakablescript>(), g, name)) WorldBreaksMissed++;
+        }
+
+        private static bool BreakWorldPiece(breakablescript[] all, Vector3d g, string name)
+        {
             var at = mainscript.UnityPosFromGlobal(g);
             breakablescript best = null; float bd = WorldBreakM;
-            foreach (var br in Object.FindObjectsOfType<breakablescript>())
+            foreach (var br in all)
             {
                 if (br == null || br.destroyed || br.GetComponentInParent<tosaveitemscript>() != null || WorldPieceName(br) != name) continue;
                 float d = Vector3.Distance(br.transform.position, at);
                 if (d < bd) { bd = d; best = br; }
             }
-            if (best == null) { WorldBreaksMissed++; return; }
+            if (best == null) return false;
             var gib = best.Gib; var rgib = best.reducedGib;
             _breakFxReplay = true;
             try { best.Gib = null; best.reducedGib = null; best.Break(); WorldBreaksApplied++; }
             finally { _breakFxReplay = false; if (best != null) { best.Gib = gib; best.reducedGib = rgib; } }
+            return true;
         }
 
         private static void ForwardHit(breakablescript br, byte kind, float force, Vector3 dir)
@@ -240,18 +338,60 @@ namespace TLDRevamp.Net
         private static bool BreakRef(breakablescript br, out uint net, out int bi)
         {
             net = 0; bi = -1;
-            var e = EntOfRoot(br.transform.root);
+            if (!BreaksKept)
+            {
+                var whole = EntOfRoot(br.transform.root);
+                if (whole == null) return false;
+                bi = System.Array.IndexOf(br.transform.root.GetComponentsInChildren<breakablescript>(true), br);
+                net = whole.NetId;
+                return bi >= 0;
+            }
+            var e = BreakOwner(br);
             if (e == null) return false;
-            bi = System.Array.IndexOf(br.transform.root.GetComponentsInChildren<breakablescript>(true), br);
+            bi = BreakablesOf(e, br).IndexOf(br);   // BreakOut asks after the game's Break: it counts as it did before
             net = e.NetId;
             return bi >= 0;
+        }
+
+        /// The object a breakable is part of: not whatever shares its transform's root. A rabbit locked in a bus has the bus as its
+        /// root, and its break went out as one of the bus's, numbered among the bus's and everything locked in it (itemchaos
+        /// aud-break-late: alive again in 2 of 6 runs once the rabbit was placed on its own).
+        private static Ent BreakOwner(breakablescript br)
+        {
+            for (var it = br.GetComponentInParent<tosaveitemscript>(); it != null;
+                 it = it.transform.parent != null ? it.transform.parent.GetComponentInParent<tosaveitemscript>() : null)
+            {
+                foreach (var e in ByNet.Values) if (e.Root == it) return e;
+                foreach (var e in ByNet.Values) if (e.Items != null && e.Items.Contains(it)) return e;
+            }
+            return null;
+        }
+
+        /// The ones a break can still name, in the same order everywhere. The game destroys a broken one at the end of its frame,
+        /// so counting all of them gave two breaks in a frame numbers that mean something else a frame later. Counting the
+        /// unbroken ones, the numbers hold as long as the breaks are replayed in order, whichever frames they fall in.
+        private static List<breakablescript> BreakablesOf(Ent e, breakablescript breaking = null)
+        {
+            var all = new List<breakablescript>(e.Root.transform.GetComponentsInChildren<breakablescript>(true));
+            all.RemoveAll(b =>
+            {
+                if (b.destroyed && b != breaking) return true;
+                var it = b.GetComponentInParent<tosaveitemscript>();
+                return it != null && it != e.Root && !e.Items.Contains(it);   // something locked in it is an object of its own
+            });
+            return all;
         }
 
         private static breakablescript BreakableOf(uint net, int bi)
         {
             if (!ByNet.TryGetValue(net, out var e) || !Resolve(e) || e.Root == null) return null;
-            var all = e.Root.transform.root.GetComponentsInChildren<breakablescript>(true);
-            return bi >= 0 && bi < all.Length ? all[bi] : null;
+            if (!BreaksKept)
+            {
+                var whole = e.Root.transform.root.GetComponentsInChildren<breakablescript>(true);
+                return bi >= 0 && bi < whole.Length ? whole[bi] : null;
+            }
+            var all = BreakablesOf(e);
+            return bi >= 0 && bi < all.Count ? all[bi] : null;
         }
 
         private static readonly AccessTools.FieldRef<breakablescript, GameObject> _spawnedGib = AccessTools.FieldRefAccess<breakablescript, GameObject>("spawnedGib");
@@ -370,13 +510,119 @@ namespace TLDRevamp.Net
         private static void ApplyBreakFx(NetReader r)
         {
             uint net = r.U32(); int bi = (int)r.VarU32();
+            byte flags = r.Remaining > 0 ? r.U8() : (byte)0;
             if (r.Bad) return;
+            bool kept = BreaksKept && (flags & BreakKeep) != 0;
+            // for a copy that just came: its members that are gone go at the end of this frame, and the numbers count without them
+            if (BreaksKept) SessionLog.Event("break-got", net, item: bi, result: ((flags & BreakLate) != 0 ? "late " : "") + (kept ? "kept" : "member") + (ByNet.ContainsKey(net) ? "" : ", no object"));
+            if (kept && (flags & BreakLate) != 0) { if (ByNet.ContainsKey(net)) KeepBreakHere(net, bi, null); return; }
             var br = BreakableOf(net, bi);
-            if (br == null || br.destroyed || !IsProxy(br)) return;
+            if (br == null)
+            {
+                // stored far here: nothing to break yet, and the owner's message won't come again
+                if (kept && ByNet.ContainsKey(net)) KeepBreakHere(net, bi, null);
+                return;
+            }
+            if (br.destroyed || !IsProxy(br)) return;
+            BreakQuietly(br);
+            if (kept) KeepBreakHere(net, bi, ByNet.TryGetValue(net, out var here) && here.Root != null ? here.Root.transform : null);
+        }
+
+        private static void BreakQuietly(breakablescript br)
+        {
             var gib = br.Gib; var rgib = br.reducedGib;
             _breakFxReplay = true;
             try { br.Gib = null; br.reducedGib = null; br.Break(); BreakFxApplied++; }
             finally { _breakFxReplay = false; if (br != null) { br.Gib = gib; br.reducedGib = rgib; } }
+        }
+
+        /// A/B: false = before: a break reached whoever had the object loaded then. A copy stored far, or a player who got the
+        /// object later, stayed unbroken: a break is in no record and no census row.
+        public static bool BreaksKept = true;
+        public const int MaxBreaksPerObject = 256;
+        private const byte BreakKeep = 1, BreakLate = 2;   // BreakFx's last byte
+        public static long BreaksReplayed, BreaksAppliedLate;
+        /// This machine's breaks, per object: a record has no breaks in it, so whenever the game places the object again (away and
+        /// back, stored far when it broke) they are made again, in their order, on what it placed.
+        private sealed class BreaksHere { public readonly List<int> Breaks = new List<int>(); public Transform Done; public int Tries; }
+        public const int BreakAgainTries = 5;
+        public static long BreaksThrewLate;
+        private static readonly Dictionary<uint, BreaksHere> _breaksHere = new Dictionary<uint, BreaksHere>();
+        private static readonly List<uint> _breaksDone = new List<uint>();
+        private static float _breakWaitAt;
+
+        private static void KeepBreakHere(uint net, int bi, Transform doneOn)
+        {
+            if (!_breaksHere.TryGetValue(net, out var b)) _breaksHere[net] = b = new BreaksHere();
+            if (b.Breaks.Count < MaxBreaksPerObject) b.Breaks.Add(bi);
+            // broken on this very placing: still counts as done only if nothing was owed on it
+            if (doneOn == null) b.Done = null;
+            else if (b.Breaks.Count == 1 || b.Done == doneOn) b.Done = doneOn;
+        }
+
+        private static void ServerKeepBreak(NetReader r)
+        {
+            if (!BreaksKept) return;
+            uint net = r.U32(); int bi = (int)r.VarU32();
+            byte flags = r.Remaining > 0 ? r.U8() : (byte)0;
+            if (r.Bad || bi < 0 || (flags & BreakKeep) == 0 || !Server.TryGetValue(net, out var se)) return;
+            if (se.Broken == null) se.Broken = new List<int>();
+            if (se.Broken.Count < MaxBreaksPerObject) se.Broken.Add(bi);
+        }
+
+        private static void SendBreaksTo(int playerId, SEnt se)
+        {
+            if (se.Broken == null) return;
+            foreach (int bi in se.Broken)
+            {
+                W.Reset(); W.U8(BreakFx); W.U32(se.NetId); W.VarU32((uint)bi); W.U8((byte)(BreakKeep | BreakLate));
+                ServerSendTo(playerId, W, true);
+                BreaksReplayed++;
+            }
+        }
+
+        /// Once a second: an object placed anew since its breaks. Its owner may have changed since; the breaks stand.
+        private static void BreakWaitTick()
+        {
+            if (_breaksHere.Count == 0 || Time.realtimeSinceStartup < _breakWaitAt) return;
+            _breakWaitAt = Time.realtimeSinceStartup + 1f;
+            _breaksDone.Clear();
+            foreach (var kv in _breaksHere)
+            {
+                if (!ByNet.TryGetValue(kv.Key, out var e)) { _breaksDone.Add(kv.Key); SessionLog.Event("breaks-forgotten", kv.Key); continue; }
+                if (!Resolve(e) || e.Root == null) continue;
+                var placed = e.Root.transform;
+                if (kv.Value.Done == placed) continue;
+                bool threw = false;
+                foreach (int bi in kv.Value.Breaks)
+                {
+                    var br = BreakableOf(kv.Key, bi);
+                    if (br == null || br.destroyed) continue;
+                    // the game's Die can throw: that is one object's
+                    // trouble. Let out of here, it ended the whole Entities.Tick and every break after this one, every second.
+                    try { BreakQuietly(br); BreaksAppliedLate++; SessionLog.Event("break-again", kv.Key, item: bi); }
+                    catch (System.Exception ex)
+                    {
+                        threw = true;
+                        if (BreaksThrewLate++ < 5)
+                        {
+                            var rag = br.GetComponentInParent<ragdollactivatescript>();
+                            Plugin.Log.LogWarning($"break {bi} of net {kv.Key} ({br.transform.root.name}) not made again yet: {ex.GetType().Name}, ragdoll body {(rag == null ? "no ragdoll" : rag.RB == null ? "gone" : "there")}");
+                        }
+                        break;   // the numbers after this one count on it
+                    }
+                }
+                if (threw && ++kv.Value.Tries < BreakAgainTries) continue;
+                if (threw) SessionLog.Event("break-gave-up", kv.Key, result: "threw");
+                kv.Value.Done = placed; kv.Value.Tries = 0;
+            }
+            foreach (uint net in _breaksDone) _breaksHere.Remove(net);
+        }
+
+        private static void BreaksReset()
+        {
+            _breaksHere.Clear();
+            _worldBreaks.Clear(); _worldBreaksWaiting.Clear();
         }
 
         // ================================================================ creatures: the owner sees and attacks remote players

@@ -81,6 +81,7 @@ namespace TLDRevamp.Net
                     {
                         ByNet.Remove(e.NetId);
                         CopiesLost++;
+                        if (RefetchParts && e.PartIndex >= 0) _lostParts[e.NetId] = (e.ParentNet, e.PartIndex);
                         // the members it let go (a crate's loot) would stay as frozen copies nobody moves, next to the
                         // fresh ones the refetch or the owner's re-share brings
                         if (ReshareSurvivors)
@@ -105,7 +106,7 @@ namespace TLDRevamp.Net
                             return;
                         }
                         _refetchedAt[e.NetId] = now2;
-                        W.Reset(); W.U8(Refetch); W.U32(e.NetId);
+                        W.Reset(); W.U8(Refetch); W.U32(e.NetId); WriteLostPart(W, e.NetId);
                         ToServer(W, true);
                         return;
                     }
@@ -296,8 +297,54 @@ namespace TLDRevamp.Net
                 _refetchLater.Remove(net);
                 if (ByNet.ContainsKey(net)) continue;
                 _refetchedAt[net] = now; RefetchedLater++;
-                W.Reset(); W.U8(Refetch); W.U32(net); ToServer(W, true);
+                W.Reset(); W.U8(Refetch); W.U32(net); WriteLostPart(W, net); ToServer(W, true);
             }
+        }
+
+        /// A/B: false = before: a lost part's refetch sent its car again, which this machine still had (a duplicate), and the part
+        /// off that car, which it no longer had to take off ("part absent"): the part stayed gone for the session.
+        public static bool RefetchParts = true;
+        public static long PartsRefetched, PartsRefetchNoRecord, PartsCameBack;
+        private static readonly Dictionary<uint, (uint car, int idx)> _lostParts = new Dictionary<uint, (uint, int)>();
+
+        /// The refetch of a part whose car is still here says so: it needs the part itself. With the car gone too, the car's
+        /// record and the part off it is the way back, as ever.
+        private static void WriteLostPart(NetWriter w, uint net)
+        {
+            if (_lostParts.TryGetValue(net, out var lost) && ByNet.ContainsKey(lost.car)) w.Bool(true);
+        }
+
+        /// Server: the part as an object of its own, from the host's copy as it is now (as OrphanPart does). Not loaded on the
+        /// host, or the host's own copy is the lost one: no record to send.
+        private static bool ServerSendPart(int from, SEnt part)
+        {
+            if (from == 0 || !ByNet.TryGetValue(part.NetId, out var pe) || !Resolve(pe) || pe.Root == null)
+            {
+                PartsRefetchNoRecord++;
+                Plugin.Log.LogWarning($"part {part.NetId} lost on player {from}: the host has no copy loaded to send");
+                return false;
+            }
+            part.Record = CaptureRecord(pe.Root);
+            PartsRefetched++;
+            SendObject(from, part);
+            return true;
+        }
+
+        /// A part this machine lost came back as an object: it is that part of its car again. Its own group (a tyre on the wheel)
+        /// came with it, but the part alone is the part, as on the owner.
+        private static void LostPartBack(Ent e)
+        {
+            if (!_lostParts.TryGetValue(e.NetId, out var lost)) return;
+            _lostParts.Remove(e.NetId);
+            e.ParentNet = lost.car; e.PartIndex = lost.idx;
+            if (e.Items.Count > 1) e.Items.RemoveRange(1, e.Items.Count - 1);
+            if (e.ItemIds != null && e.ItemIds.Count > 1) e.ItemIds.RemoveRange(1, e.ItemIds.Count - 1);
+            PartsCameBack++;
+            if (!ByNet.TryGetValue(lost.car, out var car) || lost.idx >= car.Items.Count) return;
+            (car.Split ?? (car.Split = new HashSet<int>())).Add(lost.idx);
+            car.Items[lost.idx] = e.Root;
+            uint id = e.Root != null ? e.Root.idInSave : e.RootId;
+            if (car.ItemIds != null && lost.idx < car.ItemIds.Count) car.ItemIds[lost.idx] = id;
         }
 
         /// The server relays the removal to everyone (the destroyer already cleaned itself), drops the entity and

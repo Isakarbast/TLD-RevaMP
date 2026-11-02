@@ -12,7 +12,7 @@ static class MessageTableTest
     static void Check(string name, bool ok) { if (!ok) { Console.WriteLine("FAIL " + name); failures++; } }
 
     /// State messages nothing heals. Fixing one removes it from here and from the table; adding one has to be a decision.
-    static readonly string[] KnownGaps = { "Share", "Assigned", "Add", "LeaseReq", "LeaseTaken", "BreakFx", "Restore", "ModShare", "ModRemove", "ModEvent", "WorldBreak" };
+    static readonly string[] KnownGaps = { "Share", "Assigned", "Add", "LeaseReq", "LeaseTaken", "ModShare", "ModRemove", "ModEvent" };
 
     static readonly string[] Kinds = { "state", "stream", "ask", "effect", "session" };
 
