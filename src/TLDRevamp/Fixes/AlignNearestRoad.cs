@@ -53,7 +53,7 @@ namespace TLDRevamp.Fixes
         /// Replaces `roadgen.RoadsNear(_gpos, true, align)` inside AlignPosToRoad (stack: roadgen, pos, bool, align).
         public static List<roadGenScript.roadClass> Candidates_(roadGenScript g, Vector3d pos, bool notJustChunks, poiGenScript.alignToRoadEmu align)
         {
-            if (!Enabled || CollectPatched == 0) return g.RoadsNear(pos, notJustChunks, align);
+            if (!Enabled || CollectPatched == 0) { var all = g.RoadsNear(pos, notJustChunks, align); RoadTieOrder.Sort(all); return all; }
             Calls++;
             var list = Collect(g, pos, notJustChunks, align);   // generates nothing
             Candidates += list.Count;
@@ -82,12 +82,14 @@ namespace TLDRevamp.Fixes
             var keep = new List<roadGenScript.roadClass>(list.Count);
             foreach (var r in list) // original order (NearestPointOnRoadBone's tie-break)
                 if (r.generated || generatedNow.Contains(r)) keep.Add(r);
+            RoadTieOrder.Sort(keep);   // ...made independent of the order the roads were added (a tie at a junction)
 
             if (Verify)
             {
                 VerifyChecks++;
                 var a = roadGenScript.NearestPointOnRoadBone(pos, keep, out var pa);
                 var full = g.RoadsNear(pos, notJustChunks, align); // the original: generates everything
+                RoadTieOrder.Sort(full);
                 var b = roadGenScript.NearestPointOnRoadBone(pos, full, out var pb);
                 if (!ReferenceEquals(a, b) || !pa.Equals(pb))
                 {

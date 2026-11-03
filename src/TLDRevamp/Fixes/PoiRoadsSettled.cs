@@ -28,7 +28,8 @@ namespace TLDRevamp.Fixes
     [HarmonyPatch]
     public static class PoiRoadsSettled
     {
-        public static bool Enabled = true, NeedForPois = true;
+        public static bool Enabled = true, NeedForPois = true, PoiRing = true;
+        public static long PoiChunksAdded;
         public static float NeedMarginM = 1500f, WantForS = 5f;
         public static long Held, ChunksAdded;
         [ThreadStatic] private static int _inAddPois;
@@ -44,6 +45,27 @@ namespace TLDRevamp.Fixes
         {
             _inAddPois++;
             _range = __instance.removeDistance + NeedMarginM;
+            // The game places the buildings of the 3x3 building chunks around the player; a candidate one chunk farther
+            // can land in sight too (a side road building 10 km from its spot, 2026-11-03 tour), and without its chunk it
+            // waits on one machine while another that came that way has it. Its candidates are made (GenChunk, from the
+            // seed) and wait for their roads like any other.
+            if (Enabled && NeedForPois && PoiRing && __instance.roadgen != null && __instance.roadgen.hasSideRoad && __instance.chunksNeeded != null)
+                try
+                {
+                    var need = __instance.chunksNeeded;
+                    int n = need.Count;
+                    for (int i = 0; i < n; i++)
+                        for (int dz = -1; dz <= 1; dz++)
+                            for (int dx = -1; dx <= 1; dx++)
+                            {
+                                var k = mainscript.GetChunkPos(need[i], dx, dz, __instance.chunkSize);
+                                if (need.Contains(k)) continue;
+                                need.Add(k);
+                                __instance.GenChunk(k);
+                                PoiChunksAdded++;
+                            }
+                }
+                catch (Exception e) { Plugin.Log.LogWarning("PoiRoadsSettled ring: " + e.Message); }
             // which road each waiting building aligns to: where it can end up depends on it (Near)
             Align.Clear();
             try
@@ -67,7 +89,7 @@ namespace TLDRevamp.Fixes
         [HarmonyPostfix]
         private static void Settled(roadGenScript __instance, Vector3d _gpos, ref bool __result)
         {
-            if (!__result || _inAddPois == 0 || !Enabled || !Applies(__instance)) return;
+            if (_inAddPois == 0 || !Enabled || !Applies(__instance)) return;
             try
             {
                 var g = __instance;
@@ -84,10 +106,14 @@ namespace TLDRevamp.Fixes
                         if (!near) break;
                         if (!g.chunksNeeded.Contains(k)) Want[k] = Time.realtimeSinceStartup;
                     }
+                // the game's own test holding it back too (one of its four chunks not done) is no reason not to ask for
+                // the chunks: a main road building 4.8 km from the player waited that way on one machine for good
+                // (2026-11-03 tour, seed 31337), while the other had come by them
                 if (!held) return;
+                NoteHeld(g, _gpos);
+                if (!__result) return;
                 __result = false;
                 Held++;
-                NoteHeld(g, _gpos);
             }
             catch (Exception e) { Plugin.Log.LogWarning("PoiRoadsSettled: " + e.Message); }
         }
@@ -179,6 +205,38 @@ namespace TLDRevamp.Fixes
             if (d < _nearest) _nearest = d;
         }
 
+        /// Why the candidate at (x, z) waits (bridge `call TLDRevamp.Fixes.PoiRoadsSettled.Explain x z`): its kind, how
+        /// far it is, where it can land, whether it counts as near, and each of its nine road chunks.
+        public static string Explain(double x, double z)
+        {
+            var map = menuhandler.s != null ? menuhandler.s.currentMainMap : null;
+            if (map == null || map.roadGens == null || map.roadGens.Count == 0) return "{\"error\":\"no map\"}";
+            var g = map.roadGens[0];
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            Vector3d cand = default; bool found = false; poiGenScript.alignToRoadEmu type = poiGenScript.alignToRoadEmu.none; double best = double.MaxValue;
+            foreach (var kv in Align) { double dd = (kv.Key.x - x) * (kv.Key.x - x) + (kv.Key.z - z) * (kv.Key.z - z); if (dd < best) { best = dd; cand = kv.Key; type = kv.Value; found = true; } }
+            if (!found || best > 100 * 100) return "{\"inAlign\":false,\"alignCount\":" + Align.Count + "}";
+            var pl = mainscript.s != null ? mainscript.s.player : null;
+            var me = pl != null ? mainscript.GlobalFromUnityPos(pl.transform.position) : default;
+            double d = Math.Sqrt((cand.x - me.x) * (cand.x - me.x) + (cand.z - me.z) * (cand.z - me.z));
+            double bound = type == poiGenScript.alignToRoadEmu.none ? 0 : Bound(g, cand, type);
+            var rows = new List<string>();
+            var c = mainscript.GetChunkPos(cand, 0, 0, g.chunkSize);
+            for (int dz = -1; dz <= 1; dz++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    var k = mainscript.GetChunkPos(c, dx, dz, g.chunkSize);
+                    g.chunks.TryGetValue(k, out var ch);
+                    rows.Add("[" + k.x.ToString("0", ci) + "," + k.z.ToString("0", ci) + "," + (g.chunksNeeded.Contains(k) ? 1 : 0) + "," + (ch != null ? 1 : 0) + "," +
+                             (ch != null && ch.insideConnected ? 1 : 0) + "," + (ch != null && ch.outsideUConnected ? 1 : 0) + "," + (ch != null && ch.outsideRConnected ? 1 : 0) + "," +
+                             (ch != null && ch.Done() ? 1 : 0) + "," + (Want.ContainsKey(k) ? 1 : 0) + "]");
+                }
+            return "{\"inAlign\":true,\"cand\":[" + cand.x.ToString("0.#", ci) + "," + cand.z.ToString("0.#", ci) + "],\"type\":\"" + type + "\",\"dist\":" + d.ToString("0", ci) +
+                ",\"bound\":" + bound.ToString("0", ci) + ",\"range\":" + _range.ToString("0", ci) + ",\"near\":" + (d < _range || d - bound < _range ? "true" : "false") +
+                ",\"roadsDoneVanilla\":" + (g.RoadsDoneAtPlace(cand) ? "true" : "false") +
+                ",\"chunks[x,z,needed,exists,inside,linkUp,linkRight,done,wanted]\":[" + string.Join(",", rows) + "]}";
+        }
+
         public static string Stats
         {
             get
@@ -188,7 +246,7 @@ namespace TLDRevamp.Fixes
                 double near = Math.Min(_nearest, _nearestShown);
                 var ci = System.Globalization.CultureInfo.InvariantCulture;
                 return "{\"enabled\":" + (Enabled ? "true" : "false") + ",\"needForPois\":" + (NeedForPois ? "true" : "false") +
-                    ",\"held\":" + Held + ",\"chunksAdded\":" + ChunksAdded + ",\"wanted\":" + Want.Count +
+                    ",\"held\":" + Held + ",\"chunksAdded\":" + ChunksAdded + ",\"wanted\":" + Want.Count + ",\"poiChunksAdded\":" + PoiChunksAdded +
                     ",\"nearestHeldM\":" + (near < double.MaxValue ? near.ToString("0", ci) : "-1") +
                     ",\"buildingsShownWithinM\":" + (pg != null ? pg.lodDistance.ToString("0", ci) : "-1") +
                     ",\"buildingsRemovedBeyondM\":" + (pg != null ? pg.removeDistance.ToString("0", ci) : "-1") + "}";

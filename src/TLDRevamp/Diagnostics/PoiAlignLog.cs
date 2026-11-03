@@ -14,6 +14,32 @@ namespace TLDRevamp.Diagnostics
         private struct Row { public Vector3d From, To; public string Json; }
         private static readonly List<Row> Rows = new List<Row>();
 
+        /// The candidate roads as they are when the game decides (before RoadsNear generates any): generated or not, and
+        /// the distance NearestPointOnRoadBone measures to each generated one.
+        private static string _before = "[]";
+
+        [HarmonyPrefix]
+        private static void Pre(poiGenScript __instance, Vector3d _gpos, poiGenScript.alignToRoadEmu align)
+        {
+            if (!On) return;
+            try
+            {
+                var rg = __instance.roadgen;
+                if (rg == null) return;
+                var ci = System.Globalization.CultureInfo.InvariantCulture;
+                var s = new List<string>();
+                foreach (var r in Fixes.AlignNearestRoad.Candidates_(rg, _gpos, true, align))
+                {
+                    string d = "-1";
+                    if (r.generated) { var p = roadGenScript.NearestPointOnRoadBone(_gpos, r); p.y = _gpos.y; d = (p - _gpos).magnitude.ToString("0.#", ci); }
+                    s.Add("[" + r.start.x.ToString("0.#", ci) + "," + r.start.z.ToString("0.#", ci) + "," + r.end.x.ToString("0.#", ci) + "," + r.end.z.ToString("0.#", ci) +
+                          "," + (r.generated ? 1 : 0) + "," + r.roadElements.Count + "," + d + "]");
+                }
+                _before = "[" + string.Join(",", s) + "]";
+            }
+            catch (System.Exception e) { _before = "[]"; Plugin.Log.LogWarning("poialign pre: " + e.Message); }
+        }
+
         [HarmonyPostfix]
         private static void Post(poiGenScript __instance, Vector3d _gpos, ref Vector3d _pos, bool __result, poiGenScript.alignToRoadEmu align)
         {
@@ -43,7 +69,7 @@ namespace TLDRevamp.Diagnostics
                     Rows.Add(new Row { From = _gpos, To = _pos, Json = "{\"gx\":" + N(_gpos.x) + ",\"gz\":" + N(_gpos.z) + ",\"px\":" + N(_pos.x) + ",\"pz\":" + N(_pos.z) +
                         ",\"ok\":" + (__result ? "true" : "false") + ",\"align\":" + Json.Str(align.ToString()) + ",\"frame\":" + Time.frameCount +
                         ",\"indexed\":" + Roads(rg.RoadsNear(_gpos, false, align)) + ",\"offered\":" + Roads(rg.RoadsNear(_gpos, true, align)) +
-                        ",\"chunks\":[" + string.Join(",", chunks) + "]}" });
+                        ",\"chunks\":[" + string.Join(",", chunks) + "],\"before[sx,sz,ex,ez,generated,elements,dist]\":" + _before + "}" });
                 }
             }
             catch (System.Exception e) { Plugin.Log.LogWarning("poialign: " + e.Message); }

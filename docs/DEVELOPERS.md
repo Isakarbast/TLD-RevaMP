@@ -161,7 +161,10 @@ host checks what each joiner generates from (`src/TLDRevamp/Net/WorldCheck.cs`, 
   chunks around it are finished; for a building near enough to be seen, the chunks it waits for are generated at
   once), the roads between two road
   chunks, which depended on which of the two the game handled first (`ChunkLinks`), and main road only buildings
-  (`MainRoadOnlyRoads`). In a session these are on whatever the player set; the settings rows say
+  (`MainRoadOnlyRoads`). In every terrain, a building whose nearest point is a junction picked whichever of the
+  equally near roads came first in a list ordered by arrival (`RoadTieOrder`), and of two buildings landing on one
+  spot the first placed stayed (`PoiSpotOrder`: the candidate with the smaller x, then z, wins). In a session these
+  are on whatever the player set; the settings rows say
   so, and the player's own choice counts again after the session. A host whose world was generated with them off has
   every generated tile and scenery chunk checked again against the roads and buildings there
   (`SceneryTileSync.RefreshAll`).

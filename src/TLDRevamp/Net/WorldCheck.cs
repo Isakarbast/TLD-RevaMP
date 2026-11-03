@@ -166,7 +166,7 @@ namespace TLDRevamp.Net
 
         // ---- the order-independence fixes, on for the session
 
-        private static bool _forced, _scenery, _terrain, _objGen, _links, _pois, _poiRing, _mainRoad, _waitLinks, _lineAhead;
+        private static bool _forced, _scenery, _terrain, _objGen, _links, _pois, _poiRing, _poiChunks, _spots, _ties, _mainRoad, _waitLinks, _lineAhead;
         public static bool Forcing => _forced;
 
         /// A session starts (Mp.Host; a joiner from Welcome, before the host's world loads).
@@ -174,14 +174,14 @@ namespace TLDRevamp.Net
         {
             if (!Force || _forced) return;
             _scenery = Fixes.SceneryTileSync.Enabled; _terrain = Fixes.TerrainSync.Enabled; _objGen = Fixes.ObjGenFast.Enabled; _links = Fixes.ChunkLinks.Enabled;
-            _pois = Fixes.PoiRoadsSettled.Enabled; _poiRing = Fixes.PoiRoadsSettled.NeedForPois;
+            _pois = Fixes.PoiRoadsSettled.Enabled; _poiRing = Fixes.PoiRoadsSettled.NeedForPois; _poiChunks = Fixes.PoiRoadsSettled.PoiRing; _spots = Fixes.PoiSpotOrder.Enabled; _ties = Fixes.RoadTieOrder.Enabled;
             _mainRoad = WorldGen.MainRoadOnlyRoads.Enabled; _waitLinks = WorldGen.MainRoadOnlyRoads.PoisWaitForLinks; _lineAhead = WorldGen.MainRoadOnlyRoads.LineAhead;
             bool wasOff = !_scenery || !_terrain || !_objGen;
             Fixes.SceneryTileSync.Enabled = Fixes.TerrainSync.Enabled = Fixes.ObjGenFast.Enabled = Fixes.ChunkLinks.Enabled = true;
-            Fixes.PoiRoadsSettled.Enabled = Fixes.PoiRoadsSettled.NeedForPois = true;
+            Fixes.PoiRoadsSettled.Enabled = Fixes.PoiRoadsSettled.NeedForPois = Fixes.PoiRoadsSettled.PoiRing = Fixes.PoiSpotOrder.Enabled = Fixes.RoadTieOrder.Enabled = true;
             WorldGen.MainRoadOnlyRoads.Enabled = WorldGen.MainRoadOnlyRoads.PoisWaitForLinks = WorldGen.MainRoadOnlyRoads.LineAhead = true;
             _forced = true;
-            if (wasOff || !_links || !_pois || !_poiRing || !_mainRoad || !_waitLinks || !_lineAhead)
+            if (wasOff || !_links || !_pois || !_poiRing || !_poiChunks || !_spots || !_ties || !_mainRoad || !_waitLinks || !_lineAhead)
             {
                 Forced++;
                 Plugin.Log.LogInfo($"world check: generation fixes on for the session (scenery {_scenery}, terrain {_terrain}, scenery generation {_objGen}, chunk links {_links}, buildings wait for roads {_pois}/{_poiRing}, main road {_mainRoad}/{_waitLinks}/{_lineAhead})");
@@ -200,7 +200,7 @@ namespace TLDRevamp.Net
             if (!_forced) return;
             _forced = false;
             Fixes.SceneryTileSync.Enabled = _scenery; Fixes.TerrainSync.Enabled = _terrain; Fixes.ObjGenFast.Enabled = _objGen; Fixes.ChunkLinks.Enabled = _links;
-            Fixes.PoiRoadsSettled.Enabled = _pois; Fixes.PoiRoadsSettled.NeedForPois = _poiRing;
+            Fixes.PoiRoadsSettled.Enabled = _pois; Fixes.PoiRoadsSettled.NeedForPois = _poiRing; Fixes.PoiRoadsSettled.PoiRing = _poiChunks; Fixes.PoiSpotOrder.Enabled = _spots; Fixes.RoadTieOrder.Enabled = _ties;
             WorldGen.MainRoadOnlyRoads.Enabled = _mainRoad; WorldGen.MainRoadOnlyRoads.PoisWaitForLinks = _waitLinks; WorldGen.MainRoadOnlyRoads.LineAhead = _lineAhead;
         }
 
