@@ -13,20 +13,27 @@ namespace TLDRevamp.Fixes
     /// terrain, the player and every loose body around them fell for those frames, and the new tile then appeared above
     /// them — a mesh collider doesn't push anything back up through its surface.
     ///
-    /// The restart now keeps the tiles it would destroy, colliders and all, under their old parent. An old tile goes
-    /// once every new tile over its square is placed (the same update its replacement is, when the tile grid stays the
-    /// same), or at once when the new generation doesn't need its square at all. What is left once KeepMaxS passes with no
-    /// tile replaced goes too.
-    /// Only for generators with colliders (the distant terrain has none) and only when the world is the same: same map,
-    /// same seed — the draw-distance restart, not a new game.
+    /// Same grid (ReuseTiles): the detailed terrain has 100 m tiles of resolution 40 at both ends of the slider — only
+    /// its reach changes (300-500 m) — so the restart destroyed ~177 tiles to build the same ~177 again. A restart that
+    /// would build the same tile size and resolution now keeps its tiles where they are, in the generator's own
+    /// dictionary: nothing is destroyed or rebuilt, and the game's next CheckPlace/CheckRemove grow or shrink the ring.
     ///
-    /// Runtime switch (bridge `set`): TLDRevamp.Fixes.TerrainRestartKeep.Enabled
+    /// Other grid (no generator with colliders today; a mod or a game update could change that): the restart keeps the
+    /// tiles it would destroy, colliders and all, under their old parent. An old tile goes once every new tile over its
+    /// square is placed, or at once when the new generation doesn't need its square at all. What is left once KeepMaxS
+    /// passes with no tile replaced goes too. Only for generators with colliders: the distant terrains, whose tiles grow
+    /// with the slider, have none and keep the game's restart.
+    ///
+    /// Both only when the world is the same: same map, same seed — the draw-distance restart, not a new game.
+    ///
+    /// Runtime switches (bridge `set`): TLDRevamp.Fixes.TerrainRestartKeep.Enabled / .ReuseTiles
     [HarmonyPatch]
     public static class TerrainRestartKeep
     {
         public static bool Enabled = true;
+        public static bool ReuseTiles = true;   // A/B: false = keep-until-replaced for every restart (d667850)
         public static float KeepMaxS = 30f;
-        public static long Restarts, Kept, Replaced, Unneeded, TimedOut, Errors;
+        public static long Restarts, Reused, ReusedTiles, Kept, Replaced, Unneeded, TimedOut, Errors;
         public static string LastError = "";
 
         private sealed class Old { public Vector3d G; public float Size; public newTerrainTileScript Tile; }
@@ -41,25 +48,68 @@ namespace TLDRevamp.Fixes
         private static readonly ConditionalWeakTable<terrainGenScript, Keep> Keeps = new ConditionalWeakTable<terrainGenScript, Keep>();
         private static readonly HashSet<long> _needed = new HashSet<long>(), _placed = new HashSet<long>();
 
+        /// The tiles and their parent a restart with an unchanged grid hands back to the generator (FStart → AfterFStart).
+        private sealed class Reuse { public Dictionary<Vector3d, newTerrainTileScript> Tiles; public Transform Parent; }
+
+        /// Would the restart build the same tiles? FStart's own sums for the new tile size and resolution; the rest of a
+        /// tile's mesh comes from the seed and the roads and buildings, which a restart doesn't change.
+        private static bool SameGrid(terrainGenScript gen)
+        {
+            float lerp = settingsscript.s.S.GetDrawDistanceLerp();
+            return Mathf.Round(Mathf.Lerp(gen.minDrawDist.tileSize, gen.maxDrawDist.tileSize, lerp)) == gen.tileSize &&
+                   Mathf.RoundToInt(Mathf.Lerp(gen.minDrawDist.resolution, gen.maxDrawDist.resolution, lerp)) == gen.resolution;
+        }
+
         /// Before FStart: what it would destroy is taken out of its reach (it destroys what terrains and parent hold).
         [HarmonyPatch(typeof(terrainGenScript), nameof(terrainGenScript.FStart))]
         [HarmonyPrefix]
-        private static void BeforeFStart(terrainGenScript __instance, mapSettingScript _mapSetting)
+        private static void BeforeFStart(terrainGenScript __instance, mapSettingScript _mapSetting, out Reuse __state)
         {
+            __state = null;
             var gen = __instance;
-            if (!Enabled || !gen.hasCollider || gen.terrains == null || _mapSetting == null || _mapSetting != gen.mapSetting ||
-                _mapSetting.seed != gen.seed || _mapSetting.useAsync2) return;
+            if (!Enabled || gen.terrains == null || _mapSetting == null || _mapSetting != gen.mapSetting ||
+                _mapSetting.seed != gen.seed || _mapSetting.useAsync2 || settingsscript.s == null) return;
             try
             {
+                Restarts++;
+                if (ReuseTiles && SameGrid(gen))
+                {
+                    __state = new Reuse { Tiles = gen.terrains, Parent = gen.parent };
+                    Reused++; ReusedTiles += gen.terrains.Count;
+                    gen.terrains = null;
+                    gen.parent = null;
+                    return;
+                }
+                if (!gen.hasCollider) return;
                 var keep = Keeps.GetValue(gen, _ => new Keep());
                 keep.Since = Time.realtimeSinceStartup;
-                Restarts++;
                 if (gen.terrains.Count == 0) return;
                 foreach (var kv in gen.terrains)
                     if (kv.Value != null) { keep.Tiles.Add(new Old { G = kv.Key, Size = gen.tileSize, Tile = kv.Value }); Kept++; }
                 if (gen.parent != null) keep.Parents.Add(gen.parent);
                 gen.terrains = null;
                 gen.parent = null;
+            }
+            catch (Exception e) { Fail(e); }
+        }
+
+        /// After FStart: an unchanged grid gets its tiles back, in the same dictionary under the same parent (FStart's new,
+        /// empty parent goes). The game's next CheckPlace/CheckRemove then add and drop tiles at the edge of the new reach,
+        /// as when the player drives on.
+        [HarmonyPatch(typeof(terrainGenScript), nameof(terrainGenScript.FStart))]
+        [HarmonyPostfix]
+        private static void AfterFStart(terrainGenScript __instance, Reuse __state)
+        {
+            if (__state == null) return;
+            var gen = __instance;
+            try
+            {
+                if (__state.Parent != null)
+                {
+                    if (gen.parent != null && gen.parent != __state.Parent) UnityEngine.Object.Destroy(gen.parent.gameObject);
+                    gen.parent = __state.Parent;
+                }
+                gen.terrains = __state.Tiles;
             }
             catch (Exception e) { Fail(e); }
         }
@@ -144,7 +194,8 @@ namespace TLDRevamp.Fixes
         public static string Stats()
         {
             var sb = new System.Text.StringBuilder();
-            sb.Append("{\"enabled\":").Append(Enabled ? "true" : "false").Append(",\"restarts\":").Append(Restarts).Append(",\"kept\":").Append(Kept)
+            sb.Append("{\"enabled\":").Append(Enabled ? "true" : "false").Append(",\"reuse\":").Append(ReuseTiles ? "true" : "false")
+              .Append(",\"restarts\":").Append(Restarts).Append(",\"reused\":").Append(Reused).Append(",\"reusedTiles\":").Append(ReusedTiles).Append(",\"kept\":").Append(Kept)
               .Append(",\"replaced\":").Append(Replaced).Append(",\"unneeded\":").Append(Unneeded).Append(",\"timedOut\":").Append(TimedOut)
               .Append(",\"errors\":").Append(Errors).Append(",\"lastError\":").Append(Json.Str(LastError)).Append(",\"generators\":[");
             var map = menuhandler.s != null ? menuhandler.s.currentMainMap : null;
