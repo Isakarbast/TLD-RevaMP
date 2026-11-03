@@ -188,7 +188,9 @@ host checks what each joiner generates from (`src/TLDRevamp/Net/WorldCheck.cs`, 
   float coordinates (whose origin moves with the player): two copies arriving from opposite sides had different distant
   tiles at 7 of 12 spots. Now each placed tile waits in a queue until the shadow (`PureRoads.RoadsAround`, every road
   that can reach the tile; the old road too in old terrain) has its roads, and is corrected in global doubles from its
-  original heights. Measured with scenery: 10,046 scenery chunks and ground tiles at 48 spots, 0 different.
+  original heights, `TerrainHorizon.FarBudgetMs` (2 ms) of tiles and shadow roads per frame. Measured with scenery:
+  10,046 scenery chunks and ground tiles at 48 spots, 0 different; about +0.07 ms per frame for the terrain
+  generator at ~1,800 km/h.
 
 A/B switches (bridge `set`): `TLDRevamp.Net.WorldCheck.Refuse` (off: a different game is announced at Ready, as
 before) and `.Force`. Bridge `worldcheck` shows the game build, the data hash, the generator patches, whether the

@@ -639,8 +639,11 @@ namespace TLDRevamp.Fixes
         /// the seed), not onto the live generator's roads near the tile's centre at the moment it is placed: that depended
         /// on what was loaded and, through the frame budget, on timing (two copies arriving from opposite sides had
         /// different distant tiles at 7 of 12 spots, 2026-11-03). Each placed tile waits in a queue until it is corrected;
-        /// AlignBudgetMs of tiles and shadow roads per frame. Off: the old correction at placement.
+        /// FarBudgetMs of tiles and shadow roads per frame. Off: the old correction at placement.
         public static bool PureFar = true;
+        /// Tiles and shadow roads per frame. 4 ms (the old correction's budget) gave terrain frames up to 12 ms: a shadow
+        /// road (1-3 ms) is generated on top of what is spent when it starts.
+        public static double FarBudgetMs = 2.0;
         internal static long PureFarQueued, PureFarDone, PureFarWaits;
         private static readonly List<KeyValuePair<terrainGenScript, Vector3d>> FarQueue = new List<KeyValuePair<terrainGenScript, Vector3d>>();
         private static int _farFrame = -1;
@@ -665,7 +668,7 @@ namespace TLDRevamp.Fixes
                 FarBudget.Restart();
                 try
                 {
-                    while (FarQueue.Count > 0 && FarBudget.Elapsed.TotalMilliseconds < AlignBudgetMs)
+                    while (FarQueue.Count > 0 && FarBudget.Elapsed.TotalMilliseconds < FarBudgetMs)
                     {
                         var gen = FarQueue[0].Key;
                         var key = FarQueue[0].Value;
@@ -677,7 +680,7 @@ namespace TLDRevamp.Fixes
                         foreach (var rg in map.roadGens)
                         {
                             if (rg == null) continue;
-                            var part = PureRoads.RoadsAround(rg, key.x - half, key.x + half, key.z - half, key.z + half, blend, FarBudget, AlignBudgetMs);
+                            var part = PureRoads.RoadsAround(rg, key.x - half, key.x + half, key.z - half, key.z + half, blend, FarBudget, FarBudgetMs);
                             if (part == null) { ready = false; break; }
                             roads.AddRange(part);
                         }
