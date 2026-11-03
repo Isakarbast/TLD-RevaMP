@@ -20,7 +20,7 @@ namespace TLDRevamp.Net
         // Opt-out cancels pending work. Partial transfers are discarded on disconnect or after 120 s idle.
 
         // client → server
-        public const byte Hello = 1;          // u16 protocol, str modVersion, u64 steamId, str name, str password, str gameBuild, mod list, str buildHash (BuildCheck)
+        public const byte Hello = 1;          // u16 protocol, str modVersion, u64 steamId, str name, str password, str gameBuild, mod list, str buildHash (BuildCheck), str gameData, str genPatches (WorldCheck)
         public const byte Chat = 5;           // client → server: str text.  server → client: u8 kind (0 player, 1 notice), str name, str text
         public const byte Roster = 7;         // server → client: u8 n, then n × (varint id, u16 ping ms), every 2 s
         public const byte Voice = 6;          // client → server: u8 codec, u16 seq, bytes.  server → client: varint id, u8 codec, u16 seq, bytes (unreliable); codec | 128: to everyone

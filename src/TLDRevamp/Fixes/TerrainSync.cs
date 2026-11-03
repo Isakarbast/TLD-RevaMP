@@ -122,6 +122,25 @@ namespace TLDRevamp.Fixes
             }
         }
 
+        /// Every placed tile with no record (placed while this was off) or with lists that changed since: rebuilt, one per
+        /// frame per generator (SceneryTileSync.RefreshAll).
+        internal static void RefreshAll(mapSettingScript map)
+        {
+            if (!Enabled || map == null || map.terrainGen == null) return;
+            foreach (var gen in map.terrainGen)
+            {
+                if (gen == null || gen.terrains == null || !(gen.roadAffectsThis || gen.poiAffectsThis)) continue;
+                Q q = null;
+                foreach (var kv in gen.terrains)
+                {
+                    if (kv.Value == null) continue;
+                    if (Recs.TryGetValue(kv.Value, out var rec) && Same(rec.Roads, RoadsFor(gen, kv.Key)) && Same(rec.Pois, PoisFor(gen, kv.Key))) continue;
+                    if (q == null) q = Queues.GetValue(gen, _ => new Q());
+                    if (!q.Keys.Contains(kv.Key)) { q.Keys.Add(kv.Key); Queued++; }
+                }
+            }
+        }
+
         /// One queued tile per generator per frame: new mesh into the existing tile object (collider included).
         [HarmonyPatch(typeof(terrainGenScript), nameof(terrainGenScript.Upd))]
         [HarmonyPostfix]

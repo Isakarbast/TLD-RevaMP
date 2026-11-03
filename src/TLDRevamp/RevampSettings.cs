@@ -104,15 +104,16 @@ namespace TLDRevamp
                 () => RoadPlaceCache.Enabled ? 1 : 0, v => RoadPlaceCache.Enabled = v == 1);
             Toggle("scenery", "Faster scenery generation", 1,
                 "Rocks, bushes and cacti are placed by testing every spot of a grid with its own random number generator. " +
-                "This computes the same numbers without the waste.\n\nRemoves 15–20 ms stutters while driving.",
-                () => ObjGenFast.Enabled ? 1 : 0, v => ObjGenFast.Enabled = v == 1);
+                "This computes the same numbers without the waste.\n\nRemoves 15–20 ms stutters while driving. In a multiplayer game it is " +
+                "always on: the scenery fix below needs it.",
+                () => ObjGenFast.Enabled ? 1 : 0, v => Net.WorldCheck.SetObjGen(v == 1));
             Toggle("sceneryConsistent", "Scenery matches roads and buildings", 1,
                 "The game decided where trees and rocks may stand from a snapshot of the roads and buildings nearby, taken " +
                 "whenever that spot was first needed. Arriving fast (or loading, or teleporting), the snapshot could miss a " +
                 "building or road that appeared a moment later: trees inside building areas or on roads, and scenery that " +
                 "differed between visits and between players. The ground under a building could stay unflattened the same way.\n\nNow scenery and ground are updated when a road or building appears, so " +
-                "every player sees the same world. Needed for multiplayer.",
-                () => SceneryTileSync.Enabled && TerrainSync.Enabled ? 1 : 0, v => { SceneryTileSync.Enabled = v == 1; TerrainSync.Enabled = v == 1; });
+                "every player sees the same world. Needed for multiplayer: in a multiplayer game it is always on.",
+                () => SceneryTileSync.Enabled && TerrainSync.Enabled ? 1 : 0, v => Net.WorldCheck.SetScenery(v == 1));
             Toggle("roadConnect", "Road connection memory", 1,
                 "The game recalculated the same road connections around you every frame. They're now remembered and reused.",
                 () => RoadConnectMemo.Enabled ? 1 : 0, v => RoadConnectMemo.Enabled = v == 1);

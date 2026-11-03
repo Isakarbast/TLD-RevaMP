@@ -424,7 +424,7 @@ namespace TLDRevamp
         // The read-only commands: they change nothing, so a session that denies developer access still allows
         // them (a joiner must be able to ask what the policy is, and the tests read the state through them).
         private static readonly System.Collections.Generic.HashSet<string> _readCmds = new System.Collections.Generic.HashSet<string> { "get", "gpos", "ground", "tpalanding", "errors", "ping", "status", "roadpoint", "seatraw", "items", "telemetry", "genbacklog", "devaccess", "vr", "terrainhorizon", "terrainhorizonstats",
-                                                                                "ragdolls" };
+                                                                                "ragdolls", "worldcheck" };
         private static readonly System.Collections.Generic.HashSet<string> _readMp = new System.Collections.Generic.HashSet<string> { "entities", "status", "players", "breakables", "carparts", "physical", "sitestate", "farrec", "caps", "ownerlog",
                                                                                 "attachedparts", "carslots", "pcs", "wheelpose", "physlocks", "ipdump", "attach", "anomalies", "recsize", "mods", "saverecords", "usables", "poiu", "poius",
                                                                                 // the death test's reads: these are `mp` commands (they sat in the top-level list, so a joiner was refused them)
@@ -620,6 +620,7 @@ namespace TLDRevamp
                     return WorldHash.Hash(double.Parse(wa[0], ic), double.Parse(wa[1], ic), double.Parse(wa[2], ic), wa.Length > 3 && wa[3] == "detail");
                 }
                 case "gensettings": return WorldHash.GenSettings();
+                case "worldcheck": return Net.WorldCheck.Status();
                 case "heightdbg": { var ha = arg.Split(' '); var hic = System.Globalization.CultureInfo.InvariantCulture; return WorldHash.HeightDbg(double.Parse(ha[0], hic), double.Parse(ha[1], hic)); }
                 case "stale": return WorldHash.Stale(arg == "detail");
                 case "mods": return string.IsNullOrWhiteSpace(arg) ? ModHost.Status() : Net.ModBrowser.Bridge(arg);

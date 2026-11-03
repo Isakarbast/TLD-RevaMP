@@ -132,12 +132,39 @@ A join is refused, with the reason shown in the multiplayer screen, when:
 | Same version, different code | "… (network protocol N), you … (protocol M): different builds of the same version. Both need the same build." |
 | Unreadable request | "The host couldn't read your join request. … both need the same build." |
 | Different multiplayer-API mods | the mod list is described and compared |
+| Different game version | "You and the host have different versions of The Long Drive … Update the game in Steam on both (beta branch), then join again." |
+| Same game version, other data files | "Your game files differ from the host's … Verify the game files in Steam on both, then join again." |
+| Different mods patching the world generators | "Mods that change how the world is generated differ between you and the host (the host has …; you have …)." |
 | Wrong password | "This game has a password." / "Wrong password." |
 | Kicked before | "You were kicked from this game." |
 | Full | "The game is full (16 players)." |
 
-The wire protocol and its history: [PROTOCOL.md](PROTOCOL.md). Every message and what heals it: [MESSAGES.md](MESSAGES.md); a new message needs a row there. A different *game* build is not a refusal: the
-host announces it in chat instead, because the worlds can differ (buildings) but the session still works.
+The wire protocol and its history: [PROTOCOL.md](PROTOCOL.md). Every message and what heals it: [MESSAGES.md](MESSAGES.md); a new message needs a row there.
+
+### The same world on every machine
+
+Nothing of the world is sent: every machine generates the terrain, roads, buildings and scenery itself from the host's
+seed, map and terrain mode. That gives everyone the same world only when the same code and data generate it, so the
+host checks what each joiner generates from (`src/TLDRevamp/Net/WorldCheck.cs`, rules in `WorldCheckRules.cs`):
+
+- **The game's code and data files.** `Plugin.GameBuild` (the game's `Assembly-CSharp.dll`) and the world's data files
+  (the scenes, managers and asset files in `TheLongDrive_Data`), hashed on a worker thread at start and cached in
+  `BepInEx/cache/tldrevamp-gamedata.txt` by name, size and time. A different game build used to be announced only;
+  it gave players different buildings (the missing diner, playtests 2026-10-09/10).
+- **Other mods' patches on the world generators.** Harmony patches on `roadGenScript`, `poiGenScript`, `objGenScript`,
+  `terrainGenScript`, `terrainGenSettings`, `mapSettingScript` and the noise types, by any owner but RevaMP (its own
+  are the same by the build check). Compared once the multiplayer-API mods match, so a mod the host can send is
+  offered first.
+- **RevaMP's order fixes are on for everyone in a session.** Scenery and ground used to depend on the order an area
+  was reached in (`SceneryTileSync`, `TerrainSync`, both on `ObjGenFast`), and main road only buildings on which road
+  chunks were finished (`MainRoadOnlyRoads`). In a session these are on whatever the player set; the settings rows say
+  so, and the player's own choice counts again after the session. A host whose world was generated with them off has
+  every generated tile and scenery chunk checked again against the roads and buildings there
+  (`SceneryTileSync.RefreshAll`).
+
+A/B switches (bridge `set`): `TLDRevamp.Net.WorldCheck.Refuse` (off: a different game is announced at Ready, as
+before) and `.Force`. Bridge `worldcheck` shows the game build, the data hash, the generator patches, whether the
+fixes are forced and the counters.
 
 ### What is shared
 

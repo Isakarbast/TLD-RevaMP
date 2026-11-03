@@ -45,6 +45,7 @@ namespace TLDRevamp.Net
             MpServer.LoadBans(); AdminConsole.Reset();
             Entities.ResetCounters();
             Entities.HostStarted();   // the host's world becomes the session's: its buildings are done, its items shared
+            WorldCheck.SessionBegins(host: true);
             return Status();
         }
 
@@ -279,6 +280,7 @@ namespace TLDRevamp.Net
             // the game's mesh, and the correction must not outlive the session that made it).
             try { Fixes.TerrainHorizon.RestoreFarMeshes(); } catch { }
             ModObjects.Reset(wasHost);
+            WorldCheck.SessionEnds();
             Reports.Reset();
             Session.Reset();
             // the server owns the save: a host that ends a session keeps the tail (lease-spawned buildings, client
@@ -577,6 +579,7 @@ namespace TLDRevamp.Net
                     string gameBuild = r.Remaining > 0 ? r.Str() : "";
                     var mods = ModObjects.CheckModList(r);
                     string build = BuildCheck.Read(r);   // after the mod list: older hosts never read it
+                    WorldCheckRules.Read(r, out string gameData, out string genPatches);
                     if (!Identify(c, p, sid, name, out ulong steamId, out bool saved)) return;
                     if (!Admit(c, p, steamId, pw)) return;
                     // mods using the multiplayer API must match. Unlike the game's build (announced, not refused): a mod
@@ -603,6 +606,14 @@ namespace TLDRevamp.Net
                         BuildRefused++;
                         Plugin.Log.LogWarning(BuildCheck.AnomalyLine(Session.CleanName(name), bc, build, Plugin.BuildIdentity) + " - other version, refused");
                         Reject(c, JoinChecks.HelloRefusal(false, ver, mod, Protocol.Version, Plugin.Version), Protocol.RejectOther);
+                        return;
+                    }
+                    // every machine generates the world itself: another game, or other mods patching the generators, give
+                    // another world. The patches only once the API mods match: a missing mod the host offers comes first.
+                    string world = WorldCheck.Check(gameBuild, gameData, genPatches, comparePatches: mods.Same);
+                    if (world != null)
+                    {
+                        Reject(c, world, Protocol.RejectOther);
                         return;
                     }
                     if (p == null) { p = new Peer { Conn = c, Id = _nextId++ }; _peers[c.m_HSteamNetConnection] = p; }
@@ -672,7 +683,7 @@ namespace TLDRevamp.Net
                     Notice(p.Name + " joined the game");
                     if (p.GameBuild != Plugin.GameBuild)
                     {
-                        // not refused: a test build or a patched copy may still play; but the worlds can differ (buildings)
+                        // only with WorldCheck.Refuse off (A/B): the worlds can differ (buildings)
                         GameBuildMismatches++;
                         Plugin.Log.LogWarning($"[anomaly] game build differs: {p.Name} has The Long Drive {(p.GameBuild.Length > 0 ? p.GameBuild : "(unknown)")}, the host {Plugin.GameBuild}");
                         Notice(p.Name + " has a different version of The Long Drive than the host. Buildings and other parts of the world can differ between you; update the game on both (Steam beta branch).");
@@ -1138,6 +1149,7 @@ namespace TLDRevamp.Net
             _w.Str(Plugin.GameBuild);   // the game's own build: compared by the host (a mismatch is announced, not refused)
             ModObjects.WriteModList(_w);   // mods using the multiplayer API: must match the host's (ids, versions, file hashes)
             _w.Str(Plugin.BuildIdentity);   // this DLL's own build: other code under the same version is refused (BuildCheck)
+            WorldCheck.Write(_w);   // what the world is generated from here: the game's data files, other mods' generator patches
             T.Send(_conn, _w, SteamTransport.SendReliable);
         }
 
@@ -1270,6 +1282,7 @@ namespace TLDRevamp.Net
                     SessionSettingsSnapshot.BindToHost(hostSettings.SessionToken);
                     DeveloperAccess.ApplyClientSnapshot(hostSettings, true);
                     if (hasTerrain) WorldGen.TerrainHooks.TakeHost(hostTerrain);
+                    if (Bot == null) WorldCheck.SessionBegins(host: false);   // before the host's world loads here
                     if (Bot == null)
                     {
                         SessionLog.Sid = telemetrySid;

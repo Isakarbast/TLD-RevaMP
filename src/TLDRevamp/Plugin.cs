@@ -118,6 +118,7 @@ namespace TLDRevamp
             ScriptProfiler.MainThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
 
             Diagnostics.ErrorLog.Install();   // counts the game's errors for tests (bridge `errors`)
+            Net.WorldCheck.Start();   // the game's data files hashed on a worker thread, for the join check
             TestSafety.Init();
             Telemetry = new Telemetry();
             SessionLog.Install();

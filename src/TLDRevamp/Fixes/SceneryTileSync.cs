@@ -216,6 +216,30 @@ namespace TLDRevamp.Fixes
                     }
             }
 
+            QueueAffected(og);
+        }
+
+        /// Everything generated so far checked against the roads and buildings there now, as if each were a new event: a
+        /// world generated with this off (a host that turns it on to start a session, Net.WorldCheck). Changed tile lists
+        /// are recomputed and every generated chunk of an uncached category is generated again, a chunk per frame.
+        internal static void RefreshAll(mapSettingScript map)
+        {
+            if (map == null) return;
+            if (Active && map.objGens != null)
+                foreach (var og in map.objGens)
+                {
+                    if (og == null) continue;
+                    double half = og.tileSize * 0.5 + 1e-6;
+                    Changed.Clear(); Regions.Clear(); Recomputed.Clear();
+                    foreach (var key in new List<Vector3d>(og.tiles.Keys)) Recompute(og, key, half);
+                    Regions.Add(new Rect(double.MinValue, double.MinValue, double.MaxValue, double.MaxValue));
+                    QueueAffected(og);
+                }
+            TerrainSync.RefreshAll(map);
+        }
+
+        private static void QueueAffected(objGenScript og)
+        {
             // 2. generated chunks that used a changed tile / lie in an event area → regenerate
             foreach (var cat in og.categories)
             {
