@@ -8,7 +8,10 @@ namespace TLDRevamp.Fixes
     /// pplayermelle.FStart) and 8x MSAA (settingsscript.RefreshInMain: QualitySettings.antiAliasing = 8). Both smooth the
     /// same edges; together they were the one setting that made the graphics card the limit (GPU 1.7 -> 3.0 ms a frame,
     /// PerfA 2026-11-03). Settings > Revamp > Anti-aliasing picks one: the post-processing stack's own FXAA, SMAA or TAA
-    /// (with the game's TAA tuning), or MSAA 2x/4x/8x (no effect on the deferred rendering path), or none.
+    /// (with the game's TAA tuning), or MSAA 2x/4x/8x, or none. MSAA works here (every camera renders forward with
+    /// allowMSAA): it smooths object outlines (a car 20 m off at 2x/4x/8x) but not where the deck meets the terrain in the
+    /// distance, two nearly flat surfaces whose edge the depth test decides the same way in every sample. Most of its cost
+    /// is the HDR targets: 8x with HDR off costs about a third (PerfA 2026-11-03), not an option as it changes the picture.
     /// "Game's own" (the default) leaves the game's switch in charge, exactly as before. Not in VR: VrPerf manages
     /// anti-aliasing there.
     public static class AntiAliasingChoice

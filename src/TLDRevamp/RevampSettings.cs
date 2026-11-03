@@ -92,7 +92,8 @@ namespace TLDRevamp
                 "its cost is the MSAA: measured at 1080p, about +1.4 ms of graphics-card time a frame, the most expensive picture " +
                 "setting.\n\nPick one here instead (graphics-card time per frame, measured): FXAA +0.1 ms, slightly soft. SMAA " +
                 "+0.1 ms, sharper. TAA about free, smoothest edges, can blur or trail a little in motion. MSAA 2x/4x/8x +0.2/+0.5/" +
-                "+1.6 ms (no effect with the deferred rendering path).\n\nGame's own: the game's switch decides, as before.",
+                "+1.6 ms; smooths the outlines of objects only, not where two flat surfaces meet in the distance or texture " +
+                "shimmer.\n\nGame's own: the game's switch decides, as before.",
                 () => AntiAliasingChoice.Mode, AntiAliasingChoice.Set);
             Header("Performance fixes",
                 "These make the game do the same work faster or skip work that changes nothing. The world, the physics and " +
