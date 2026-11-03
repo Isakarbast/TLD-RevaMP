@@ -52,12 +52,89 @@ namespace TLDRevamp
             if (ms > _maxMs) _maxMs = ms;
             Breakdown.Tick(ms);
             Frames++;
+            Minute(ms);
             SessionLog.Frame(ms, Breakdown);
+        }
+
+        // The overlay's rates go by time, not by frame count: a 600-frame median took 2 s to follow a change at 300 fps
+        // and 15 s at 40. Fps is the last second of frames. The average and the 1% low cover the last minute, one slot per
+        // second: its frames and time, plus its frame times in log buckets (4% wide, 0.25 ms to ~1 s) with their summed ms.
+        private const int MinuteSlots = 60, SlowBuckets = 192;
+        private readonly int[] _slotFrames = new int[MinuteSlots];
+        private readonly float[] _slotMs = new float[MinuteSlots];
+        private readonly int[] _slowCount = new int[MinuteSlots * SlowBuckets];
+        private readonly float[] _slowMs = new float[MinuteSlots * SlowBuckets];
+        private readonly int[] _sumCount = new int[SlowBuckets];
+        private readonly float[] _sumMs = new float[SlowBuckets];
+        private int _slot, _slots;
+
+        private void Minute(float ms)
+        {
+            if (_slots == 0 || _slotMs[_slot] >= 1000f)
+            {
+                if (_slots > 0) _slot = (_slot + 1) % MinuteSlots;
+                if (_slots < MinuteSlots) _slots++;
+                _slotFrames[_slot] = 0; _slotMs[_slot] = 0;
+                Array.Clear(_slowCount, _slot * SlowBuckets, SlowBuckets);
+                Array.Clear(_slowMs, _slot * SlowBuckets, SlowBuckets);
+            }
+            _slotFrames[_slot]++; _slotMs[_slot] += ms;
+            int b = _slot * SlowBuckets + Mathf.Clamp((int)(Mathf.Log(Mathf.Max(ms, .25f) / .25f, 2f) * 16f), 0, SlowBuckets - 1);
+            _slowCount[b]++; _slowMs[b] += ms;
+        }
+
+        /// Frames per second over the last second (the whole ring when it holds less).
+        public float Fps
+        {
+            get
+            {
+                float ms = 0; int n = 0;
+                while (n < _count && ms < 1000f) ms += _frameMs[(_head - 1 - n++ + Window) % Window];
+                return ms > 0 ? n * 1000f / ms : 0f;
+            }
+        }
+
+        /// Frames per second over the last minute, the second in progress included.
+        public float AvgFps
+        {
+            get
+            {
+                float ms = 0; long n = 0;
+                for (int s = 0; s < _slots; s++) { ms += _slotMs[s]; n += _slotFrames[s]; }
+                return ms > 0 ? n * 1000f / ms : 0f;
+            }
+        }
+
+        /// The 1% and 0.1% lows over the last minute: the average rate of its slowest 1% (0.1%) of frames.
+        public void Lows(out float onePercent, out float tenthPercent)
+        {
+            Array.Clear(_sumCount, 0, SlowBuckets); Array.Clear(_sumMs, 0, SlowBuckets);
+            long n = 0;
+            for (int s = 0; s < _slots; s++)
+            {
+                n += _slotFrames[s];
+                for (int b = 0, o = s * SlowBuckets; b < SlowBuckets; b++) { _sumCount[b] += _slowCount[o + b]; _sumMs[b] += _slowMs[o + b]; }
+            }
+            onePercent = Low(Math.Max(1, n / 100));
+            tenthPercent = Low(Math.Max(1, n / 1000));
+        }
+
+        private float Low(long want)
+        {
+            long got = 0; float ms = 0;
+            for (int b = SlowBuckets - 1; b >= 0 && got < want; b--)
+            {
+                int c = _sumCount[b]; if (c == 0) continue;
+                long take = Math.Min(c, want - got);
+                ms += _sumMs[b] * take / c; got += take;
+            }
+            return ms > 0 ? got * 1000f / ms : 0f;
         }
 
         public void Reset()
         {
             _head = _count = 0;
+            _slot = _slots = 0;
             Hitches = 0;
             _maxMs = 0;
             Array.Clear(_hist, 0, Buckets);

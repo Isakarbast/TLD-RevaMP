@@ -51,7 +51,8 @@ namespace TLDRevamp
             {
                 _nextText = now + .25f;
                 float p50 = _t.Percentile(.5f);
-                _text = $"{Plugin.Version} ({Plugin.CommitLabel})  {(p50 > 0 ? 1000f / p50 : 0):F0} fps\n" +
+                _t.Lows(out float low1, out float low01);
+                _text = $"{Plugin.Version} ({Plugin.CommitLabel})  {_t.Fps:F0} fps - {_t.AvgFps:F0} avg - {low1:F0} 1% low - {low01:F0} 0.1% low\n" +
                     $"p50  {p50:F1} ms     p99  {_t.Percentile(.99f):F1} ms\n" +
                     $"Hitches  {_t.Hitches}     GC  {_t.GcCollections}     Heap  {_t.ManagedMB} MB\n" +
                     $"{Plugin.KeyName(Plugin.KeyOverlay)} hide · {Plugin.KeyName(Plugin.KeyReport)} report";
