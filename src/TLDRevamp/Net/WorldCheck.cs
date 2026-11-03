@@ -15,7 +15,8 @@ namespace TLDRevamp.Net
     ///    Before, a different game build was only announced ("the missing diner", 2026-10-09/10);
     ///  - mods that patch the world generators must be the same (GenPatches): RevaMP's own are the same by BuildCheck;
     ///  - RevaMP's fixes that make generation independent of the order an area was reached in (SceneryTileSync,
-    ///    TerrainSync, ObjGenFast that they run on, and main road only's MainRoadOnlyRoads) are on for everyone while
+    ///    TerrainSync, ObjGenFast that they run on, crossroads' ChunkLinks and PoiRoadsSettled, main road only's
+    ///    MainRoadOnlyRoads) are on for everyone while
     ///    in a session, whatever the player set (SessionBegins/SessionEnds). A host whose world was generated with
     ///    them off has everything around it checked again (SceneryTileSync.RefreshAll).
     /// The host refuses a joiner that differs (WorldCheckRules.Refusal). A/B (bridge `set`): Refuse, Force.
@@ -162,23 +163,25 @@ namespace TLDRevamp.Net
 
         // ---- the order-independence fixes, on for the session
 
-        private static bool _forced, _scenery, _terrain, _objGen, _mainRoad, _waitLinks, _lineAhead;
+        private static bool _forced, _scenery, _terrain, _objGen, _links, _pois, _poiRing, _mainRoad, _waitLinks, _lineAhead;
         public static bool Forcing => _forced;
 
         /// A session starts (Mp.Host; a joiner from Welcome, before the host's world loads).
         public static void SessionBegins(bool host)
         {
             if (!Force || _forced) return;
-            _scenery = Fixes.SceneryTileSync.Enabled; _terrain = Fixes.TerrainSync.Enabled; _objGen = Fixes.ObjGenFast.Enabled;
+            _scenery = Fixes.SceneryTileSync.Enabled; _terrain = Fixes.TerrainSync.Enabled; _objGen = Fixes.ObjGenFast.Enabled; _links = Fixes.ChunkLinks.Enabled;
+            _pois = Fixes.PoiRoadsSettled.Enabled; _poiRing = Fixes.PoiRoadsSettled.NeedAround;
             _mainRoad = WorldGen.MainRoadOnlyRoads.Enabled; _waitLinks = WorldGen.MainRoadOnlyRoads.PoisWaitForLinks; _lineAhead = WorldGen.MainRoadOnlyRoads.LineAhead;
             bool wasOff = !_scenery || !_terrain || !_objGen;
-            Fixes.SceneryTileSync.Enabled = Fixes.TerrainSync.Enabled = Fixes.ObjGenFast.Enabled = true;
+            Fixes.SceneryTileSync.Enabled = Fixes.TerrainSync.Enabled = Fixes.ObjGenFast.Enabled = Fixes.ChunkLinks.Enabled = true;
+            Fixes.PoiRoadsSettled.Enabled = Fixes.PoiRoadsSettled.NeedAround = true;
             WorldGen.MainRoadOnlyRoads.Enabled = WorldGen.MainRoadOnlyRoads.PoisWaitForLinks = WorldGen.MainRoadOnlyRoads.LineAhead = true;
             _forced = true;
-            if (wasOff || !_mainRoad || !_waitLinks || !_lineAhead)
+            if (wasOff || !_links || !_pois || !_poiRing || !_mainRoad || !_waitLinks || !_lineAhead)
             {
                 Forced++;
-                Plugin.Log.LogInfo($"world check: generation fixes on for the session (scenery {_scenery}, terrain {_terrain}, scenery generation {_objGen}, main road {_mainRoad}/{_waitLinks}/{_lineAhead})");
+                Plugin.Log.LogInfo($"world check: generation fixes on for the session (scenery {_scenery}, terrain {_terrain}, scenery generation {_objGen}, chunk links {_links}, buildings wait for roads {_pois}/{_poiRing}, main road {_mainRoad}/{_waitLinks}/{_lineAhead})");
             }
             // the host's world exists already and was generated with them off: check everything generated against what is there now
             if (host && wasOff)
@@ -193,7 +196,8 @@ namespace TLDRevamp.Net
         {
             if (!_forced) return;
             _forced = false;
-            Fixes.SceneryTileSync.Enabled = _scenery; Fixes.TerrainSync.Enabled = _terrain; Fixes.ObjGenFast.Enabled = _objGen;
+            Fixes.SceneryTileSync.Enabled = _scenery; Fixes.TerrainSync.Enabled = _terrain; Fixes.ObjGenFast.Enabled = _objGen; Fixes.ChunkLinks.Enabled = _links;
+            Fixes.PoiRoadsSettled.Enabled = _pois; Fixes.PoiRoadsSettled.NeedAround = _poiRing;
             WorldGen.MainRoadOnlyRoads.Enabled = _mainRoad; WorldGen.MainRoadOnlyRoads.PoisWaitForLinks = _waitLinks; WorldGen.MainRoadOnlyRoads.LineAhead = _lineAhead;
         }
 
@@ -215,7 +219,7 @@ namespace TLDRevamp.Net
             "{\"gameBuild\":" + Json.Str(Plugin.GameBuild) + ",\"gameData\":" + Json.Str(GameData) + ",\"genPatches\":" + Json.Str(GenPatches()) +
             ",\"refuse\":" + (Refuse ? "true" : "false") + ",\"force\":" + (Force ? "true" : "false") + ",\"forcing\":" + (_forced ? "true" : "false") +
             ",\"refused\":" + Refused + ",\"forced\":" + Forced + ",\"refreshes\":" + Refreshes +
-            ",\"scenery\":" + B(Fixes.SceneryTileSync.Enabled) + ",\"terrain\":" + B(Fixes.TerrainSync.Enabled) + ",\"objGen\":" + B(Fixes.ObjGenFast.Enabled) +
+            ",\"scenery\":" + B(Fixes.SceneryTileSync.Enabled) + ",\"terrain\":" + B(Fixes.TerrainSync.Enabled) + ",\"objGen\":" + B(Fixes.ObjGenFast.Enabled) + ",\"chunkLinks\":" + B(Fixes.ChunkLinks.Enabled) +
             ",\"mainRoad\":[" + B(WorldGen.MainRoadOnlyRoads.Enabled) + "," + B(WorldGen.MainRoadOnlyRoads.PoisWaitForLinks) + "," + B(WorldGen.MainRoadOnlyRoads.LineAhead) + "]}";
 
         private static string B(bool b) => b ? "true" : "false";

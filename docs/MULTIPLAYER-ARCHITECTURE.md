@@ -554,6 +554,15 @@ Plan: make these order-independent (e.g. an area only builds scenery once its ro
 server authoritative for anything persistent (items). A checksum of each generated chunk lets client and server detect
 divergence in testing.
 
+Status (2026-11-03): scenery and ground follow the final roads and buildings (`SceneryTileSync`, `TerrainSync`); in
+crossroads worlds the links between road chunks no longer depend on which chunk the game handled first
+(`ChunkLinks`), and a building waits until all nine road chunks around it are finished (`PoiRoadsSettled`); main road
+only has its own rule (`MainRoadOnlyRoads`); building contents come from spawn leases. In a session these are on for
+everyone, and the host refuses a joiner with another game, other game data files or other world-generation mods
+(`Net/WorldCheck.cs`). Measured with `worldhash` on two copies arriving at one road-chunk corner from 30 km north and
+30 km south: before, roads identical but 4 buildings on one machine only and 1 on the other; after, roads, buildings,
+scenery and terrain tiles identical. Still not compared: Windows against Proton/Steam Deck.
+
 ## 7. Saves and death
 
 The server owns the shared world save (items, cars, buildings' state, time). Per-player data (inventory, body, stats)
