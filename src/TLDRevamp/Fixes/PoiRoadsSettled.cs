@@ -66,7 +66,18 @@ namespace TLDRevamp.Fixes
                             }
                 }
                 catch (Exception e) { Plugin.Log.LogWarning("PoiRoadsSettled ring: " + e.Message); }
-            // which road each waiting building aligns to: where it can end up depends on it (Near)
+            // once per pass: the road chunks kept (Finished) and where this player is (Near, NoteHeld)
+            Needed.Clear();
+            var rg = __instance.roadgen;
+            if (rg != null && rg.chunksNeeded != null) foreach (var k in rg.chunksNeeded) Needed.Add(k);
+            var pl = mainscript.s != null ? mainscript.s.player : null;
+            _haveMe = pl != null;
+            if (_haveMe) _me = mainscript.GlobalFromUnityPos(pl.transform.position);
+            // which road each waiting building aligns to: where it can end up depends on it (Near). Twice a second: a
+            // candidate not listed yet only counts as not near for that long, and what it waits for stays the same.
+            float now = Time.realtimeSinceStartup;
+            if (now - _alignAt < AlignEveryS) return;
+            _alignAt = now;
             Align.Clear();
             try
             {
@@ -76,6 +87,12 @@ namespace TLDRevamp.Fixes
             }
             catch (Exception e) { Plugin.Log.LogWarning("PoiRoadsSettled align: " + e.Message); }
         }
+
+        public static float AlignEveryS = 0.5f;
+        private static float _alignAt = -1f;
+        private static readonly HashSet<Vector3d> Needed = new HashSet<Vector3d>();
+        private static bool _haveMe;
+        private static Vector3d _me;
 
         private static readonly Dictionary<Vector3d, poiGenScript.alignToRoadEmu> Align = new Dictionary<Vector3d, poiGenScript.alignToRoadEmu>();
 
@@ -104,7 +121,7 @@ namespace TLDRevamp.Fixes
                         if (!NeedForPois) break;
                         if (!nearKnown) { near = Near(g, _gpos); nearKnown = true; }
                         if (!near) break;
-                        if (!g.chunksNeeded.Contains(k)) Want[k] = Time.realtimeSinceStartup;
+                        if (!Needed.Contains(k)) Want[k] = Time.realtimeSinceStartup;
                     }
                 // the game's own test holding it back too (one of its four chunks not done) is no reason not to ask for
                 // the chunks: a main road building 4.8 km from the player waited that way on one machine for good
@@ -120,7 +137,7 @@ namespace TLDRevamp.Fixes
 
         private static bool Finished(roadGenScript g, Vector3d pos)
         {
-            if (!g.chunksNeeded.Contains(pos) || !g.chunks.TryGetValue(pos, out var chunk)) return false;
+            if (!Needed.Contains(pos) || !g.chunks.TryGetValue(pos, out var chunk)) return false;
             return chunk.insideConnected && chunk.outsideUConnected && chunk.outsideRConnected && chunk.Done();
         }
 
@@ -132,12 +149,11 @@ namespace TLDRevamp.Fixes
         /// building 5 km). Bounds are kept for BoundForS.
         private static bool Near(roadGenScript g, Vector3d cand)
         {
-            var pl = mainscript.s != null ? mainscript.s.player : null;
-            if (pl == null) return false;
-            var me = mainscript.GlobalFromUnityPos(pl.transform.position);
-            double dx = cand.x - me.x, dz = cand.z - me.z;
+            if (!_haveMe) return false;
+            double dx = cand.x - _me.x, dz = cand.z - _me.z;
             double d = Math.Sqrt(dx * dx + dz * dz);
             if (d < _range) return true;
+            if (d - _range > UnknownRoadM + PlaceSlackM) return false;   // can't land in range whatever the roads
             if (!Align.TryGetValue(cand, out var type) || type == poiGenScript.alignToRoadEmu.none) return false;   // not aligned: it stays at its spot
             return d - Bound(g, cand, type) < _range;
         }
@@ -196,11 +212,9 @@ namespace TLDRevamp.Fixes
         private static float _nearestAt;
         private static void NoteHeld(roadGenScript g, Vector3d cand)
         {
-            var pl = mainscript.s != null ? mainscript.s.player : null;
-            if (pl == null) return;
+            if (!_haveMe) return;
             if (Time.realtimeSinceStartup - _nearestAt > 1f) { _nearestShown = _nearest; _nearest = double.MaxValue; _nearestAt = Time.realtimeSinceStartup; }
-            var me = mainscript.GlobalFromUnityPos(pl.transform.position);
-            double dx = cand.x - me.x, dz = cand.z - me.z, d = Math.Sqrt(dx * dx + dz * dz);
+            double dx = cand.x - _me.x, dz = cand.z - _me.z, d = Math.Sqrt(dx * dx + dz * dz);
             if (Align.TryGetValue(cand, out var type) && type != poiGenScript.alignToRoadEmu.none) d = Math.Max(0, d - Bound(g, cand, type));
             if (d < _nearest) _nearest = d;
         }
