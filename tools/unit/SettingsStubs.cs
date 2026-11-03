@@ -39,6 +39,7 @@ namespace TLDRevamp.Fixes
     static class IdleCarParticles { internal static bool Enabled; }
     static class TrailerBrakes { internal static bool Enabled; }
     static class DrivingAssists { internal static bool Roll; internal static bool Sway; internal static bool Traction; }
+    static class AntiAliasingChoice { internal static readonly string[] Options = { "Game's own", "Off", "FXAA", "SMAA", "TAA", "MSAA 2x", "MSAA 4x", "MSAA 8x" }; internal static int Mode; internal static void Set(int v) { Mode = v; } }
 }
 namespace TLDRevamp.WorldGen
 {
