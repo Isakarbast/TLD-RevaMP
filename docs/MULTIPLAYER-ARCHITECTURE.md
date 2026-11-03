@@ -559,9 +559,15 @@ crossroads worlds the links between road chunks no longer depend on which chunk 
 (`ChunkLinks`), and a building waits until all nine road chunks around it are finished (`PoiRoadsSettled`); main road
 only has its own rule (`MainRoadOnlyRoads`); building contents come from spawn leases. In a session these are on for
 everyone, and the host refuses a joiner with another game, other game data files or other world-generation mods
-(`Net/WorldCheck.cs`). Measured with `worldhash` on two copies arriving at one road-chunk corner from 30 km north and
-30 km south: before, roads identical but 4 buildings on one machine only and 1 on the other; after, roads, buildings,
-scenery and terrain tiles identical. Still not compared: Windows against Proton/Steam Deck.
+(`Net/WorldCheck.cs`). Measured with `worldhash` on two copies: arriving at one road-chunk corner from 30 km north and
+30 km south, before 4 buildings on one machine only and 1 on the other, after roads, buildings, scenery and terrain
+tiles identical; touring 12 spots across ~400 km, each copy driving in from the opposite side: with the fixes off 2 of
+12 spots differ (a building 1.6 km elsewhere, a building and a road on one machine only), with them on 12 of 12
+identical on two seeds (137-151 buildings within 6 km, 54 within the game's 3.8 km building distance). Teleporting
+straight to a spot never showed a difference, fixes or not: the order only matters when an area is reached gradually.
+A building is held back until its roads are finished; one that could land within sight gets its road chunks at once
+(the nearest a held building could land in the tours: 6.2 km). Cost while generating, at ~1,800 km/h: +0.2-0.3 ms per
+frame. Still not compared: Windows against Proton/Steam Deck.
 
 ## 7. Saves and death
 

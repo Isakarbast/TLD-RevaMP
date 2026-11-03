@@ -19,9 +19,9 @@ namespace TLDRevamp.Fixes
     ///
     /// Fix: a building waits until all nine road chunks around it are needed (kept, not remade every frame), have their
     /// dots joined into roads, have their links to the chunks above and right made, and have every road generated: the
-    /// roads it can be aligned to are then all there, on every machine. A building near enough to be seen
-    /// (the game's building distance + NeedMarginM) doesn't wait for the player to come closer: the road chunks it waits
-    /// for are needed too (NeedForPois), only those and only while it waits. A whole extra ring of needed chunks cost
+    /// roads it can be aligned to are then all there, on every machine. A building that can land near enough to be seen
+    /// (the game's building distance + NeedMarginM; where it can land: Near) doesn't wait for the player to come closer:
+    /// the road chunks it waits for are needed too (NeedForPois), only those and only while it waits. A whole extra ring of needed chunks cost
     /// +0.6 ms per frame while travelling (road piece placement walks every needed chunk); farther buildings wait unseen.
     /// Main road only worlds have their own rule (WorldGen.MainRoadOnlyRoads.PoisWaitForLinks).
     /// Runtime switches (bridge `set`): TLDRevamp.Fixes.PoiRoadsSettled.Enabled / .NeedForPois / .NeedMarginM.
@@ -44,7 +44,18 @@ namespace TLDRevamp.Fixes
         {
             _inAddPois++;
             _range = __instance.removeDistance + NeedMarginM;
+            // which road each waiting building aligns to: where it can end up depends on it (Near)
+            Align.Clear();
+            try
+            {
+                foreach (var key in __instance.chunksNeeded)
+                    if (__instance.chunks.TryGetValue(key, out var ch) && ch.poiToPlace != null)
+                        foreach (var t in ch.poiToPlace) if (t != null) Align[t.pos] = t.roadType;
+            }
+            catch (Exception e) { Plugin.Log.LogWarning("PoiRoadsSettled align: " + e.Message); }
         }
+
+        private static readonly Dictionary<Vector3d, poiGenScript.alignToRoadEmu> Align = new Dictionary<Vector3d, poiGenScript.alignToRoadEmu>();
 
         [HarmonyPatch(typeof(poiGenScript), nameof(poiGenScript.AddPois))]
         [HarmonyFinalizer]
@@ -69,14 +80,14 @@ namespace TLDRevamp.Fixes
                         if (Finished(g, k)) continue;
                         held = true;
                         if (!NeedForPois) break;
-                        if (!nearKnown) { near = Near(_gpos); nearKnown = true; }
+                        if (!nearKnown) { near = Near(g, _gpos); nearKnown = true; }
                         if (!near) break;
                         if (!g.chunksNeeded.Contains(k)) Want[k] = Time.realtimeSinceStartup;
                     }
                 if (!held) return;
                 __result = false;
                 Held++;
-                NoteHeld(_gpos);
+                NoteHeld(g, _gpos);
             }
             catch (Exception e) { Plugin.Log.LogWarning("PoiRoadsSettled: " + e.Message); }
         }
@@ -87,14 +98,45 @@ namespace TLDRevamp.Fixes
             return chunk.insideConnected && chunk.outsideUConnected && chunk.outsideRConnected && chunk.Done();
         }
 
-        /// Within the game's building distance (+ margin) of this player: a building that would be seen.
-        private static bool Near(Vector3d gpos)
+        /// Can the building land within the game's building distance (+ margin) of this player: would it be seen? A
+        /// building aligned to a road lands by the road nearest its candidate spot, so within that road's distance of it,
+        /// and the nearest road can only come nearer as more roads are made: the nearest road of its kind known now bounds
+        /// it (each road's bones stay within AlignNearestRoad.MaxLateral of the line between its ends). A main road
+        /// building's candidate can be 5 km and more off the main road (2026-11-03 tour: candidate 10 km from the player,
+        /// building 5 km). Bounds are kept for BoundForS.
+        private static bool Near(roadGenScript g, Vector3d cand)
         {
             var pl = mainscript.s != null ? mainscript.s.player : null;
             if (pl == null) return false;
             var me = mainscript.GlobalFromUnityPos(pl.transform.position);
-            double dx = gpos.x - me.x, dz = gpos.z - me.z;
-            return dx * dx + dz * dz < (double)_range * _range;
+            double dx = cand.x - me.x, dz = cand.z - me.z;
+            double d = Math.Sqrt(dx * dx + dz * dz);
+            if (d < _range) return true;
+            if (!Align.TryGetValue(cand, out var type) || type == poiGenScript.alignToRoadEmu.none) return false;   // not aligned: it stays at its spot
+            return d - Bound(g, cand, type) < _range;
+        }
+
+        public static float BoundForS = 2f, UnknownRoadM = 12000f, PlaceSlackM = 200f;
+        private struct CachedBound { public double M; public float At; }
+        private static readonly Dictionary<Vector3d, CachedBound> Bounds = new Dictionary<Vector3d, CachedBound>();
+
+        /// How far from its candidate a building aligned to a road of this kind can land, at most.
+        private static double Bound(roadGenScript g, Vector3d cand, poiGenScript.alignToRoadEmu type)
+        {
+            float now = Time.realtimeSinceStartup;
+            if (Bounds.TryGetValue(cand, out var c) && now - c.At < BoundForS) return c.M;
+            if (Bounds.Count > 4096) Bounds.Clear();
+            double best = UnknownRoadM, lateral = AlignNearestRoad.MaxLateral(g);
+            foreach (var ch in g.chunks.Values)
+                foreach (var r in ch.roads)
+                {
+                    if (r == null || (g.hasMainRoad && !g.CheckAlignRoad(r.roadType, type))) continue;
+                    double m = AlignNearestRoad.SegmentDist(cand, r.start, r.end) + lateral;
+                    if (m < best) best = m;
+                }
+            best += PlaceSlackM;
+            Bounds[cand] = new CachedBound { M = best, At = now };
+            return best;
         }
 
         /// The chunks near buildings wait for, needed too while they wait (the per-frame overload, not
@@ -121,17 +163,19 @@ namespace TLDRevamp.Fixes
             catch (Exception e) { Plugin.Log.LogWarning("PoiRoadsSettled need: " + e.Message); }
         }
 
-        /// The nearest building held back from the player in the last second, against how far the game shows buildings:
-        /// one held inside that distance would appear late in sight (bridge `get TLDRevamp.Fixes.PoiRoadsSettled.Stats`).
+        /// The nearest a building held back in the last second could land from the player, against how far the game
+        /// shows buildings: one that could land inside that distance would appear late in sight (bridge
+        /// `get TLDRevamp.Fixes.PoiRoadsSettled.Stats`).
         private static double _nearest = double.MaxValue, _nearestShown = double.MaxValue;
         private static float _nearestAt;
-        private static void NoteHeld(Vector3d gpos)
+        private static void NoteHeld(roadGenScript g, Vector3d cand)
         {
             var pl = mainscript.s != null ? mainscript.s.player : null;
             if (pl == null) return;
             if (Time.realtimeSinceStartup - _nearestAt > 1f) { _nearestShown = _nearest; _nearest = double.MaxValue; _nearestAt = Time.realtimeSinceStartup; }
             var me = mainscript.GlobalFromUnityPos(pl.transform.position);
-            double dx = gpos.x - me.x, dz = gpos.z - me.z, d = Math.Sqrt(dx * dx + dz * dz);
+            double dx = cand.x - me.x, dz = cand.z - me.z, d = Math.Sqrt(dx * dx + dz * dz);
+            if (Align.TryGetValue(cand, out var type) && type != poiGenScript.alignToRoadEmu.none) d = Math.Max(0, d - Bound(g, cand, type));
             if (d < _nearest) _nearest = d;
         }
 

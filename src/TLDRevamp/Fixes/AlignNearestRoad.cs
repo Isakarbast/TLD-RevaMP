@@ -125,7 +125,7 @@ namespace TLDRevamp.Fixes
             return (p - pos).magnitude;
         }
 
-        private static double MaxLateral(roadGenScript g)
+        internal static double MaxLateral(roadGenScript g)
         {
             double sum = 0, w = 1;
             for (int i = 0; i <= Octaves(g); i++) { sum += w; w *= Persistence(g); }
@@ -133,7 +133,7 @@ namespace TLDRevamp.Fixes
         }
 
         /// Horizontal distance from p to the segment a–b.
-        private static double SegmentDist(Vector3d p, Vector3d a, Vector3d b)
+        internal static double SegmentDist(Vector3d p, Vector3d a, Vector3d b)
         {
             double ax = a.x, az = a.z, bx = b.x - ax, bz = b.z - az, px = p.x - ax, pz = p.z - az;
             double len2 = bx * bx + bz * bz;
