@@ -98,6 +98,22 @@ namespace TLDRevamp.Fixes
             return n;
         }
 
+        /// Test: every road piece back to its skinned renderer (the game's own way), for a live before/after.
+        public static int RevertAll()
+        {
+            int n = 0;
+            foreach (var rs in Object.FindObjectsOfType<roadscript>())
+            {
+                var smr = rs.skinnedMeshRenderer;
+                var child = smr ? smr.transform.Find(ChildName) : null;
+                if (!child) continue;
+                Object.Destroy(child.gameObject);
+                smr.enabled = true;
+                n++;
+            }
+            return n;
+        }
+
         internal static string Stats() =>
             "{\"enabled\":" + (Enabled ? "true" : "false") + ",\"baked\":" + Baked + ",\"rebaked\":" + Rebaked + ",\"skippedLod\":" + SkippedLod + ",\"materialSyncs\":" + MaterialSyncs + "}";
     }
