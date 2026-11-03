@@ -65,9 +65,8 @@ namespace TLDRevamp.Fixes
         }
 
         private static readonly ConditionalWeakTable<roadGenScript, Shadow> Shadows = new ConditionalWeakTable<roadGenScript, Shadow>();
-        private static readonly ConditionalWeakTable<roadGenScript, object> IsShadowOf = new ConditionalWeakTable<roadGenScript, object>();
+        private static readonly ConditionalWeakTable<roadGenScript, roadGenScript> IsShadowOf = new ConditionalWeakTable<roadGenScript, roadGenScript>();
         private static readonly List<Shadow> All = new List<Shadow>();
-        private static readonly object Mark = new object();
 
         private static readonly AccessTools.FieldRef<roadGenScript, int> Baround = AccessTools.FieldRefAccess<roadGenScript, int>("baround");
         private static readonly AccessTools.FieldRef<roadGenScript, int> Iaround = AccessTools.FieldRefAccess<roadGenScript, int>("iaround");
@@ -75,9 +74,17 @@ namespace TLDRevamp.Fixes
         /// A shadow generator: the fixes that react to roads being made for the world (scenery, telemetry) skip it.
         internal static bool IsShadow(roadGenScript g) => g != null && IsShadowOf.TryGetValue(g, out _);
 
-        private static bool Usable(roadGenScript g) =>
+        /// The live generator a shadow stands for (null for any other): fixes that act on particular generators (the
+        /// old road) act on its shadow too.
+        internal static roadGenScript RealOf(roadGenScript g) => g != null && IsShadowOf.TryGetValue(g, out var real) ? real : null;
+
+        /// A shadow can stand for this generator (every terrain mode: the old road is made by its own fixes on the shadow too).
+        internal static bool ShadowUsable(roadGenScript g) =>
             g != null && !IsShadow(g) && (g.hasSideRoad || g.hasMainRoad) && g.mapSetting != null && g.terrainSettings != null
-            && g.mapSetting.imageMapLoad == null && !WorldGen.Old2023.OldWorld.Active;
+            && g.mapSetting.imageMapLoad == null;
+
+        /// Buildings from the shadow: not in old terrain, whose buildings are the 2023 plan (WorldGen.Old2023.OldBuildings).
+        internal static bool Usable(roadGenScript g) => ShadowUsable(g) && !WorldGen.Old2023.OldWorld.Active;
 
         internal static bool Applies(roadGenScript g) => Enabled && Usable(g);
 
@@ -92,7 +99,8 @@ namespace TLDRevamp.Fixes
                 g.emptySideRoadChance.ToString("R", ic), g.marginPercent.ToString("R", ic), g.minDistPercent.ToString("R", ic),
                 g.maxTries.ToString(ic), g.offsetty.ToString("R", ic), g.temporaryHeightSmoothing ? "T" : "t",
                 g.temporaryMaxHeightDifference.ToString("R", ic), g.terrainSettings.GetInstanceID().ToString(ic),
-                g.mapSetting.GetInstanceID().ToString(ic), ChunkLinks.Enabled ? "L" : "l", WorldGen.MainRoadOnlyRoads.Enabled ? "O" : "o");
+                g.mapSetting.GetInstanceID().ToString(ic), ChunkLinks.Enabled ? "L" : "l", WorldGen.MainRoadOnlyRoads.Enabled ? "O" : "o",
+                WorldGen.Old2023.OldWorld.Active ? "2023" : "beta");
         }
 
         private static Shadow Get(roadGenScript real)
@@ -123,7 +131,7 @@ namespace TLDRevamp.Fixes
             g.chunksNeeded = new List<Vector3d>();
             g.chunksToRemove = new List<Vector3d>();
             g.parent = null;
-            IsShadowOf.Add(g, Mark);
+            IsShadowOf.Add(g, real);
             s = new Shadow { Real = real, G = g, Key = key };
             Shadows.Add(real, s);
             All.Add(s);
@@ -144,15 +152,23 @@ namespace TLDRevamp.Fixes
         private static void Finish(Shadow s, Vector3d p, int ring)
         {
             var g = s.G;
-            bool mainOnly = !g.hasSideRoad;
-            Todo.Clear();
+            var list = new List<Vector3d>();
             for (int dz = -ring; dz <= ring; dz++)
                 for (int dx = -ring; dx <= ring; dx++)
-                {
-                    var c = mainscript.GetChunkPos(p, dx, dz, g.chunkSize);
-                    if (mainOnly && c.x != 0.0) continue;   // the game makes no chunk off the main road's line
-                    if (!s.Finished.Contains(c)) Todo.Add(c);
-                }
+                    list.Add(mainscript.GetChunkPos(p, dx, dz, g.chunkSize));
+            Finish(s, list);
+        }
+
+        private static void Finish(Shadow s, List<Vector3d> chunks)
+        {
+            var g = s.G;
+            bool mainOnly = !g.hasSideRoad;
+            Todo.Clear();
+            foreach (var c in chunks)
+            {
+                if (mainOnly && c.x != 0.0) continue;   // the game makes no chunk off the main road's line
+                if (!s.Finished.Contains(c) && !Todo.Contains(c)) Todo.Add(c);
+            }
             if (Todo.Count == 0) return;
             var need = g.chunksNeeded;
             need.Clear();
@@ -278,6 +294,49 @@ namespace TLDRevamp.Fixes
             }
             if (result.Count > 0) Step3++; else NotFound++;
             return Done(sw, result);
+        }
+
+        /// Every road that can come within `reach` of the rectangle, generated, in RoadTieOrder's order: the roads a
+        /// distant terrain tile is pulled onto (TerrainHorizon). A chunk's roads stay inside it and the chunks above and
+        /// right of it, `lateral` metres off their straight lines. Null when a road still has to be generated and the
+        /// budget (`budgetMs` on `budget`) is spent: ask again next frame, the roads made so far stay.
+        internal static List<roadGenScript.roadClass> RoadsAround(roadGenScript real, double minX, double maxX, double minZ, double maxZ, double reach,
+            Stopwatch budget, double budgetMs)
+        {
+            if (!ShadowUsable(real)) return null;
+            var s = Get(real);
+            var g = s.G;
+            Evict(s);
+            double lateral = AlignNearestRoad.MaxLateral(g), size = g.chunkSize;
+            minX -= reach; maxX += reach; minZ -= reach; maxZ += reach;
+            var center = mainscript.GetChunkPos(new Vector3d((minX + maxX) * 0.5, 0.0, (minZ + maxZ) * 0.5), g.chunkSize);
+            var chunks = new List<Vector3d>();
+            for (int dz = -2; dz <= 1; dz++)
+                for (int dx = -2; dx <= 1; dx++)
+                {
+                    var c = mainscript.GetChunkPos(center, dx, dz, g.chunkSize);
+                    if (c.x - 0.5 * size - lateral > maxX || c.x + 1.5 * size + lateral < minX || c.z - 0.5 * size - lateral > maxZ || c.z + 1.5 * size + lateral < minZ) continue;
+                    chunks.Add(c);
+                }
+            Finish(s, chunks);
+            var result = new List<roadGenScript.roadClass>();
+            foreach (var c in chunks)
+            {
+                if (!g.chunks.TryGetValue(c, out var ch)) continue;
+                foreach (var r in ch.roads)
+                {
+                    if (r == null || RectDist(r.start, r.end, minX, maxX, minZ, maxZ) > lateral) continue;
+                    if (!r.generated)
+                    {
+                        if (budget.Elapsed.TotalMilliseconds >= budgetMs) return null;
+                        r.Generate(g);
+                        Generated++;
+                    }
+                    if (r.generated && r.roadElements.Count > 0) result.Add(r);
+                }
+            }
+            RoadTieOrder.Sort(result);
+            return result;
         }
 
         private static List<roadGenScript.roadClass> Done(Stopwatch sw, List<roadGenScript.roadClass> result)

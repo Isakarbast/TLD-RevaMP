@@ -598,6 +598,99 @@ namespace TLDRevamp.Fixes
         internal static bool AlignBudgetLeft(double spentMs, double elapsedMs) =>
             !TerrainHorizonGeometry.AlignBudgetExhausted(spentMs, elapsedMs, AlignBudgetMs);
 
+        /// Pulls one terrain tile's mesh onto the given roads, every vertex (no budget inside: the caller spends it
+        /// between tiles). A tile's vertices are offsets from its global key and its heights are absolute
+        /// (terrainGenScript.GenerateTileMesh), so everything is done in global doubles from the key and only the height
+        /// is written: nothing passes through Unity's float space, whose origin moves with the player (that left the last
+        /// bits of a corrected height depending on where the player stood). Always from the original heights, so the
+        /// result depends on the roads only, never on earlier passes.
+        internal static int AlignTileTo(Mesh mesh, Vector3d key, List<roadGenScript.roadClass> roads, double blendRadius)
+        {
+            var vertices = mesh.vertices;
+            if (vertices == null || vertices.Length == 0 || vertices.Length > 200000 || roads.Count == 0) return 0;
+            var fix = FixFor(mesh);
+            int changed = 0;
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                var global = new Vector3d(key.x + vertices[i].x, vertices[i].y, key.z + vertices[i].z);
+                var road = roadGenScript.NearestPointOnRoadBone(global, roads, out var point);
+                if (road == null) continue;
+                double dx = point.x - global.x, dz = point.z - global.z;
+                double d = Math.Sqrt(dx * dx + dz * dz);
+                if (d > blendRadius) continue;
+                fix.Remember(i, vertices[i].y);
+                double y = fix.Corrected(i, point.y, d, blendRadius);
+                if (double.IsNaN(y)) continue;
+                if (Math.Abs(y - vertices[i].y) < 0.0005) continue;
+                vertices[i].y = (float)y;
+                changed++;
+            }
+            if (changed == 0) return 0;
+            mesh.vertices = vertices;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            FarMeshesCorrected++; FarVerticesCorrected += changed;
+            return changed;
+        }
+
+        // ---------------------------------------------------------------- distant tiles from the seed's roads
+
+        /// Distant tiles are pulled onto the roads from PureRoads' shadow (every road that can reach the tile, made from
+        /// the seed), not onto the live generator's roads near the tile's centre at the moment it is placed: that depended
+        /// on what was loaded and, through the frame budget, on timing (two copies arriving from opposite sides had
+        /// different distant tiles at 7 of 12 spots, 2026-11-03). Each placed tile waits in a queue until it is corrected;
+        /// AlignBudgetMs of tiles and shadow roads per frame. Off: the old correction at placement.
+        public static bool PureFar = true;
+        internal static long PureFarQueued, PureFarDone, PureFarWaits;
+        private static readonly List<KeyValuePair<terrainGenScript, Vector3d>> FarQueue = new List<KeyValuePair<terrainGenScript, Vector3d>>();
+        private static int _farFrame = -1;
+        private static readonly System.Diagnostics.Stopwatch FarBudget = new System.Diagnostics.Stopwatch();
+
+        private static bool PureFarApplies(mapSettingScript map)
+        {
+            if (!PureFar || !CorrectFar || map == null || map.roadGens == null || map.roadGens.Count == 0) return false;
+            foreach (var rg in map.roadGens) if (rg != null && !PureRoads.ShadowUsable(rg)) return false;
+            return true;
+        }
+
+        [HarmonyPatch(typeof(terrainGenScript), nameof(terrainGenScript.Upd))]
+        private static class FarQueueRunner
+        {
+            private static void Postfix()
+            {
+                if (FarQueue.Count == 0 || Time.frameCount == _farFrame) return;
+                _farFrame = Time.frameCount;
+                var map = menuhandler.s != null ? menuhandler.s.currentMainMap : null;
+                if (!PureFarApplies(map) || settingsscript.s == null || !settingsscript.s.S.GetDistantTerrain()) { FarQueue.Clear(); return; }
+                FarBudget.Restart();
+                try
+                {
+                    while (FarQueue.Count > 0 && FarBudget.Elapsed.TotalMilliseconds < AlignBudgetMs)
+                    {
+                        var gen = FarQueue[0].Key;
+                        var key = FarQueue[0].Value;
+                        if (gen == null || gen.terrains == null || !gen.terrains.TryGetValue(key, out var tile) || tile == null || tile.mf == null || tile.mf.mesh == null)
+                        { FarQueue.RemoveAt(0); continue; }
+                        double spacing = TileSpacing(gen), blend = BlendRadius(spacing), half = gen.tileSize * 0.5 + spacing;
+                        var roads = new List<roadGenScript.roadClass>();
+                        bool ready = true;
+                        foreach (var rg in map.roadGens)
+                        {
+                            if (rg == null) continue;
+                            var part = PureRoads.RoadsAround(rg, key.x - half, key.x + half, key.z - half, key.z + half, blend, FarBudget, AlignBudgetMs);
+                            if (part == null) { ready = false; break; }
+                            roads.AddRange(part);
+                        }
+                        if (!ready) { PureFarWaits++; break; }   // its roads go on being made next frame
+                        FarQueue.RemoveAt(0);
+                        AlignTileTo(tile.mf.mesh, key, roads, blend);
+                        PureFarDone++;
+                    }
+                }
+                catch (Exception e) { FarQueue.Clear(); PureFar = false; Plugin.Log.LogError("TerrainHorizon PureFar off after error: " + e); }
+            }
+        }
+
         internal static int AlignMesh(Mesh mesh, Func<Vector3, Vector3> toWorld, Func<Vector3, Vector3> worldToLocal, Vector3d searchOrigin, double blendRadius)
         {
             if (!CorrectFar || mesh == null) return 0;
@@ -783,6 +876,12 @@ namespace TLDRevamp.Fixes
             private static void Postfix(terrainGenScript __instance, Vector3d _gpos)
             {
                 if (__instance == null || !__instance.isDistantTerrain) return;
+                if (PureFarApplies(menuhandler.s != null ? menuhandler.s.currentMainMap : null))
+                {
+                    var item = new KeyValuePair<terrainGenScript, Vector3d>(__instance, _gpos);
+                    if (!FarQueue.Contains(item)) { FarQueue.Add(item); PureFarQueued++; }
+                    return;
+                }
                 var tile = TerrainRef(__instance);
                 if (tile == null || tile.mf == null || tile.mf.mesh == null) return;
                 var mesh = tile.mf.mesh;
@@ -808,6 +907,8 @@ namespace TLDRevamp.Fixes
             ",\"batches\":" + Batches.Count + ",\"vertices\":" + vertices +
             ",\"triangles\":" + triangles + ",\"rebuilds\":" + Rebuilds + ",\"farMeshWrites\":" + FarMeshesCorrected +
             ",\"farVertices\":" + FarVerticesCorrected + ",\"failed\":" + Failed +
+            ",\"pureFar\":" + (PureFar ? "true" : "false") + ",\"pureFarQueued\":" + PureFarQueued + ",\"pureFarDone\":" + PureFarDone +
+            ",\"pureFarWaits\":" + PureFarWaits + ",\"pureFarPending\":" + FarQueue.Count +
             ",\"lastRebuildMs\":" + LastRebuildMs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
             ",\"lastScanMs\":" + LastScanMs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
             ",\"lastBuildMs\":" + LastBuildMs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +

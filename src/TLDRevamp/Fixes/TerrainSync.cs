@@ -196,6 +196,53 @@ namespace TLDRevamp.Fixes
             }
         }
 
+        /// Every placed tile within r of (x, z): each vertex's height recomputed from the lists that are current now
+        /// (bridge `call TLDRevamp.Fixes.TerrainSync.Recheck x z r`): tiles whose mesh doesn't match what they would be
+        /// built as now, per generator, with the generator's flags.
+        public static string Recheck(string xs, string zs, string rs)
+        {
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            double x = double.Parse(xs, ic), z = double.Parse(zs, ic), r = double.Parse(rs, ic);
+            var map = menuhandler.s != null ? menuhandler.s.currentMainMap : null;
+            if (map == null || map.terrainGen == null) return "{}";
+            var parts = new List<string>();
+            foreach (var gen in map.terrainGen)
+            {
+                if (gen == null || gen.terrains == null) continue;
+                int tiles = 0, differ = 0;
+                double worst = 0;
+                var ex = new List<string>();
+                foreach (var kv in gen.terrains)
+                {
+                    var key = kv.Key;
+                    if ((key.x - x) * (key.x - x) + (key.z - z) * (key.z - z) > r * r) continue;
+                    if (kv.Value == null || kv.Value.mf == null || kv.Value.mf.sharedMesh == null) continue;
+                    tiles++;
+                    var roads = RoadsFor(gen, key);
+                    var pois = PoisFor(gen, key);
+                    double tileWorst = 0;
+                    foreach (var v in kv.Value.mf.sharedMesh.vertices)
+                    {
+                        var g = key + new Vector3d(v.x, 0.0, v.z);
+                        float want = (float)gen.setting.Height(g, roads, pois);
+                        double d = System.Math.Abs(want - v.y);
+                        if (d > tileWorst) tileWorst = d;
+                    }
+                    if (tileWorst > 0)
+                    {
+                        differ++;
+                        if (tileWorst > worst) worst = tileWorst;
+                        if (ex.Count < 6) ex.Add("\"" + key.x.ToString("0", ic) + "," + key.z.ToString("0", ic) + " dy " + tileWorst.ToString("0.####", ic) +
+                            " roads " + (roads != null ? roads.Count : -1) + " pois " + (pois != null ? pois.Count : -1) + "\"");
+                    }
+                }
+                parts.Add("\"" + gen.name + "\":{\"road\":" + (gen.roadAffectsThis ? "true" : "false") + ",\"poi\":" + (gen.poiAffectsThis ? "true" : "false") +
+                    ",\"size\":" + gen.tileSize.ToString(ic) + ",\"tiles\":" + tiles + ",\"differ\":" + differ + ",\"worst\":" + worst.ToString("0.####", ic) +
+                    ",\"examples\":[" + string.Join(",", ex) + "]}");
+            }
+            return "{" + string.Join(",", parts) + "}";
+        }
+
         public static string Stats =>
             "{\"enabled\":" + (Enabled ? "true" : "false") + ",\"checked\":" + Checked + ",\"queued\":" + Queued +
             ",\"rebuilt\":" + Rebuilt + ",\"jobsRedone\":" + JobsRedone + ",\"recorded\":" + Recorded + "}";

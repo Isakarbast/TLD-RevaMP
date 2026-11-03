@@ -182,6 +182,13 @@ host checks what each joiner generates from (`src/TLDRevamp/Net/WorldCheck.cs`, 
   finished goes on next frame: when a building appears changes, never where); shadow chunks more than
   `EvictChunks` road chunks from every player are dropped and made again from the seed when needed. Bridge
   `call TLDRevamp.Fixes.PureRoads.Stats`.
+- **Distant ground from the seed's roads** (`TerrainHorizon.PureFar`, every terrain mode). The coarse distant terrain
+  is pulled onto the roads so a road isn't buried in a hill. That used the live generator's roads near the tile's
+  centre at the moment the tile was placed, skipped a tile when the frame's budget ran out, and went through Unity's
+  float coordinates (whose origin moves with the player): two copies arriving from opposite sides had different distant
+  tiles at 7 of 12 spots. Now each placed tile waits in a queue until the shadow (`PureRoads.RoadsAround`, every road
+  that can reach the tile; the old road too in old terrain) has its roads, and is corrected in global doubles from its
+  original heights. Measured with scenery: 10,046 scenery chunks and ground tiles at 48 spots, 0 different.
 
 A/B switches (bridge `set`): `TLDRevamp.Net.WorldCheck.Refuse` (off: a different game is announced at Ready, as
 before) and `.Force`. Bridge `worldcheck` shows the game build, the data hash, the generator patches, whether the

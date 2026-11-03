@@ -146,6 +146,7 @@ namespace TLDRevamp.WorldGen.Old2023
         private static bool Owns(roadGenScript g)
         {
             if (_path == null) return false;
+            g = Fixes.PureRoads.RealOf(g) ?? g;   // a shadow (PureRoads) gets the old road of the generator it stands for
             foreach (var o in _owners) if (ReferenceEquals(o, g)) return true;
             return false;
         }

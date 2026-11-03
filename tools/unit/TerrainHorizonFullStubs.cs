@@ -135,12 +135,15 @@ public class roadGenScript
     public enum roadTypeEmu { mainRoad, sideRoad, other }
 }
 public class poiGenScript { public enum alignToRoadEmu { anyRoad } }
-public class terrainGenScript { public bool isDistantTerrain; public float drawDistance; public float tileSize; public int resolution; public int layer; }
+public class terrainGenScript { public bool isDistantTerrain; public float drawDistance; public float tileSize; public int resolution; public int layer; public Dictionary<Vector3d, newTerrainTileScript> terrains = new Dictionary<Vector3d, newTerrainTileScript>(); public void Upd() { } }
 public class newTerrainTileScript { public UnityEngine.Transform t; public UnityEngine.MeshFilter mf; public UnityEngine.Transform transform; }
 public class newNewRandomMapGen { public float gridSize; public int resolution; public newFarTerrainScript nfts; public UnityEngine.Transform transform; public class MeshToGenerate { public UnityEngine.Vector3 p; } public void UpdMesh(UnityEngine.MeshFilter f, MeshToGenerate m) { } }
 public class newFarTerrainScript { }
 public class visszarako : UnityEngine.Component { public bool moveWhenParented; public bool dontlookUnderMap; }
 public class itemdatabase { public static itemdatabase s = new itemdatabase(); public UnityEngine.GameObject Road(int id) => null; }
-namespace TLDRevamp { public static class Plugin { public static readonly Logger Log = new Logger(); } public class Logger { public void LogWarning(string s) { } } }
+namespace TLDRevamp { public static class Plugin { public static readonly Logger Log = new Logger(); } public class Logger { public void LogWarning(string s) { } public void LogError(string s) { } } }
 // The detailed terrain ring (Fixes/DetailedTerrain.cs) is not part of this test: its reach is the game's own here.
 namespace TLDRevamp.Fixes { internal static class DetailedTerrain { internal static float EffectiveDistance(terrainGenScript gen) => gen == null ? 0f : gen.drawDistance; } }
+// PureRoads (the shadow road generator) is not part of this test: no shadow, so distant tiles take the old path.
+namespace TLDRevamp.Fixes { internal static class PureRoads { internal static bool ShadowUsable(roadGenScript g) => false;
+    internal static System.Collections.Generic.List<roadGenScript.roadClass> RoadsAround(roadGenScript g, double a, double b, double c, double d, double e, System.Diagnostics.Stopwatch w, double ms) => null; } }

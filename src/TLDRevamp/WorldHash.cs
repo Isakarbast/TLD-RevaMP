@@ -64,14 +64,17 @@ namespace TLDRevamp
                     foreach (var cat in og.categories)
                     {
                         var rows = new List<string>();
-                        foreach (var ch in cat.generatedChunks.Values)
+                        foreach (var cc in cat.generatedChunks)
                         {
+                            var ch = cc.Value;
                             if (!ch.generated) continue;
+                            // the chunk last, so two machines can be compared on the chunks both have generated
+                            string ck = "|" + cc.Key.x.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "," + cc.Key.z.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
                             foreach (var kv in ch.objs)
                             {
                                 var o = kv.Value;
                                 if (!Near(o.gpos, center, radius)) continue;
-                                rows.Add(B(o.gpos.x) + "," + B(o.gpos.y) + "," + B(o.gpos.z) + "|" + o.prefabIndex + "|" + BF(o.rot.x) + "," + BF(o.rot.y) + "," + BF(o.rot.z) + "|" + BF(o.scale) + "|" + o.seed);
+                                rows.Add(B(o.gpos.x) + "," + B(o.gpos.y) + "," + B(o.gpos.z) + "|" + o.prefabIndex + "|" + BF(o.rot.x) + "," + BF(o.rot.y) + "," + BF(o.rot.z) + "|" + BF(o.scale) + "|" + o.seed + ck);
                             }
                         }
                         parts.Add(Part("obj:" + cat.name, rows, detail));
