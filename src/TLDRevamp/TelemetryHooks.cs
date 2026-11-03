@@ -65,7 +65,7 @@ namespace TLDRevamp
         [HarmonyPatch(typeof(roadGenScript.roadClass), nameof(roadGenScript.roadClass.Generate)), HarmonyPrefix, HarmonyPriority(Priority.First)]
         private static void RoadBefore(roadGenScript.roadClass __instance, out bool __state) { __state = __instance.generated; }
         [HarmonyPatch(typeof(roadGenScript.roadClass), nameof(roadGenScript.roadClass.Generate)), HarmonyPostfix]
-        private static void RoadAfter(roadGenScript.roadClass __instance, bool __state) { if (!__state && __instance.generated) RoadFinished(); }
+        private static void RoadAfter(roadGenScript.roadClass __instance, roadGenScript _roadgen, bool __state) { if (!__state && __instance.generated && !Fixes.PureRoads.IsShadow(_roadgen)) RoadFinished(); }
         internal static void RoadFinished() { History[Slot()].Roads++; }
         [HarmonyPatch(typeof(poiGenScript), nameof(poiGenScript.Spawn)), HarmonyPostfix]
         private static void Building(GameObject __result) { if (__result != null) History[Slot()].Buildings++; }

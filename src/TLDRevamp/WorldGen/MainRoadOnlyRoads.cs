@@ -205,7 +205,7 @@ namespace TLDRevamp.WorldGen
         [HarmonyPostfix]
         private static void PoiLinksSettled(roadGenScript __instance, Vector3d _gpos, ref bool __result)
         {
-            if (!__result || _inAddPois == 0 || !PoisWaitForLinks) return;
+            if (!__result || _inAddPois == 0 || !PoisWaitForLinks || Fixes.PureRoads.Applies(__instance)) return;   // PureRoads: no waiting
             try
             {
                 var g = __instance;

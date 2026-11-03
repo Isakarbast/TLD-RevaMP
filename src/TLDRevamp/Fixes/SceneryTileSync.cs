@@ -127,7 +127,7 @@ namespace TLDRevamp.Fixes
             [HarmonyPostfix]
             private static void Postfix(roadGenScript __instance, Vector3d _currentPos)
             {
-                if (!Collect) return;
+                if (!Collect || PureRoads.IsShadow(__instance)) return;   // a road made only to place buildings (PureRoads)
                 var inner = mainscript.GetChunkPos(_currentPos, __instance.innerChunkSize);
                 if (!RoadEvSeen.Add(inner)) return;
                 RoadEvs.Add(new RoadEv { Inner = inner, Size = __instance.innerChunkSize, Around = IAround(__instance) });

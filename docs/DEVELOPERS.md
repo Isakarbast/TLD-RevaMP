@@ -168,6 +168,20 @@ host checks what each joiner generates from (`src/TLDRevamp/Net/WorldCheck.cs`, 
   so, and the player's own choice counts again after the session. A host whose world was generated with them off has
   every generated tile and scenery chunk checked again against the roads and buildings there
   (`SceneryTileSync.RefreshAll`).
+- **Buildings find their road from the seed** (`PureRoads`, crossroads and main road only). The roads are already a
+  function of the seed (a road chunk's dots from its own `Random`, its roads and links from those dots, a road's shape
+  from its two dots, noise and terrain height). Each road generator gets a shadow: a second `roadGenScript` with the
+  same settings, never drawn or placed, driven through the game's own `UpdChunks` / `ConnectChunks` /
+  `roadClass.Generate` for exactly the road chunks a building looks at, until they are finished. A building's road
+  (`AlignPosToRoad`) and the road its height blends to are looked up there, so they are the same whatever the player
+  loaded before, and buildings no longer wait for the live roads (`PoiRoadsSettled` and main road only's wait are the
+  fallback with `PureRoads.Enabled` off). Measured equal to the waiting rule: 4,778 placements compared on two
+  copies (`PureRoads.Compare`), 0 different. A building from a candidate is spawned only once no candidate within
+  two building chunks of it is still waiting for its lookup (`PureRoads.HoldSpawns`), so the shared-spot rule never
+  meets a spawned loser. Lookups get `PureRoads.BudgetMs` (2 ms) per frame, shadow roads included (a lookup not
+  finished goes on next frame: when a building appears changes, never where); shadow chunks more than
+  `EvictChunks` road chunks from every player are dropped and made again from the seed when needed. Bridge
+  `call TLDRevamp.Fixes.PureRoads.Stats`.
 
 A/B switches (bridge `set`): `TLDRevamp.Net.WorldCheck.Refuse` (off: a different game is announced at Ready, as
 before) and `.Force`. Bridge `worldcheck` shows the game build, the data hash, the generator patches, whether the

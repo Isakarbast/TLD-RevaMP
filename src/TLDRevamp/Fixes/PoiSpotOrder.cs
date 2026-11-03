@@ -83,6 +83,9 @@ namespace TLDRevamp.Fixes
             CandOf.Add(__result, new Cand { Pos = __state.Value });
         }
 
+        /// A building AddPois placed from a candidate (not from the save, not the start house or a fixed one).
+        internal static bool FromCandidate(poiGenScript.poiClass p) => p != null && CandOf.TryGetValue(p, out _);
+
         private static bool First(Vector3d a, Vector3d b) => a.x < b.x || (a.x == b.x && a.z < b.z);
 
         public static string Stats => "{\"enabled\":" + (Enabled ? "true" : "false") + ",\"collisions\":" + Collisions + ",\"replaced\":" + Replaced +

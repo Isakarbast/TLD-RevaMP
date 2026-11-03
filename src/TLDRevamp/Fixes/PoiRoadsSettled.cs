@@ -24,6 +24,8 @@ namespace TLDRevamp.Fixes
     /// the road chunks it waits for are needed too (NeedForPois), only those and only while it waits. A whole extra ring of needed chunks cost
     /// +0.6 ms per frame while travelling (road piece placement walks every needed chunk); farther buildings wait unseen.
     /// Main road only worlds have their own rule (WorldGen.MainRoadOnlyRoads.PoisWaitForLinks).
+    /// Since PureRoads (buildings find their road from the seed) both rules only act with PureRoads.Enabled off: the
+    /// fallback, and the reference PureRoads.Compare checks the seed's answer against.
     /// Runtime switches (bridge `set`): TLDRevamp.Fixes.PoiRoadsSettled.Enabled / .NeedForPois / .NeedMarginM.
     [HarmonyPatch]
     public static class PoiRoadsSettled
@@ -106,7 +108,7 @@ namespace TLDRevamp.Fixes
         [HarmonyPostfix]
         private static void Settled(roadGenScript __instance, Vector3d _gpos, ref bool __result)
         {
-            if (_inAddPois == 0 || !Enabled || !Applies(__instance)) return;
+            if (_inAddPois == 0 || !Enabled || !Applies(__instance) || PureRoads.Applies(__instance)) return;   // PureRoads: no waiting
             try
             {
                 var g = __instance;
