@@ -28,10 +28,13 @@ namespace TLDRevamp.Net
         /// The world's data files, hashed once per change (a few hundred MB: on a worker thread at start, cached by
         /// name, size and time in BepInEx/cache).
         private static Task<string> _data;
+        /// Tests (bridge `set`): this machine claims these game data instead of its own, to see a join refused.
+        public static string TestGameData;
         public static string GameData
         {
             get
             {
+                if (!string.IsNullOrEmpty(TestGameData)) return TestGameData;
                 if (_data == null) Start();
                 try { return _data.Wait(30000) ? _data.Result : "unknown"; }
                 catch { return "unknown"; }
@@ -171,11 +174,11 @@ namespace TLDRevamp.Net
         {
             if (!Force || _forced) return;
             _scenery = Fixes.SceneryTileSync.Enabled; _terrain = Fixes.TerrainSync.Enabled; _objGen = Fixes.ObjGenFast.Enabled; _links = Fixes.ChunkLinks.Enabled;
-            _pois = Fixes.PoiRoadsSettled.Enabled; _poiRing = Fixes.PoiRoadsSettled.NeedAround;
+            _pois = Fixes.PoiRoadsSettled.Enabled; _poiRing = Fixes.PoiRoadsSettled.NeedForPois;
             _mainRoad = WorldGen.MainRoadOnlyRoads.Enabled; _waitLinks = WorldGen.MainRoadOnlyRoads.PoisWaitForLinks; _lineAhead = WorldGen.MainRoadOnlyRoads.LineAhead;
             bool wasOff = !_scenery || !_terrain || !_objGen;
             Fixes.SceneryTileSync.Enabled = Fixes.TerrainSync.Enabled = Fixes.ObjGenFast.Enabled = Fixes.ChunkLinks.Enabled = true;
-            Fixes.PoiRoadsSettled.Enabled = Fixes.PoiRoadsSettled.NeedAround = true;
+            Fixes.PoiRoadsSettled.Enabled = Fixes.PoiRoadsSettled.NeedForPois = true;
             WorldGen.MainRoadOnlyRoads.Enabled = WorldGen.MainRoadOnlyRoads.PoisWaitForLinks = WorldGen.MainRoadOnlyRoads.LineAhead = true;
             _forced = true;
             if (wasOff || !_links || !_pois || !_poiRing || !_mainRoad || !_waitLinks || !_lineAhead)
@@ -197,7 +200,7 @@ namespace TLDRevamp.Net
             if (!_forced) return;
             _forced = false;
             Fixes.SceneryTileSync.Enabled = _scenery; Fixes.TerrainSync.Enabled = _terrain; Fixes.ObjGenFast.Enabled = _objGen; Fixes.ChunkLinks.Enabled = _links;
-            Fixes.PoiRoadsSettled.Enabled = _pois; Fixes.PoiRoadsSettled.NeedAround = _poiRing;
+            Fixes.PoiRoadsSettled.Enabled = _pois; Fixes.PoiRoadsSettled.NeedForPois = _poiRing;
             WorldGen.MainRoadOnlyRoads.Enabled = _mainRoad; WorldGen.MainRoadOnlyRoads.PoisWaitForLinks = _waitLinks; WorldGen.MainRoadOnlyRoads.LineAhead = _lineAhead;
         }
 

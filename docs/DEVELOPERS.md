@@ -158,7 +158,8 @@ host checks what each joiner generates from (`src/TLDRevamp/Net/WorldCheck.cs`, 
 - **RevaMP's order fixes are on for everyone in a session.** Scenery and ground used to depend on the order an area
   was reached in (`SceneryTileSync`, `TerrainSync`, both on `ObjGenFast`); so did crossroads buildings, which were
   placed while a neighbouring road chunk had no roads yet (`PoiRoadsSettled`: a building waits until all nine road
-  chunks around it are finished, and the road generator keeps one more ring of chunks), the roads between two road
+  chunks around it are finished; for a building near enough to be seen, the chunks it waits for are generated at
+  once), the roads between two road
   chunks, which depended on which of the two the game handled first (`ChunkLinks`), and main road only buildings
   (`MainRoadOnlyRoads`). In a session these are on whatever the player set; the settings rows say
   so, and the player's own choice counts again after the session. A host whose world was generated with them off has
