@@ -180,6 +180,11 @@ namespace TLDRevamp.Net
             SendRecord();
         }
 
+        /// Session over (Mp.Stop, after ClientLeaving): a Restore still waiting for Ready (the join was cancelled while it
+        /// loaded) and the report of what came back are that host's. Kept, the next join applied them in another host's
+        /// world: the first host's pocket and player state, where the second host had no record of this player.
+        internal static void ClientSessionEnded() { _pending = null; _restoredReport = null; }
+
         internal static void ClientRestoreIn(NetReader r)
         {
             if (!Enabled || Mp.Client == null || Mp.Client.Bot != null) return;

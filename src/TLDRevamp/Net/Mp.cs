@@ -279,6 +279,7 @@ namespace TLDRevamp.Net
             if (Server != null) { try { var ps = new List<Session.Player>(); Server.Players(ps); PlayerSave.ServerStopping(ps); } catch (Exception e) { Plugin.Log.LogWarning("player save on stop: " + e.Message); } }
             Client?.Dispose(); Client = null;
             Server?.Dispose(); Server = null;
+            PlayerSave.ClientSessionEnded();
             DeveloperAccess.ResetClient();
             SessionSettingsSnapshot.UnbindHost();   // no host to trust any more
             SessionSettingsDefaults.ResetSessionPolicy();
