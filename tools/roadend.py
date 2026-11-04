@@ -121,10 +121,12 @@ def main():
             s = state(b)
             print("start:", s, flush=True)
             sign = s["sign"]
-            # 1. go to the end line's chunk border so both road chunks there are made
-            cut = s["cut"]
-            z = sign * (cut - 400)
-            b(f"tpg 0 {z:.0f} hold"); time.sleep(2); b(f"tpground 0 {z:.0f}")
+            print(f"the end: road chunk {s['endChunk']} step {s['endStep']}, {s['crowKm']} km from the start as the crow flies "
+                  f"({s['chunksMeasured']} chunks measured in {s['measureMs']} ms)", flush=True)
+            checks["end measured along the road (nearer as the crow flies)"] = bool(s["cutKnown"]) and 0 < s["crowKm"] < s["configuredKm"]
+            # 1. go to a place on the road 400 m before the planned end, so the road chunks there are made
+            ax, _, az = s["approach"]
+            b(f"tpg {ax:.0f} {az:.0f} hold"); time.sleep(2); b(f"tpground {ax:.0f} {az:.0f}")
             t0 = time.monotonic()
             while time.monotonic() - t0 < 90:
                 s = state(b)
@@ -136,8 +138,14 @@ def main():
             if not s["roadEnd"]:
                 return finish(result, out)
             end = s["roadEnd"]
+            checks["the road ends where planned"] = math.dist(end[::2], s["planned"][::2]) < 300
+            lengths = probe(b, "Lengths")
+            print(f" road end {end}, planned {s['planned']}: {math.dist(end[::2], s['planned'][::2]):.0f} m apart; {lengths}", flush=True)
+            try: worst = float(lengths.split("worst road ")[1].split(" m")[0])
+            except (IndexError, ValueError): worst = 1e9
+            checks["the measure lays the road as the game does (within 1 m a road)"] = worst <= 1.0
             # 2. stand on the road 40 m before its end, facing it; wait for the place to fill in
-            dx, dz = 0.0, float(sign)
+            dx, dz = s["roadDir"][0], s["roadDir"][2]
             px, pz = end[0] - dx * 40, end[2] - dz * 40
             b(f"tpground {px:.1f} {pz:.1f}")
             time.sleep(12)
@@ -146,6 +154,9 @@ def main():
             print("at the end:", s, flush=True)
             past = s["past"]
             checks["no main road past the end"] = past["mainRoad"] == 0
+            poles = probe(b, "Poles")
+            print(" poles without a next one:", poles, flush=True)
+            checks["no wires hanging into nothing"] = poles == "none" or all("wire scale 0.00" in p_ for p_ in poles.split(" | "))
             checks["the land goes on past the end"] = past["tiles"] > 0
             checks["no building next to the grave"] = s["buildingsNearGrave"] == 0
             checks["grave placed"] = s["grave"] is not None and math.dist(s["grave"][::2], end[::2]) < 15

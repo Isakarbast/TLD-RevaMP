@@ -82,7 +82,7 @@ namespace RoadEnd
                 if (Active) { double.TryParse(f[1], NumberStyles.Float, CultureInfo.InvariantCulture, out Km); Sign = f[2] == "S" ? -1 : 1; }
                 Source = "host";
                 _hostValue = null;
-                Plugin.Log.LogInfo($"world {seed}: the host's, the end of the road is {(Active ? $"on, at about {Km:0.###} km" : "off")}");
+                Plugin.Log.LogInfo($"world {seed}: the host's, the end of the road is {(Active ? $"on, after {Km:0.###} km of road" : "off")}");
                 return;
             }
             var list = Read();
@@ -98,7 +98,7 @@ namespace RoadEnd
                 Active = Plugin.Enabled; Km = w.km; Sign = w.sign; Source = "save";
             }
             else { Active = false; Source = "save"; }
-            Plugin.Log.LogInfo($"world {seed} ({Source}): the end of the road is {(Active ? $"on, at about {Km:0.###} km {(Sign > 0 ? "north" : "south")}" : "off")}");
+            Plugin.Log.LogInfo($"world {seed} ({Source}): the end of the road is {(Active ? $"on, after {Km:0.###} km of road {(Sign > 0 ? "north" : "south")}" : "off")}");
         }
 
         /// The multiplayer session setting: what this world is (the host's value reaches every joiner).

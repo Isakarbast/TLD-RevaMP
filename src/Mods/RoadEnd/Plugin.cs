@@ -19,7 +19,7 @@ namespace RoadEnd
     [BepInPlugin(Guid, "Road End", Version)]
     public class Plugin : BaseUnityPlugin
     {
-        public const string Guid = "tldrevamp.roadend", Version = "0.1.0";
+        public const string Guid = "tldrevamp.roadend", Version = "0.2.0";
 
         internal static ManualLogSource Log;
         public static bool Enabled = true, Verbose;
@@ -36,9 +36,8 @@ namespace RoadEnd
             Log = Logger;
             Enabled = Config.Bind("End", "Enabled", true, "Off: the mod does nothing, and the new-game screen doesn't offer the end of the road.").Value;
             EndKm = Config.Bind("End", "DistanceKm", 5000.0,
-                "Where the main road ends in new worlds (each world keeps the distance it was started with), in km from the start along the main road. The game builds its road in 10 km pieces; the end goes " +
-                "on the stretch between two of them, so values like 4995 or 5005 km are exact and others move to the nearest such stretch " +
-                "(at most about 5 km; the log says where).").Value;
+                "Where the main road ends in new worlds (each world keeps the distance it was started with): km driven along the main road from the start, " +
+                "not in a straight line (the road wanders, so the end is nearer than this as the crow flies; the log says how near)").Value;
             string dir = Config.Bind("End", "Direction", "North",
                 new ConfigDescription("Which way along the main road the end is in new worlds, from the start: North or South.",
                     new AcceptableValueList<string>("North", "South"))).Value;

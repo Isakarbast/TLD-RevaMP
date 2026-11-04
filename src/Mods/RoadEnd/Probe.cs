@@ -23,6 +23,10 @@ namespace RoadEnd
             sb.Append(",\"sign\":").Append(World.Sign);
             sb.Append(",\"configuredKm\":").Append(F(World.Km));
             sb.Append(",\"cut\":").Append(F(end.Cut)).Append(",\"cutKnown\":").Append(end.Known ? "true" : "false");
+            sb.Append(",\"endChunk\":").Append(end.Chunk).Append(",\"endStep\":").Append(end.Step == EndPlan.Link ? -1 : end.Step).Append(",\"along\":").Append(F(end.Along));
+            sb.Append(",\"planned\":").Append(end.Known ? V(end.Planned) : "null").Append(",\"approach\":").Append(end.Known ? V(end.Approach) : "null");
+            sb.Append(",\"crowKm\":").Append(F(end.CrowKm)).Append(",\"chunksMeasured\":").Append(EndPlan.ChunksMeasured).Append(",\"measureMs\":").Append(F(EndPlan.MeasureMs));
+            sb.Append(",\"roadDir\":").Append(end.HasRoadEnd ? V(end.RoadDir) : "null");
             sb.Append(",\"roadEnd\":").Append(end.HasRoadEnd ? V(end.RoadEnd) : "null");
             sb.Append(",\"trimmedRoads\":").Append(Roads.Trimmed).Append(",\"droppedRoads\":").Append(Roads.Dropped);
             var p = mainscript.s != null && mainscript.s.player != null ? mainscript.GlobalFromUnityPos(mainscript.s.player.transform.position) : Vector3d.zero;
@@ -34,11 +38,17 @@ namespace RoadEnd
             foreach (var r in Object.FindObjectsOfType<roadscript>())
             {
                 if (!r.gameObject.activeInHierarchy) continue;
-                bool past = EndPlan.U(mainscript.GlobalFromUnityPos(r.transform.position)) > end.Cut + 5;
-                if (!past) continue;
+                // a main road piece after the end on the drive (or past the end of the road it is on); a side road
+                // piece past the end line
                 var rg = r.roadgen;
-                bool isMain = rg != null && rg.chunks.TryGetValue(r.chunk, out var ch) && r.roadID < ch.roads.Count && ch.roads[r.roadID].roadType == roadGenScript.roadTypeEmu.mainRoad;
-                if (isMain) main++; else side++;
+                roadGenScript.roadClass road = rg != null && rg.chunks.TryGetValue(r.chunk, out var ch) && r.roadID >= 0 && r.roadID < ch.roads.Count ? ch.roads[r.roadID] : null;
+                if (road != null && road.roadType == roadGenScript.roadTypeEmu.mainRoad)
+                {
+                    if (!EndPlan.Key(road, rg, out int c, out int st)) continue;
+                    int w = EndPlan.Compare(c, st);
+                    if (w > 0 || w == 0 && r.element >= road.roadElements.Count) main++;
+                }
+                else if (EndPlan.U(mainscript.GlobalFromUnityPos(r.transform.position)) > end.Cut + 5) side++;
             }
             foreach (var t in Object.FindObjectsOfType<terrainGenScript>())
                 if (t.terrains != null) foreach (var k in t.terrains.Keys) if (EndPlan.U(k) > end.Cut + t.tileSize) tiles++;
@@ -46,6 +56,47 @@ namespace RoadEnd
                 if (end.HasRoadEnd && poi.gameObject.activeInHierarchy && poi.gameObject != Grave.Instance && (mainscript.GlobalFromUnityPos(poi.transform.position) - end.RoadEnd).magnitude < Plugin.BuildingClearance) near++;
             sb.Append(",\"past\":{\"mainRoad\":").Append(main).Append(",\"sideRoad\":").Append(side).Append(",\"tiles\":").Append(tiles).Append("},\"buildingsNearGrave\":").Append(near);
             return sb.Append("}").ToString();
+        }
+
+        /// Power poles whose wires found no next pole (they hang at their prefab length): where they are, and whether
+        /// they are the end road's last one (whose wires Roads hides).
+        public static string Poles()
+        {
+            var sb = new StringBuilder();
+            int n = 0;
+            foreach (var r in Object.FindObjectsOfType<roadscript>())
+            {
+                var rope = r.GetRope();
+                if (rope == null || rope.connected != null) continue;
+                var rg = r.roadgen;
+                var road = rg != null && rg.chunks.TryGetValue(r.chunk, out var ch) && r.roadID >= 0 && r.roadID < ch.roads.Count ? ch.roads[r.roadID] : null;
+                float scale = rope.ropes != null && rope.ropes.Count > 0 && rope.ropes[0] != null ? rope.ropes[0].localScale.magnitude : -1;
+                bool key = EndPlan.Key(road, rg, out int c, out int st);
+                sb.Append($"{(n++ > 0 ? " | " : "")}at {V(mainscript.GlobalFromUnityPos(r.transform.position))} chunk {r.chunk.z:0} road {r.roadID} element {r.element}/{road?.roadElements.Count ?? -1} " +
+                          $"{road?.roadType} key {(key ? c + "/" + (st == EndPlan.Link ? "link" : st.ToString()) : "-")} wire scale {scale:0.00}");
+            }
+            return n == 0 ? "none" : sb.ToString();
+        }
+
+        /// The main roads the game has made: their bones' length against EndPlan's measure of them (the same, if it
+        /// lays them as the game does) and against the straight line between their dots.
+        public static string Lengths()
+        {
+            double bones = 0, straight = 0, model = 0, worst = 0; int n = 0;
+            foreach (var rg in Object.FindObjectsOfType<roadGenScript>())
+                foreach (var ch in rg.chunks.Values)
+                    foreach (var r in ch.roads)
+                    {
+                        if (r.roadType != roadGenScript.roadTypeEmu.mainRoad || !r.generated || r.roadElements.Count == 0) continue;
+                        if (EndPlan.Key(r, rg, out int c, out int st) && EndPlan.Compare(c, st) >= 0) continue;   // cut
+                        double b = 0;
+                        foreach (var e in r.roadElements) for (int i = 1; i < e.bonePos.Count; i++) b += EndPlan.Dist(e.bonePos[i - 1], e.bonePos[i]);
+                        if (!rg.chunks.TryGetValue(r.chunk1, out var c1) || !rg.chunks.TryGetValue(r.chunk2, out var c2) || r.id1 >= c1.dots.Count || r.id2 >= c2.dots.Count) continue;
+                        double m = EndPlan.Length(rg, r);
+                        bones += b; model += m; straight += EndPlan.Dist(c1.dots[r.id1].pos, c2.dots[r.id2].pos); n++;
+                        worst = System.Math.Max(worst, System.Math.Abs(b - m));
+                    }
+            return $"{n} main roads: bones {bones / 1000.0:0.000} km, EndPlan's measure {model / 1000.0:0.000} km (worst road {worst:0.0} m off), straight {straight / 1000.0:0.000} km, bones/straight {(straight > 0 ? bones / straight : 0):0.0000}";
         }
 
         /// Pick the end of the road for the next new game, as the new-game screen does (tests).

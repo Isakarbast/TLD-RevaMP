@@ -13,8 +13,8 @@ then makes every player have it, and the host's world decides whether the sessio
 
 ## What it does
 
-- **The main road stops** about 5000 km from the start by default (where the game's road used to end), and its power
-  poles with it.
+- **The main road stops** after 5000 km of driving along it by default (where the game's road used to end), and its
+  power poles with it.
 - **Everything else goes on**: terrain, side roads, trees, rocks, buildings. Only the grave's own spot is kept clear
   (no tree or rock within 15 m, no building within 80 m).
 - **The grave** is the game's roadside grave (`itemdatabase.b.kereszt`), added to the game's building generator, so
@@ -30,12 +30,17 @@ Deleting a line takes that world's end away.
 
 ## Where the end is
 
-The game builds its main road in 10 km pieces (road chunks along x = 0). Inside a piece the road wanders between
-points and can turn back for a while, so a straight line across the world could cross it more than once. Between two
-pieces it can't: the game joins the last point of one piece to the first of the next, and every other point of each
-piece lies on its own side. The end goes on such a joining stretch: values that fall on one (4995 or 5005 km, for
-instance) are exact, others move to the nearest one, at most about 5 km. The game's log says where it is
-(`the main road ends at ... km`); it is the same every time for a world's seed.
+The distance is measured along the main road, as you drive it, not in a straight line: the road wanders, and in the
+current game versions 5000 km of road end only about 2900 km from the start as the crow flies (seed 20260924).
+
+The game builds its main road in 10 km road chunks along x = 0. Inside a chunk it goes from the southmost of the
+chunk's points to the northmost through the others, on a path picked from the chunk's seed; a link road joins each
+chunk to the next. When a world starts, the mod works that road out with the game's own code on scratch copies of
+the chunks, piece by piece from the start: each piece's length as the game lays it (10 m steps that follow the
+game's road noise and the ground), until they add up to the distance. That takes about a second, once per world.
+The road stops there, exact to the metre, and the game's log says where (`the main road ends after ... km of road`),
+the same every time for a world's seed. Only what comes after the end along the road goes: where the road wanders
+further north before it gets there, that part stays.
 
 ## Settings
 
@@ -45,7 +50,7 @@ each world keeps the ones it was started with:
 | Setting | Default | |
 | --- | --- | --- |
 | `End.Enabled` | true | off: the mod does nothing and the new-game screen has no row |
-| `End.DistanceKm` | 5000 | where the main road ends, km from the start |
+| `End.DistanceKm` | 5000 | where the main road ends, in km driven along it from the start |
 | `End.Direction` | North | which way from the start (North or South) |
 | `Grave.NoteText` | Sorry she died.... | what the note says |
 
