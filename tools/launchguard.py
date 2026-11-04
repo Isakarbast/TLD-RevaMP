@@ -22,7 +22,7 @@ def specification(remote=False, game_dir=None, compat=None, port=None):
             'proton': str(tldenv.REMOTE_PROTON if remote else tldenv.PROTON),
             'slr': str(tldenv.REMOTE_SLR if remote else tldenv.SLR),
             'profile': 'remote' if remote else 'desktop', 'port': int(raw_port),
-            'desktop': tldenv.REMOTE_DESKTOP if remote else 'session'}
+            'desktop': tldenv.REMOTE_DESKTOP if remote else tldenv.DESKTOP}
 
 
 BROKER_STAGE_SCRIPT = """

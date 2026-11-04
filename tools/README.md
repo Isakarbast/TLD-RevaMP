@@ -107,6 +107,11 @@ user is always refused). Its game runs in headless gamescope only; nothing of it
   ```
 
   Check `net me` on both games: two different Steam IDs, or the namespace is missing.
+- Both games on that one account instead (when the main account can't run a test game): run the tools as that user,
+  inside its namespace (`systemd-run --user --wait --pipe`, not in the SSH shell), with `TLD_DESKTOP=none` (this side
+  headless too), `TLD_SECOND=<user>@<the namespace gateway>`, `TLD_HOST_IP=127.0.0.1` and `TLD_JOIN=ip`: the second
+  game joins the host at 127.0.0.1:27070, and the host lets its own account in (without a player save). Each side's
+  prefix check only looks at the game started from its own game folder.
 - Memory: a test game peaks at about 5 GB and a Steam client takes about 1 GB, and each launch still needs the broker's
   12 GiB MemAvailable, so two games fit on a 32 GB machine only while the desktop's own apps leave room.
 

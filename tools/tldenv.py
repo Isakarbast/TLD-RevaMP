@@ -68,6 +68,11 @@ REMOTE_LOG = REMOTE_GAME + "/BepInEx/LogOutput.log"
 # "none": the second machine is a second Linux user on this one with no desktop session (its own Steam account):
 # its games run in headless gamescope only (tools/README.md, "A second Steam account on one machine")
 REMOTE_DESKTOP = os.environ.get("TLD_REMOTE_DESKTOP") or "session"
+# the same for this machine: "none" when the tests run as such a user themselves (both games on one second account)
+DESKTOP = os.environ.get("TLD_DESKTOP") or "session"
+# "ip": the second machine joins the host by address (lan_ip():27070) instead of its Steam ID: two games on one Steam
+# account can't reach each other by Steam ID
+JOIN = os.environ.get("TLD_JOIN") or "steam"
 # the second machine's LAN address, for tests that join it by IP (default: the host part of TLD_SECOND)
 SECOND_IP = os.environ.get("TLD_SECOND_IP") or SECOND.rpartition("@")[2]
 

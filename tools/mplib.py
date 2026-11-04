@@ -386,13 +386,20 @@ def seeded_both(L):
 def _game_prefixes(remote=None):
     """Only the exact leased copy on the selected machine; unrelated games are irrelevant."""
     want = tldenv.REMOTE_TEST_COMPAT if remote else tldenv.TEST_COMPAT
-    cmd = (f'echo "want={want}"; for p in $(pgrep -f "TheLongDrive[.]exe"); do tr "\\0" "\\n" < /proc/$p/environ 2>/dev/null '
-           '| grep -m1 "^STEAM_COMPAT_DATA_PATH="; done | sort -u')
+    game_dir = tldenv.REMOTE_GAME if remote else str(tldenv.GAME_DIR)
+    # each game as "<its game folder>|<its prefix>": when both test games run on one machine (TLD_JOIN=ip), the other
+    # side's game is there too, and only the one started from this side's game folder is this side's
+    cmd = (f'echo "want={want}"; echo "game={game_dir}"; for p in $(pgrep -f "TheLongDrive[.]exe"); do e=$(tr "\\0" "\\n" < /proc/$p/environ 2>/dev/null); '
+           'echo "$(echo "$e" | grep -m1 "^STEAM_COMPAT_INSTALL_PATH=" | cut -d= -f2-)|$(echo "$e" | grep -m1 "^STEAM_COMPAT_DATA_PATH=" | cut -d= -f2-)"; done | sort -u')
     if remote: r = subprocess.run(tldenv.ssh_args(remote)[:-1] + bench.SSH_MUX + [remote, cmd], capture_output=True, text=True)
     else: r = subprocess.run(["sh", "-c", cmd], capture_output=True, text=True)
     lines = r.stdout.splitlines()
     want = lines[0][5:].rstrip("/") if lines and lines[0].startswith("want=") else ""
-    return want, sorted({l.split("=", 1)[1].rstrip("/") for l in lines[1:] if "=" in l})
+    game = lines[1][5:].rstrip("/") if len(lines) > 1 and lines[1].startswith("game=") else ""
+    games = [l.partition("|")[::2] for l in lines[2:]]
+    mine = {p.rstrip("/") for f, p in games if p and f.rstrip("/") == game}
+    # no game names this folder (a path spelled another way): every game's prefix, as before
+    return want, sorted(mine or {p.rstrip("/") for f, p in games if p})
 
 
 def _in_test_prefix(remote):
@@ -590,7 +597,8 @@ def preflight(h, L):
     print("preflight: " + ", ".join(f"{k} {'?' if v is None else f'{v:.0f}'} fps" for k, v in fps.items()), flush=True)
     for k, v in low.items(): bad.append(f"the {k} runs at {'?' if v is None else f'{v:.0f}'} fps (< {floor:.0f})")
     try:
-        if h("net me")["steamId"] == L("net me")["steamId"]: bad.append("the laptop is on the host's Steam account (sign it in to the second one)")
+        # TLD_JOIN=ip: both games on one account on purpose, joined by address (the host lets its own account in)
+        if tldenv.JOIN != "ip" and h("net me")["steamId"] == L("net me")["steamId"]: bad.append("the laptop is on the host's Steam account (sign it in to the second one)")
     except (RuntimeError, KeyError) as ex: bad.append(f"Steam ids: {ex}")
 
     # the ownership checks: the bridge each machine answers on, the build each reports, and the tunnel.
@@ -667,7 +675,7 @@ def join_both(h, L, tries=3, wait=60, rehost=True):
                 return False
         for k in range(tries):
             if rehost or k > 0: h("mp host 27070")
-            L(f"mp joinid {h('net me')['steamId']}")
+            L(f"mp join {tldenv.lan_ip()}:27070" if tldenv.JOIN == "ip" else f"mp joinid {h('net me')['steamId']}")
             t0 = time.time()
             while time.time() - t0 < wait:
                 try:
