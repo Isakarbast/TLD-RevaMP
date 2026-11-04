@@ -46,7 +46,20 @@ namespace TLDRevamp.Net
             Entities.ResetCounters();
             Entities.HostStarted();   // the host's world becomes the session's: its buildings are done, its items shared
             WorldCheck.SessionBegins(host: true);
+            SteamOfflineNotice();
             return Status();
+        }
+
+        /// Hosting while this machine's Steam is signed out of Steam's servers (another sign-in of the same account
+        /// elsewhere ends it: "Logged In Elsewhere"): joining by Steam then times out for everyone, with no word why
+        /// here. Said at once.
+        private static void SteamOfflineNotice()
+        {
+            bool online;
+            try { online = Steamworks.SteamUser.BLoggedOn(); } catch { return; }
+            if (online) return;
+            Plugin.Log.LogWarning("Hosting while Steam is offline on this computer: nobody can join by Steam until it is online again");
+            Session.Show(1, "", "Steam is offline on this computer: nobody can join until Steam is online again (Steam's window says why).");
         }
 
         public static string Join(string address, string password = "")

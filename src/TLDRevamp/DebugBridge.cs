@@ -1050,7 +1050,7 @@ namespace TLDRevamp
                         case "compare": return ObjectPanels.Command(true, na);
                         case "events": return ObjectPanels.Command(false, na);
                         case "log": return Net.NetMeter.Log(na.Length > 1 ? int.Parse(na[1]) : 50);
-                        case "me": return "{\"steamId\":" + Json.Str(Steamworks.SteamUser.GetSteamID().m_SteamID.ToString()) + "}";
+                        case "me": return "{\"steamId\":" + Json.Str(Steamworks.SteamUser.GetSteamID().m_SteamID.ToString()) + ",\"online\":" + (Steamworks.SteamUser.BLoggedOn() ? "true" : "false") + "}";
                         case "stop": return Net.NetLab.Stop();
                         case "probe": return Net.NetLab.Probe(int.Parse(na[1]));
                         case "lag":

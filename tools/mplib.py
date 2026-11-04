@@ -656,6 +656,15 @@ def join_both(h, L, tries=3, wait=60, rehost=True):
         for label, s in (("host", h), ("laptop", L)):
             try: gods[label] = str(s("get kaposztaleves.s.settings.god").get("value")) == "True"
             except Exception: pass
+        # a Steam signed out of Steam's servers (the account signed in elsewhere: "Logged In Elsewhere" in Steam's
+        # logs/connection_log.txt) can't be joined: every try would time out (Steam 5003)
+        for label, s in (("host", h), ("laptop", L)):
+            try: online = s("net me").get("online")
+            except Exception: online = None
+            if online is False:
+                print(f"join_both: the {label}'s Steam is offline (signed out of Steam's servers; see its Steam logs/connection_log.txt): no join possible", flush=True)
+                _mark_dirty("Steam offline")
+                return False
         for k in range(tries):
             if rehost or k > 0: h("mp host 27070")
             L(f"mp joinid {h('net me')['steamId']}")
