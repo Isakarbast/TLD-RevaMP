@@ -27,6 +27,7 @@ namespace TvBrowser
                 "sx", s?.ScrollX ?? 0, "sy", s?.ScrollY ?? 0, "focused", Keyboard.Focused == tv,
                 "tab", t != null, "ready", t != null && t.Ready, "tabUrl", t?.Url, "home", t?.Home ?? false, "loading", t?.Loading ?? false,
                 "frames", t?.Frames ?? 0, "tx", t?.ScrollX ?? 0, "ty", t?.ScrollY ?? 0, "hints", t?.Hints ?? -1,
+                "px", t?.Pointer.X ?? -1, "py", t?.Pointer.Y ?? -1, "held", t?.Pointer.Held ?? 0, "zoom", t?.Zoom ?? 0, "szoom", s?.Zoom ?? 0,
                 "sent", Keyboard.Sent, "received", Keyboard.Received, "dropped", Keyboard.Dropped,
                 "recorded", ReplayTv.Recorded, "shown", ReplayTv.Shown, "failed", ReplayTv.Failed));
         }
@@ -82,8 +83,49 @@ namespace TvBrowser
             return "key " + code;
         }
 
+        /// The mouse at x, y on the TV's picture (0..1023, 0..575): "move", "down", "up" or "click" (down and up), with a
+        /// button (0 left, 1 middle, 2 right) and a click count (2: a double click).
+        public static string Mouse(string what, int x, int y, int button, int clicks)
+        {
+            if (Keyboard.Focused == null) return "no TV has the keyboard";
+            if (x < 0 || x >= Command.ScreenWidth || y < 0 || y >= Command.ScreenHeight || button < 0 || button > 2 || clicks < 1 || clicks > 3) return "off the picture";
+            Command C(MouseOp op) => new Command { Kind = CmdKind.Mouse, Op = op, X = x, Y = y, Button = (byte)button, Clicks = op == MouseOp.Move ? (byte)0 : (byte)clicks };
+            switch (what)
+            {
+                case "move": Keyboard.MouseCmd(C(MouseOp.Move)); break;
+                case "down": Keyboard.MouseCmd(C(MouseOp.Move)); Keyboard.MouseCmd(C(MouseOp.Down)); break;
+                case "up": Keyboard.MouseCmd(C(MouseOp.Up)); break;
+                case "click": Keyboard.MouseCmd(C(MouseOp.Move)); Keyboard.MouseCmd(C(MouseOp.Down)); Keyboard.MouseCmd(C(MouseOp.Up)); break;
+                default: return "move, down, up or click";
+            }
+            var p = Keyboard.Focused.Tab?.Pointer;
+            return p == null ? "no page" : $"pointer {p.X},{p.Y} held {p.Held}";
+        }
+
+        /// The focused TV's zoom (percent), as Ctrl and +/- set it.
+        public static string Zoom(int percent)
+        {
+            if (Keyboard.Focused == null) return "no TV has the keyboard";
+            if (!Zooms.Valid(percent)) return "not a zoom level";
+            Keyboard.Focused.SetZoom(percent);
+            return "zoom " + Keyboard.Focused.Tab?.Zoom;
+        }
+
+        /// The focused page's selected text, as Ctrl+C copies it (read with Answer() a moment later).
+        public static string Copy()
+        {
+            var tab = Keyboard.Focused?.Tab;
+            if (tab == null || !tab.Ready) return "no page";
+            _answer = "(waiting)";
+            tab.Copy(t => _answer = Json.Write(t));
+            return "sent";
+        }
+
         public static string Wheel(int delta) { if (Keyboard.Focused == null) return "no TV has the keyboard"; Keyboard.Local(new Command { Kind = CmdKind.Wheel, Delta = delta }); return "wheel " + delta; }
         public static string Back() { if (Keyboard.Focused == null) return "no TV has the keyboard"; Keyboard.Local(new Command { Kind = CmdKind.Back }); return "back"; }
+
+        /// The TV's start page, as Ctrl+H.
+        public static string Home() { if (Keyboard.Focused == null) return "no TV has the keyboard"; Keyboard.Focused.Go(""); return "home"; }
 
         /// The address bar: an address or words, as typed there and Enter.
         public static string Go(string escaped) { if (Keyboard.Focused == null) return "no TV has the keyboard"; return Keyboard.Submit(Text(escaped)) ? "going " + Keyboard.Focused.State?.Url : "refused"; }

@@ -119,6 +119,9 @@ namespace TvBrowser
             float now = Time.realtimeSinceStartup;
             string url = s != null ? s.Url : "";
             uint seq = s != null ? s.NavSeq : 0;
+            // the zoom everyone's page lays out at (the driver's own went first: SetZoom)
+            int zoom = s != null ? s.Zoom : 100;
+            if (!Driving && Tab.Zoom != zoom) Tab.SetZoom(zoom);
             if (!Driving)
             {
                 if (!_followed || seq != _followedSeq || url != _followedUrl)
@@ -166,6 +169,12 @@ namespace TvBrowser
             if (!Edit(w => { w.Byte((byte)Op.Navigate); w.String(url); })) return;
             Tab?.Navigate(url);
             _reportedUrl = Tab?.Url;
+        }
+
+        /// The driver's zoom (Ctrl and +, - or 0): the shared state's, this machine's page at once.
+        public void SetZoom(int percent)
+        {
+            if (Edit(w => { w.Byte((byte)Op.Zoom); w.Byte((byte)percent); })) Tab?.SetZoom(percent);
         }
 
         public void Reload()
@@ -258,7 +267,7 @@ namespace TvBrowser
         {
             var s = State;
             return $"{(Item != null ? Item.name : name)} on {On} dist {Distance:0.0} key {Key()} state {(s == null ? "none" : $"#{StateObj.Id} owner {StateObj.Owner} url '{s.Url}' seq {s.NavSeq} driver {s.Driver} scroll {s.ScrollX:0},{s.ScrollY:0}")}"
-                + (Tab == null ? " tab none" : $" tab ready {Tab.Ready} url '{Tab.Url}' home {Tab.Home} loading {Tab.Loading} frames {Tab.Frames} scroll {Tab.ScrollX:0},{Tab.ScrollY:0} hints {Tab.Hints}")
+                + (Tab == null ? " tab none" : $" tab ready {Tab.Ready} url '{Tab.Url}' home {Tab.Home} loading {Tab.Loading} frames {Tab.Frames} scroll {Tab.ScrollX:0},{Tab.ScrollY:0} hints {Tab.Hints} pointer {Tab.Pointer.X},{Tab.Pointer.Y} held {Tab.Pointer.Held} zoom {Tab.Zoom}")
                 + $" applied {_applied} navigations {Navigations} scrollfixes {ScrollFixes} driving {Driving}";
         }
     }

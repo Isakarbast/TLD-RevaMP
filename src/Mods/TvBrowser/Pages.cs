@@ -71,23 +71,29 @@ window.__tvh = { count: function () { return st.on ? st.items.length : -1; } };
     internal static class HomePage
     {
         public static string Html(string focusKey) => @"<!doctype html><html><head><meta charset='utf-8'><title>TV</title><style>
-body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 20%,#2b3a55,#0d1117 70%);color:#e6edf3;font:18px/1.45 system-ui,'Segoe UI',sans-serif}
-main{max-width:760px;padding:24px 32px}
-h1{font-size:40px;margin:0 0 6px;letter-spacing:.5px}
-p{margin:4px 0 14px;color:#9fb0c3}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 20%,#2b3a55,#0d1117 70%);color:#e6edf3;font:15px/1.3 system-ui,'Segoe UI',sans-serif}
+main{max-width:880px;padding:12px 28px}
+h1{font-size:30px;margin:0 0 2px;letter-spacing:.5px}
+p{margin:2px 0 10px;color:#9fb0c3}
 table{border-collapse:collapse}
-td{padding:4px 18px 4px 0;vertical-align:top}
-kbd{display:inline-block;min-width:16px;padding:1px 7px;border:1px solid #58677a;border-bottom-width:3px;border-radius:5px;background:#1c2533;color:#fff;font:15px monospace;text-align:center}
+td{padding:2px 14px 2px 0;vertical-align:top;white-space:nowrap}td+td{white-space:normal}
+nav{display:flex;gap:10px;margin:0 0 12px}
+nav a{padding:6px 12px;border:1px solid #3d4b5f;border-radius:8px;background:#162030;color:#cfe3ff;text-decoration:none}
+nav a:hover{background:#24344c;border-color:#7aa7e0}
+kbd{display:inline-block;min-width:16px;padding:1px 7px;border:1px solid #58677a;border-bottom-width:3px;border-radius:5px;background:#1c2533;color:#fff;font:13px monospace;text-align:center}
 </style></head><body><main>
 <h1>TV Browser</h1>
 <p>Everyone near this TV sees the same page. Whoever has the keyboard drives it.</p>
+<nav><a href='https://en.wikipedia.org/'>Wikipedia</a><a href='https://html.duckduckgo.com/html/'>DuckDuckGo</a><a href='https://thelongdrive.fandom.com/wiki/The_Long_Drive_Wiki'>The Long Drive wiki</a><a href='https://www.openstreetmap.org/'>OpenStreetMap</a></nav>
 <table>
 <tr><td><kbd>" + System.Net.WebUtility.HtmlEncode(focusKey) + @"</kbd></td><td>look at the TV and press it to take the keyboard; <kbd>Esc</kbd> gives it back</td></tr>
+<tr><td>the mouse</td><td>moves the pointer; click, double-click, drag; the wheel scrolls where it points (<kbd>Shift</kbd>: sideways)</td></tr>
 <tr><td><kbd>Ctrl</kbd> <kbd>L</kbd></td><td>type an address, or words to search</td></tr>
 <tr><td><kbd>F2</kbd></td><td>label the links in view, then type a label to open one</td></tr>
 <tr><td><kbd>Tab</kbd> <kbd>Enter</kbd></td><td>move between links and fields, open or send</td></tr>
 <tr><td><kbd>&uarr;</kbd> <kbd>&darr;</kbd> <kbd>PgUp</kbd> <kbd>PgDn</kbd> <kbd>Space</kbd></td><td>scroll (the mouse wheel too)</td></tr>
-<tr><td><kbd>Alt</kbd> <kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>back and forward; <kbd>F5</kbd> reloads, <kbd>Ctrl</kbd> <kbd>H</kbd> comes back here</td></tr>
+<tr><td><kbd>Alt</kbd> <kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>back and forward (the mouse's side buttons too); <kbd>F5</kbd> reloads, <kbd>Ctrl</kbd> <kbd>H</kbd> comes back here</td></tr>
+<tr><td><kbd>Ctrl</kbd> <kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></td><td>zoom in, out, back to 100 %, for everyone; <kbd>Ctrl</kbd> <kbd>C</kbd> copies the selected text</td></tr>
 </table>
 </main></body></html>";
     }

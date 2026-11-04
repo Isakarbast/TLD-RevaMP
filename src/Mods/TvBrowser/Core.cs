@@ -17,24 +17,41 @@ namespace TvBrowser
         public uint NavSeq;             // counts the addresses typed and the reloads: the same address loads again
         public int Driver = -1;         // the player at the keyboard, -1: nobody
         public float ScrollX, ScrollY;  // the driver's page position (CSS pixels)
+        public int Zoom = 100;          // the page's zoom in percent (Zooms.Levels): pages lay out alike only at the same zoom
 
         public void Write(RecordWriter w)
         {
-            w.UInt(Tv); w.String(Url ?? ""); w.UInt(NavSeq); w.VarInt(Driver); w.Float(ScrollX); w.Float(ScrollY);
+            w.UInt(Tv); w.String(Url ?? ""); w.UInt(NavSeq); w.VarInt(Driver); w.Float(ScrollX); w.Float(ScrollY); w.Byte((byte)Zoom);
         }
 
         public bool Read(RecordReader r)
         {
-            uint tv = r.UInt(); string url = r.String(); uint seq = r.UInt(); int driver = r.VarInt(); float x = r.Float(), y = r.Float();
-            if (r.Bad || driver < -1 || !Address.ValidScroll(x) || !Address.ValidScroll(y)) return false;
+            uint tv = r.UInt(); string url = r.String(); uint seq = r.UInt(); int driver = r.VarInt(); float x = r.Float(), y = r.Float(); int zoom = r.Byte();
+            if (r.Bad || driver < -1 || !Address.ValidScroll(x) || !Address.ValidScroll(y) || !Zooms.Valid(zoom)) return false;
             if (url.Length > 0 && Address.Clean(url) != url) return false;
-            Tv = tv; Url = url; NavSeq = seq; Driver = driver; ScrollX = x; ScrollY = y;
+            Tv = tv; Url = url; NavSeq = seq; Driver = driver; ScrollX = x; ScrollY = y; Zoom = zoom;
             return true;
         }
     }
 
+    /// The zoom levels a TV's page can have (as Chrome's): Ctrl and +, - or 0 on the keyboard.
+    public static class Zooms
+    {
+        public static readonly int[] Levels = { 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200 };
+        public static bool Valid(int z) => Array.IndexOf(Levels, z) >= 0;
+
+        /// One step in or out from `z` (0: back to 100).
+        public static int Step(int z, int dir)
+        {
+            if (dir == 0) return 100;
+            int i = Array.IndexOf(Levels, z);
+            if (i < 0) return 100;
+            return Levels[Math.Max(0, Math.Min(Levels.Length - 1, i + Math.Sign(dir)))];
+        }
+    }
+
     /// The edits a player can ask the TV state's owner for (TvStateType.OnEdit).
-    public enum Op : byte { Take = 1, Release = 2, Navigate = 3, Url = 4, Scroll = 5, Reload = 6 }
+    public enum Op : byte { Take = 1, Release = 2, Navigate = 3, Url = 4, Scroll = 5, Reload = 6, Zoom = 7 }
 
     public static class TvEdits
     {
@@ -84,6 +101,13 @@ namespace TvBrowser
                     if (s.Driver != from) return false;
                     s.NavSeq++;
                     return true;
+                case Op.Zoom:
+                {
+                    int z = e.Byte();
+                    if (e.Bad || s.Driver != from || !Zooms.Valid(z) || z == s.Zoom) return false;
+                    s.Zoom = z;
+                    return true;
+                }
             }
             return false;
         }
@@ -243,19 +267,30 @@ namespace TvBrowser
         }
     }
 
-    /// What a player does at a TV's keyboard, as it goes to every machine near the TV: typed text, a key, the wheel,
-    /// back / forward. Batched (Command.Write) in one mod event a tenth of a second.
-    public enum CmdKind : byte { Text = 1, Key = 2, Wheel = 3, Back = 4, Forward = 5 }
+    /// What a player does at a TV's keyboard and mouse, as it goes to every machine near the TV: typed text, a key,
+    /// the wheel, back / forward, the mouse pointer. Batched (Command.Write) in one mod event a tenth of a second.
+    public enum CmdKind : byte { Text = 1, Key = 2, Wheel = 3, Back = 4, Forward = 5, Mouse = 6 }
+
+    /// What the mouse did (CmdKind.Mouse): the pointer moved, or a button went down or up, at X, Y.
+    public enum MouseOp : byte { Move = 0, Down = 1, Up = 2 }
 
     public struct Command
     {
         public CmdKind Kind;
         public string Text;    // Text: what was typed (at most MaxText characters)
         public int Code;       // Key: the Windows key code
-        public byte Mods;      // Key: Keys.Alt / Ctrl / Meta / Shift
+        public byte Mods;      // Key: Keys.Alt / Ctrl / Meta / Shift; Mouse: the same, held with a click
         public int Delta;      // Wheel: pixels, + down
+        public int DeltaX;     // Wheel: pixels, + right
+        public MouseOp Op;     // Mouse
+        public int X, Y;       // Mouse: on the TV's picture (0..Screen.Width-1, 0..Screen.Height-1), whatever the zoom
+        public byte Button;    // Mouse: 0 left, 1 middle, 2 right
+        public byte Clicks;    // Mouse Down / Up: 1 a click, 2 a double click, 3 a triple
 
         public const int MaxText = 64, MaxWheel = 2000, MaxBatch = 32;
+
+        /// The TV's picture in pixels: the page's size at 100 % (Tab.Width, Tab.Height).
+        public const int ScreenWidth = 1024, ScreenHeight = 576;
 
         public static void Write(RecordWriter w, List<Command> cmds, int from, int count)
         {
@@ -268,7 +303,8 @@ namespace TvBrowser
                 {
                     case CmdKind.Text: w.String(c.Text ?? ""); break;
                     case CmdKind.Key: w.Byte((byte)c.Code); w.Byte(c.Mods); break;
-                    case CmdKind.Wheel: w.VarInt(c.Delta); break;
+                    case CmdKind.Wheel: w.VarInt(c.Delta); w.VarInt(c.DeltaX); break;
+                    case CmdKind.Mouse: w.Byte((byte)c.Op); w.VarInt(c.X); w.VarInt(c.Y); w.Byte(c.Button); w.Byte(c.Clicks); w.Byte(c.Mods); break;
                 }
             }
         }
@@ -294,8 +330,13 @@ namespace TvBrowser
                         if (r.Bad || Keys.Get(c.Code, c.Mods) == null) return null;
                         break;
                     case CmdKind.Wheel:
-                        c.Delta = r.VarInt();
-                        if (r.Bad || c.Delta == 0 || Math.Abs(c.Delta) > MaxWheel) return null;
+                        c.Delta = r.VarInt(); c.DeltaX = r.VarInt();
+                        if (r.Bad || c.Delta == 0 && c.DeltaX == 0 || Math.Abs(c.Delta) > MaxWheel || Math.Abs(c.DeltaX) > MaxWheel) return null;
+                        break;
+                    case CmdKind.Mouse:
+                        c.Op = (MouseOp)r.Byte(); c.X = r.VarInt(); c.Y = r.VarInt(); c.Button = r.Byte(); c.Clicks = r.Byte(); c.Mods = r.Byte();
+                        if (r.Bad || c.Op > MouseOp.Up || c.X < 0 || c.X >= ScreenWidth || c.Y < 0 || c.Y >= ScreenHeight || c.Button > 2 || c.Mods > 15) return null;
+                        if (c.Op == MouseOp.Move ? c.Clicks != 0 : c.Clicks < 1 || c.Clicks > 3) return null;
                         break;
                     case CmdKind.Back: case CmdKind.Forward: break;
                     default: return null;
@@ -313,7 +354,8 @@ namespace TvBrowser
             for (int i = from; i < cmds.Count && n < MaxBatch; i++)
             {
                 var c = cmds[i];
-                int size = 1 + (c.Kind == CmdKind.Text ? 2 + Encoding.UTF8.GetByteCount(c.Text ?? "") : c.Kind == CmdKind.Key ? 2 : c.Kind == CmdKind.Wheel ? 5 : 0);
+                int size = 1 + (c.Kind == CmdKind.Text ? 2 + Encoding.UTF8.GetByteCount(c.Text ?? "") : c.Kind == CmdKind.Key ? 2 : c.Kind == CmdKind.Wheel ? 10 :
+                                c.Kind == CmdKind.Mouse ? 14 : 0);
                 if (n > 0 && bytes + size > maxBytes) break;
                 bytes += size; n++;
             }

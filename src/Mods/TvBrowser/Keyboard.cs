@@ -6,10 +6,11 @@ using UnityEngine;
 
 namespace TvBrowser
 {
-    /// The TV's keyboard: look at a TV and press the focus key (U) to take it; the keys then go to the page, and the
-    /// game takes none (its own check for its text fields, as TLD Revamp's chat and the Head Unit do). Esc gives it
-    /// back, as does walking away. What is pressed goes into this machine's page at once and, a tenth of a second at a
-    /// time, to every other player's copy of it (the "keys" event).
+    /// The TV's keyboard and mouse: look at a TV and press the focus key (U) to take them; the keys then go to the
+    /// page, and the game takes none (its own check for its text fields, as TLD Revamp's chat and the Head Unit do).
+    /// The game doesn't turn the view then either, so the mouse moves a pointer on the page and its buttons click
+    /// there. Esc gives it all back, as does walking away. What is pressed goes into this machine's page at once and,
+    /// a tenth of a second at a time, to every other player's copy of it (the "keys" event).
     [HarmonyPatch]
     public static class Keyboard
     {
@@ -75,7 +76,7 @@ namespace TvBrowser
 
         public static void Focus(TvScreen tv)
         {
-            Focused = tv; _focusAt = Time.realtimeSinceStartup; BarOpen = false; Out.Clear();
+            Focused = tv; _focusAt = Time.realtimeSinceStartup; BarOpen = false; Out.Clear(); _pointerTab = null;
             Browser.Retry();
             tv.Edit(w => w.Byte((byte)Op.Take));
             Plugin.Log.LogInfo("TV keyboard taken");
@@ -84,8 +85,9 @@ namespace TvBrowser
         public static void Unfocus(string why = null)
         {
             var tv = Focused;
+            LetGoOfButtons();
             Flush(force: true);
-            Focused = null; BarOpen = false; Out.Clear();
+            Focused = null; BarOpen = false; Out.Clear(); _pointerTab = null;
             if (tv != null && tv.State != null && tv.State.Driver == MpApi.MyPlayerId) tv.Edit(w => w.Byte((byte)Op.Release));
             if (why != null) Flash(why);
         }
@@ -116,6 +118,10 @@ namespace TvBrowser
             if (alt && !ctrl && Input.GetKeyDown(KeyCode.LeftArrow)) { Local(new Command { Kind = CmdKind.Back }); return; }
             if (alt && !ctrl && Input.GetKeyDown(KeyCode.RightArrow)) { Local(new Command { Kind = CmdKind.Forward }); return; }
             if (ctrl && !alt && Input.GetKeyDown(KeyCode.V)) { Paste(GUIUtility.systemCopyBuffer); return; }
+            if (ctrl && !alt && (Input.GetKeyDown(KeyCode.Equals) || Input.GetKeyDown(KeyCode.Plus) || Input.GetKeyDown(KeyCode.KeypadPlus))) { Zoom(tv, 1); return; }
+            if (ctrl && !alt && (Input.GetKeyDown(KeyCode.Minus) || Input.GetKeyDown(KeyCode.KeypadMinus))) { Zoom(tv, -1); return; }
+            if (ctrl && !alt && (Input.GetKeyDown(KeyCode.Alpha0) || Input.GetKeyDown(KeyCode.Keypad0))) { Zoom(tv, 0); return; }
+            if (ctrl && !alt && Input.GetKeyDown(KeyCode.C)) Copy(tv);
             byte mods = (byte)((shift ? Keys.Shift : 0) | (ctrl && !alt ? Keys.Ctrl : 0));
             // typed text and the keys that edit it, in the order typed (the game's input string carries Backspace and Enter)
             foreach (char c in Input.inputString)
@@ -135,8 +141,106 @@ namespace TvBrowser
                     if (k == KeyCode.L || k == KeyCode.H || k == KeyCode.R || k == KeyCode.V) continue;
                     if (Input.GetKeyDown(k)) Local(new Command { Kind = CmdKind.Key, Code = 65 + i, Mods = mods });
                 }
+            Mouse(tv, mods);
             float wheel = Input.mouseScrollDelta.y;
-            if (Mathf.Abs(wheel) > 0.01f) Local(new Command { Kind = CmdKind.Wheel, Delta = Mathf.Clamp(Mathf.RoundToInt(-wheel * 120f), -Command.MaxWheel, Command.MaxWheel) });
+            if (Mathf.Abs(wheel) > 0.01f)
+            {
+                int d = Mathf.Clamp(Mathf.RoundToInt(-wheel * 120f), -Command.MaxWheel, Command.MaxWheel);
+                if (d != 0) Local(shift ? new Command { Kind = CmdKind.Wheel, DeltaX = d } : new Command { Kind = CmdKind.Wheel, Delta = d });   // Shift: sideways
+            }
+        }
+
+        // ------------------------------------------------------------------ the mouse
+
+        private static Tab _pointerTab;
+        private static float _px, _py;
+        private static float _downAt = -10f;
+        private static int _downX, _downY, _clicks;
+        private static byte _downButton;
+        private static readonly byte[] Clicks = new byte[3];   // the click count each button went down with
+
+        /// The mouse moves the page's pointer (Plugin.PointerSpeed picture pixels a unit of the game's mouse input) and
+        /// its buttons press and let go there: a click, two quick ones a double click, held for a drag. A move goes into
+        /// the others' pages with the next batch, the latest only.
+        private static void Mouse(TvScreen tv, byte mods)
+        {
+            var tab = tv.Tab;
+            if (tab == null || !tab.Ready) return;
+            if (_pointerTab != tab) { _pointerTab = tab; _px = tab.Pointer.X; _py = tab.Pointer.Y; }
+            float dx = 0f, dy = 0f;
+            try { dx = Input.GetAxis("Mouse X"); dy = Input.GetAxis("Mouse Y"); } catch (System.ArgumentException) { }
+            if (dx != 0f || dy != 0f)
+            {
+                float speed = Plugin.PointerSpeed.Value;
+                _px = Mathf.Clamp(_px + dx * speed, 0f, Command.ScreenWidth - 1);
+                _py = Mathf.Clamp(_py - dy * speed, 0f, Command.ScreenHeight - 1);
+                int x = Mathf.RoundToInt(_px), y = Mathf.RoundToInt(_py);
+                if (x != tab.Pointer.X || y != tab.Pointer.Y) MouseCmd(new Command { Kind = CmdKind.Mouse, Op = MouseOp.Move, X = x, Y = y, Mods = mods });
+            }
+            // the side buttons: back and forward
+            if (Input.GetMouseButtonDown(3)) Local(new Command { Kind = CmdKind.Back });
+            if (Input.GetMouseButtonDown(4)) Local(new Command { Kind = CmdKind.Forward });
+            for (byte b = 0; b < 3; b++)
+            {
+                int unity = b == 0 ? 0 : b == 1 ? 2 : 1;   // Unity's buttons: 0 left, 1 right, 2 middle
+                int bit = Pointer.Bit(b);
+                if (Input.GetMouseButtonDown(unity) && (tab.Pointer.Held & bit) == 0)
+                {
+                    float now = Time.realtimeSinceStartup;
+                    bool again = b == _downButton && now - _downAt < DoubleClickSeconds && Mathf.Abs(tab.Pointer.X - _downX) <= 4 && Mathf.Abs(tab.Pointer.Y - _downY) <= 4;
+                    _clicks = again ? Mathf.Min(3, _clicks + 1) : 1;
+                    _downAt = now; _downX = tab.Pointer.X; _downY = tab.Pointer.Y; _downButton = b;
+                    Clicks[b] = (byte)_clicks;
+                    MouseCmd(new Command { Kind = CmdKind.Mouse, Op = MouseOp.Down, X = tab.Pointer.X, Y = tab.Pointer.Y, Button = b, Clicks = (byte)_clicks, Mods = mods });
+                }
+                if (Input.GetMouseButtonUp(unity) && (tab.Pointer.Held & bit) != 0)
+                    MouseCmd(new Command { Kind = CmdKind.Mouse, Op = MouseOp.Up, X = tab.Pointer.X, Y = tab.Pointer.Y, Button = b, Clicks = Clicks[b] == 0 ? (byte)1 : Clicks[b], Mods = mods });
+            }
+        }
+
+        public static float DoubleClickSeconds = 0.5f;
+
+        /// Into this machine's page now; queued for the others, where a move after a move takes its place.
+        public static void MouseCmd(Command c)
+        {
+            Focused?.Tab?.Input(c);
+            if (c.Op == MouseOp.Move && Out.Count > 0 && Out[Out.Count - 1].Kind == CmdKind.Mouse && Out[Out.Count - 1].Op == MouseOp.Move) Out[Out.Count - 1] = c;
+            else Out.Add(c);
+        }
+
+        /// Buttons still held when the TV is let go come up, here and on every other machine.
+        private static void LetGoOfButtons()
+        {
+            var tab = Focused?.Tab;
+            if (tab == null) return;
+            for (byte b = 0; b < 3; b++)
+                if ((tab.Pointer.Held & Pointer.Bit(b)) != 0)
+                    MouseCmd(new Command { Kind = CmdKind.Mouse, Op = MouseOp.Up, X = tab.Pointer.X, Y = tab.Pointer.Y, Button = b, Clicks = 1 });
+        }
+
+        // ------------------------------------------------------------------ zoom and the clipboard
+
+        /// Ctrl and +, - or 0: the page's zoom for everyone (it is in the TV's shared state: pages only lay out alike at
+        /// the same zoom). The driver's page goes at once.
+        private static void Zoom(TvScreen tv, int dir)
+        {
+            var tab = tv.Tab;
+            if (tab == null) return;
+            int z = Zooms.Step(tab.Zoom, dir);
+            if (z == tab.Zoom) { Flash("zoom " + z + " %"); return; }
+            tv.SetZoom(z);
+            Flash("zoom " + z + " %", 1.5f);
+        }
+
+        /// Ctrl+C: the page's selected text onto this machine's clipboard (the key goes into the page too).
+        private static void Copy(TvScreen tv)
+        {
+            tv.Tab?.Copy(text =>
+            {
+                if (string.IsNullOrEmpty(text)) { Flash("nothing selected to copy", 2f); return; }
+                GUIUtility.systemCopyBuffer = text;
+                Flash($"copied {text.Length} character{(text.Length == 1 ? "" : "s")}", 2f);
+            });
         }
 
         /// The address bar: Enter goes there (or searches the words), Esc closes it.
@@ -273,7 +377,7 @@ namespace TvBrowser
                     if (BarOpen) lines.Add(("Address or search: " + BarText + "_", _text));
                     else lines.Add(((tab == null || !tab.Ready ? "starting the browser..." : tab.Home ? "start page" : tab.Url) + (tab != null && tab.Loading ? "   (loading)" : ""), _text));
                     lines.Add((BarOpen ? "Enter: go    Esc: close    Ctrl+V: paste    Ctrl+A: clear"
-                                       : "Esc: leave   Ctrl+L: address   F2: links   Tab/Enter   arrows, PgUp/PgDn, wheel: scroll   Alt+←/→: back/forward   F5: reload", _small));
+                                       : "Esc: leave   mouse: point and click   Ctrl+L: address   F2: links   wheel, PgUp/PgDn: scroll   Alt+←/→: back/forward   F5: reload   Ctrl +/-/0: zoom   Ctrl+C: copy", _small));
                 }
             }
             if (_flash != null) lines.Add((_flash, _small));

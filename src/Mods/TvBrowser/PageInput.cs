@@ -2,14 +2,27 @@ using System.Collections.Generic;
 
 namespace TvBrowser
 {
-    /// A keyboard command (Command) as the DevTools calls that put it into a page: key presses with their text, so
-    /// the page sees keydown, keypress and input as from a real keyboard; the wheel in the middle of the page; back
-    /// and forward through the page's own history. Pure: tools/unit/TvBrowserCoreTest.cs checks it, and
-    /// tools/unit/TvBrowserPageTest (with a real headless Chromium) checks what the page makes of it.
+    /// Where a page's mouse pointer is and which buttons are held: every machine keeps its own, from the same commands
+    /// in the same order, so they agree. On the TV's picture (Command.ScreenWidth x ScreenHeight), whatever the zoom.
+    public sealed class Pointer
+    {
+        public int X = Command.ScreenWidth / 2, Y = Command.ScreenHeight / 2;
+        public int Held;   // the DevTools' buttons: 1 left, 2 right, 4 middle
+
+        public static int Bit(byte button) => button == 0 ? 1 : button == 2 ? 2 : 4;
+        public static string Name(byte button) => button == 0 ? "left" : button == 2 ? "right" : "middle";
+    }
+
+    /// A command (Command) as the DevTools calls that put it into a page: key presses with their text, so the page
+    /// sees keydown, keypress and input as from a real keyboard; the mouse as a real one at the pointer (in CSS pixels:
+    /// the picture's pixels over the zoom); the wheel where the pointer is; back and forward through the page's own
+    /// history. Pure: tools/unit/TvBrowserCoreTest.cs checks it, and tools/unit/TvBrowserPageTest (with a real
+    /// headless Chromium) checks what the page makes of it.
     public static class PageInput
     {
-        public static List<(string Method, Dictionary<string, object> Args)> Events(Command c, int width, int height)
+        public static List<(string Method, Dictionary<string, object> Args)> Events(Command c, Pointer p, float zoom)
         {
+            if (zoom <= 0f) zoom = 1f;
             var list = new List<(string, Dictionary<string, object>)>();
             switch (c.Kind)
             {
@@ -31,8 +44,22 @@ namespace TvBrowser
                     break;
                 }
                 case CmdKind.Wheel:
-                    list.Add(("Input.dispatchMouseEvent", Json.O("type", "mouseWheel", "x", width / 2, "y", height / 2, "deltaX", 0, "deltaY", c.Delta)));
+                    list.Add(("Input.dispatchMouseEvent", Json.O("type", "mouseWheel", "x", Css(p.X, zoom), "y", Css(p.Y, zoom), "deltaX", c.DeltaX, "deltaY", c.Delta)));
                     break;
+                case CmdKind.Mouse:
+                {
+                    p.X = c.X; p.Y = c.Y;
+                    string type = "mouseMoved", button = "none";
+                    if (c.Op == MouseOp.Down) { p.Held |= Pointer.Bit(c.Button); type = "mousePressed"; button = Pointer.Name(c.Button); }
+                    else if (c.Op == MouseOp.Up) { p.Held &= ~Pointer.Bit(c.Button); type = "mouseReleased"; button = Pointer.Name(c.Button); }
+                    else if ((p.Held & 1) != 0) button = "left";
+                    else if ((p.Held & 2) != 0) button = "right";
+                    else if ((p.Held & 4) != 0) button = "middle";
+                    var m = Json.O("type", type, "x", Css(p.X, zoom), "y", Css(p.Y, zoom), "button", button, "buttons", p.Held, "modifiers", (int)c.Mods);
+                    if (c.Op != MouseOp.Move) m["clickCount"] = (int)c.Clicks;
+                    list.Add(("Input.dispatchMouseEvent", m));
+                    break;
+                }
                 case CmdKind.Back:
                     list.Add(("Runtime.evaluate", Json.O("expression", "history.back()")));
                     break;
@@ -42,6 +69,8 @@ namespace TvBrowser
             }
             return list;
         }
+
+        private static double Css(int px, float zoom) => System.Math.Round((px + 0.5) / zoom, 2);
 
         private static void Type(List<(string, Dictionary<string, object>)> list, string ch)
         {

@@ -4,6 +4,7 @@
     <Compile Include="TvBrowserCoreTest.cs" />
     <Compile Include="../../src/Mods/TvBrowser/Core.cs" />
     <Compile Include="../../src/Mods/TvBrowser/Json.cs" />
+    <Compile Include="../../src/Mods/TvBrowser/PageInput.cs" />
     <Compile Include="../../src/TLDRevamp.Multiplayer/Records.cs" />
   </ItemGroup>
 </Project>

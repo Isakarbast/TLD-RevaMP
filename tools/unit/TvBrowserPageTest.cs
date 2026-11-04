@@ -18,6 +18,24 @@ static class TvBrowserPageTest
 
     static Cdp cdp; static string session;
     static readonly List<Cdp.Message> events = new List<Cdp.Message>();
+    static readonly Pointer pointer = new Pointer();
+    static int zoom = 100;
+
+    static void Mouse(MouseOp op, int x, int y, byte button = 0, byte clicks = 1) =>
+        Send(new Command { Kind = CmdKind.Mouse, Op = op, X = x, Y = y, Button = button, Clicks = op == MouseOp.Move ? (byte)0 : clicks });
+
+    static void Click(int x, int y, byte button = 0, byte clicks = 1)
+    {
+        Mouse(MouseOp.Move, x, y); Mouse(MouseOp.Down, x, y, button, clicks); Mouse(MouseOp.Up, x, y, button, clicks);
+    }
+
+    /// As Tab.Metrics: the page at a zoom lays out in fewer CSS pixels, drawn larger.
+    static void Zoom(int percent)
+    {
+        zoom = percent; float z = percent / 100f;
+        Call("Emulation.setDeviceMetricsOverride", Json.O("width", (int)Math.Round(1024 / z), "height", (int)Math.Round(576 / z), "deviceScaleFactor", z, "mobile", false));
+        Thread.Sleep(100);
+    }
 
     static int Main()
     {
@@ -96,6 +114,46 @@ static class TvBrowserPageTest
             Thread.Sleep(300);
             Check(Eval("location.hash") == "\"#one\"", "Back goes back");
 
+            // the mouse: clicks where the pointer is, double clicks, the right button, a drag, the wheel where it points
+            Navigate("about:blank");
+            frame = Json.Str(Json.Obj(Json.Obj(Call("Page.getFrameTree").Result, "frameTree"), "frame"), "id");
+            Call("Page.setDocumentContent", Json.O("frameId", frame, "html",
+                "<html><body style='margin:0;height:3000px'>" +
+                "<button id=a style='position:absolute;left:100px;top:50px;width:100px;height:40px' onclick=\"this.dataset.n=(+this.dataset.n||0)+1\" ondblclick=\"this.dataset.d='yes'\">a</button>" +
+                "<div id=c style='position:absolute;left:300px;top:50px;width:100px;height:40px;background:#ccc' oncontextmenu=\"this.dataset.r='yes';return false\">menu</div>" +
+                "<div id=g style='position:absolute;left:100px;top:200px;width:400px;height:20px;background:#eee'></div>" +
+                "<div id=s style='position:fixed;left:700px;top:100px;width:200px;height:200px;overflow:auto'><div style='height:2000px'>inner</div></div>" +
+                "<script>var g=document.getElementById('g');g.addEventListener('mousedown',e=>{g.dataset.from=e.clientX;g.dataset.held=e.buttons});" +
+                "addEventListener('mousemove',e=>{if(e.buttons&1)g.dataset.to=e.clientX});addEventListener('mouseup',e=>g.dataset.up=e.clientX)</script></body></html>"));
+            Thread.Sleep(200);
+            Click(150, 70);
+            Check(Eval("document.getElementById('a').dataset.n") == "\"1\"", "a click lands where the pointer is");
+            Click(20, 20);
+            Check(Eval("document.getElementById('a').dataset.n") == "\"1\"", "a click elsewhere misses it");
+            Click(150, 70, 0, 1); Click(150, 70, 0, 2);
+            Check(Eval("document.getElementById('a').dataset.d") == "\"yes\"", "two clicks counted as a double click");
+            Click(350, 70, 2);
+            Check(Eval("document.getElementById('c').dataset.r") == "\"yes\"", "the right button opens the page's own menu");
+            Mouse(MouseOp.Move, 120, 210); Mouse(MouseOp.Down, 120, 210);
+            Mouse(MouseOp.Move, 250, 210); Mouse(MouseOp.Move, 400, 212); Mouse(MouseOp.Up, 400, 212);
+            Check(Eval("document.getElementById('g').dataset.from") == "\"120\"" && Eval("document.getElementById('g').dataset.to") == "\"400\"" &&
+                  Eval("document.getElementById('g').dataset.up") == "\"400\"" && pointer.Held == 0, "a drag: pressed, moved with the button held, let go");
+            Mouse(MouseOp.Move, 800, 200);
+            Send(new Command { Kind = CmdKind.Wheel, Delta = 300 }); Thread.Sleep(500);
+            Check(Eval("document.getElementById('s').scrollTop") != "0" && Eval("window.scrollY") == "0", "the wheel scrolls what the pointer is over, not the page");
+            Mouse(MouseOp.Move, 200, 400);
+            Send(new Command { Kind = CmdKind.Wheel, Delta = 300 }); Thread.Sleep(500);
+            Check(Eval("window.scrollY") != "0", "and the page when it is over the page");
+            Eval("window.scrollTo(0,0)");
+
+            // zoom: at 200 % the page is 512 CSS pixels wide, drawn twice as large; the pointer still hits what it shows
+            Zoom(200);
+            Check(Eval("innerWidth") == "512" && Eval("devicePixelRatio") == "2", "200 %: half the CSS pixels, twice the device pixels");
+            Click(300, 140);   // the button's middle (150, 70) at twice the size
+            Check(Eval("document.getElementById('a').dataset.n") == "\"4\"", "a click on the zoomed page lands on what the picture shows there");
+            Zoom(100);
+            Check(Eval("innerWidth") == "1024", "back to 100 %");
+
             Eval("window.__f='?'; fetch('http://127.0.0.1:8080/x').then(()=>__f='ok',e=>__f='err')"); Thread.Sleep(300);
             Check(Eval("__f") == "\"err\"", "a page can't fetch from a local address");
             foreach (var url in new[] { "http://127.0.0.1:8080/", "http://" + Ip(192, 168, 1, 1) + "/", "http://localhost:8080/x", "http://printer.local/", "http://[::1]:8080/", "http://" + Ip(10, 0, 0, 1) + "/" })
@@ -123,7 +181,7 @@ static class TvBrowserPageTest
 
     static void Send(Command c)
     {
-        foreach (var (m, a) in PageInput.Events(c, 1024, 576)) Call(m, a);
+        foreach (var (m, a) in PageInput.Events(c, pointer, zoom / 100f)) Call(m, a);
         Thread.Sleep(30);
     }
 

@@ -1,21 +1,25 @@
 # TV Browser
 
-A web browser on the game's TV, used with the keyboard. In a session everyone sees the same page, and TLD RevaMP's
+A web browser on the game's TV, used with the keyboard and mouse. In a session everyone sees the same page, and TLD RevaMP's
 replays show what was on the TV. An example of the multiplayer mod API's shared records and events, and of replay
 channels (API 4).
 
 ## Using it
 
-Switch the TV on (its own button), look at it from within 4 m and press **U**. The keyboard now goes to the page
-until **Esc**:
+Switch the TV on (its own button), look at it from within 4 m and press **U**. The keyboard and mouse now go to the
+page until **Esc** (the view stays still meanwhile):
 
 | Keys | What they do |
 | --- | --- |
 | typing, Backspace, Delete, Tab, Enter, the arrows, Home, End | as in any browser, into the page |
-| Page Up / Page Down, Space, the mouse wheel | scroll |
+| the mouse | moves a pointer on the page; click, double-click, drag, right-click. Everyone sees the pointer |
+| the mouse wheel | scrolls what the pointer is over (with Shift: sideways) |
+| Page Up / Page Down, Space | scroll |
 | **F2**, then the letters on a label | link hints: click a link or button, or go into a field, without a mouse |
 | Ctrl+L or F6 | the address bar: an address, or words to search for (DuckDuckGo's HTML search by default) |
-| Alt+← / Alt+→ | back / forward |
+| Alt+← / Alt+→, the mouse's side buttons | back / forward |
+| Ctrl and + / - / 0 | zoom in, out, back to 100 % (for everyone at the TV) |
+| Ctrl+C | copy the selected text to your clipboard |
 | F5 or Ctrl+R | reload |
 | Ctrl+H | the TV's start page |
 | Ctrl+V | paste |
@@ -23,9 +27,18 @@ until **Esc**:
 The first time, the TV asks before downloading the browser (Chromium's headless shell, about 120 MB, from Google's
 Chrome for Testing storage, checked against a pinned SHA-256). It is kept in `BepInEx/config/TvBrowser/`.
 
-Settings (`BepInEx/config/tldrevamp.tvbrowser.cfg`): the key, how close you must be, how far away a TV keeps its page
+The start page has links to a few sites to begin with.
+
+Settings (`BepInEx/config/tldrevamp.tvbrowser.cfg`): the key, the pointer's speed, how close you must be, how far away a TV keeps its page
 open (25 m), the picture rate (15 a second at most) and quality, the search address, and whether the browser runs as
 a single process under Proton (on by default: about 0.7 GB instead of 1.4 GB).
+
+### YouTube
+
+YouTube's videos stop after about 40 seconds with "Something went wrong" (checked 2026-11-04 with Chromium 155 and
+the 156 headless shell, single player and outside the game too). YouTube stops sending the video to this browser,
+which it can tell is automated; it isn't a fault in the mod or its sync. The mod doesn't try to hide what the
+browser is.
 
 ## How it is synced
 
@@ -33,10 +46,13 @@ Nothing is streamed. Each machine runs its own browser, and the TV's page is the
 same things go into it:
 
 - **The shared state** (`TvState` in `Core.cs`, one record per TV, keyed by the TV's world id like the head unit's):
-  the address, a navigation counter, which player has the keyboard (the driver), and the scroll position.
-- **Keys** go to everyone as `keys` events (batched every 0.1 s). Every machine puts the same keys into the same page
-  at the same fixed size (1024x576), so typing, Tab, Enter and the F2 hints land on the same things. Hints run in
-  the page and take their keys from it, so they need no extra sync.
+  the address, a navigation counter, which player has the keyboard (the driver), the scroll position and the zoom
+  (pages lay out alike only at the same zoom).
+- **Keys and the mouse** go to everyone as `keys` events (batched every 0.1 s; of a run of pointer moves only the
+  last). Every machine puts the same keys and clicks into the same page at the same fixed size (1024x576), so
+  typing, Tab, Enter, clicks and the F2 hints land on the same things. Hints run in the page and take their keys
+  from it, so they need no extra sync. The pointer is a place on the TV's picture, so it lands on the same thing at
+  any zoom; each machine draws it into its own picture, so everyone sees where the driver points.
 - **The driver's browser decides**: when its page goes somewhere (a link, a form, a redirect) it shares the address,
   and others follow; it shares its scroll position up to 4 times a second, and others move when they are more than
   24 px away. One player has the keyboard at a time; another can take it.

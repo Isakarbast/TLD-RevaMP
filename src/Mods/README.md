@@ -6,7 +6,7 @@ RevaMP: each builds to its own DLL, and the playable ones ship as their own zips
 | Mod | What it shows | Uses the API |
 | --- | --- | --- |
 | [HeadUnit](HeadUnit/README.md) | A digital head unit for the radio slot with a YouTube queue everyone in the car shares | yes |
-| [TvBrowser](TvBrowser/README.md) | A web browser on the game's TV, used with the keyboard; everyone sees the same page, and replays show it | yes |
+| [TvBrowser](TvBrowser/README.md) | A web browser on the game's TV, used with the keyboard and mouse; everyone sees the same page, and replays show it | yes |
 | [CarTrailer](CarTrailer/README.md) | A car trailer that RevaMP shares like the game's own trailer, with no multiplayer code | no |
 | [TrailerHitches](TrailerHitches/README.md) | Adds receiver hitches so cars such as car06p can accept the game's trailer drawbar | yes |
 | [RoadEnd](RoadEnd/README.md) | Picked on the new-game screen: the main road ends near 5000 km at the game's roadside grave with a note; the land and side roads go on | yes |

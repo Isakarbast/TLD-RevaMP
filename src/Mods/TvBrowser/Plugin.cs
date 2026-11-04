@@ -8,9 +8,9 @@ using UnityEngine;
 namespace TvBrowser
 {
     /// A web browser on the game's TV (an example mod for TLD Revamp's multiplayer API).
-    ///  - Look at a TV that is on and press U: the keyboard goes to the page (typing, Tab and Enter, the arrows and
-    ///    Page Up / Down, the wheel, F2 link hints, Ctrl+L for an address, Alt+arrows for back and forward). Esc gives
-    ///    it back.
+    ///  - Look at a TV that is on and press U: the keyboard and mouse go to the page (typing, Tab and Enter, the arrows
+    ///    and Page Up / Down, a pointer that clicks, the wheel, F2 link hints, Ctrl+L for an address, Alt+arrows for
+    ///    back and forward, Ctrl and +/- to zoom). Esc gives them back.
     ///  - Everyone near the TV sees the same page: the address, the scroll position and the keys go to every player,
     ///    and each machine's own browser draws the page (TvScreen.cs, Keyboard.cs). Nothing is streamed.
     ///  - Replays show what was on the TV (ReplayTv.cs, a replay channel).
@@ -21,7 +21,7 @@ namespace TvBrowser
     public class Plugin : BaseUnityPlugin
     {
         public const string Guid = "tldrevamp.tvbrowser";
-        public const string Version = "0.1.0";
+        public const string Version = "0.2.0";
 
         internal static ManualLogSource Log;
         internal static ModInfo Mod;
@@ -31,7 +31,7 @@ namespace TvBrowser
 
         internal static ConfigEntry<KeyCode> FocusKey;
         internal static ConfigEntry<string> SearchUrl;
-        internal static ConfigEntry<float> ActiveRange, UseRange;
+        internal static ConfigEntry<float> ActiveRange, UseRange, PointerSpeed;
         internal static ConfigEntry<int> Fps, Quality;
         internal static ConfigEntry<bool> SingleProcess;
 
@@ -41,6 +41,7 @@ namespace TvBrowser
             FocusKey = Config.Bind("Keys", "UseTv", KeyCode.U, "Look at a TV that is on and press this to take its keyboard (Esc gives it back)");
             SearchUrl = Config.Bind("Browser", "SearchUrl", "https://html.duckduckgo.com/html/?q=", "Words typed in the address bar are searched here (the words are appended)");
             ActiveRange = Config.Bind("Browser", "ShowWithin", 25f, new ConfigDescription("A TV that is on shows its page while you are this close (metres); farther away its page closes", new AcceptableValueRange<float>(5f, 200f)));
+            PointerSpeed = Config.Bind("Keys", "PointerSpeed", 10f, new ConfigDescription("How fast the mouse moves the pointer on a TV's page (the page's pixels for one unit of the game's mouse input)", new AcceptableValueRange<float>(0.5f, 60f)));
             UseRange = Config.Bind("Keys", "UseWithin", 4f, new ConfigDescription("How close to a TV you must be to use its keyboard (metres)", new AcceptableValueRange<float>(1f, 10f)));
             Fps = Config.Bind("Browser", "Fps", 15, new ConfigDescription("Most pictures a second a TV's page is redrawn with (a still page costs nothing)", new AcceptableValueRange<int>(1, 30)));
             SingleProcess = Config.Bind("Browser", "SingleProcessUnderProton", true, "Under Proton (Wine), run the browser as one process: about 0.7 GB instead of 1.4 GB, since Wine gives every process its own copy of the program. Turn off if pages crash the browser");

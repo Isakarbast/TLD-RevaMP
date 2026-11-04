@@ -8,6 +8,8 @@ second Steam user): a TV spawned between them, switched on, and its page used fr
   E. scrolling: the other machine's page follows the driver's position
   F. the second player takes the keyboard and goes somewhere: the host follows
   G. local and private addresses are refused
+  I. the mouse: a click where a start-page link shows takes both machines there; the pointer and the zoom are the
+     same on both
   H. a replay recorded on the host holds the TV's pictures and shows them on the TV's copy
   TLD_TEST_MODS=TvBrowser tools/tvbrowser.py [--no-build] [--relay iad|off]"""
 import os
@@ -136,6 +138,30 @@ with game.ProtectedSession():
             r = call(L, "Go", esc(bad))
             verdict(f"G. refused: {bad}", r == "refused", r)
         print(" second unfocus:", call(L, "Unfocus"))
+
+        # I. the mouse: the host points at the start page's first link and clicks; both machines follow it
+        print(" host focus:", call(h, "Focus")[:120]); time.sleep(1)
+        print(" home:", call(h, "Home"))
+        until(lambda: all(state(s).get("home") and not state(s).get("loading") for s in (h, L)), 20); time.sleep(1)
+        where = js(h, "(()=>{const a=document.querySelector('nav a');if(!a)return null;const r=a.getBoundingClientRect();return [Math.round(r.x+r.width/2),Math.round(r.y+r.height/2),a.href]})()")
+        try: lx, ly, href = json.loads(where)
+        except Exception: lx, ly, href = 0, 0, "(none)"
+        print(f" first link at {lx},{ly}: {href}")
+        print(" move:", call(h, "Mouse", "move", lx, ly, 0, 1)); time.sleep(1.5)
+        verdict("I. the pointer is in the same place on both machines", (state(h).get("px"), state(h).get("py")) == (state(L).get("px"), state(L).get("py")) == (lx, ly),
+                f"host {state(h).get('px')},{state(h).get('py')}, second {state(L).get('px')},{state(L).get('py')}, link {lx},{ly}")
+        print(" shots:", call(h, "Shot", "tv_host_pointer"), call(L, "Shot", "tv_second_pointer"))
+        print(" click:", call(h, "Mouse", "click", lx, ly, 0, 1))
+        ok, a, b = same_page(h, L, href, 40)
+        verdict("I. a click on a link takes both machines there", ok and href.startswith("https://"), f"host '{a}', second '{b}', link {href}")
+        print(" zoom:", call(h, "Zoom", 150))
+        until(lambda: all(state(s).get("zoom") == 150 for s in (h, L)), 15); time.sleep(1.5)
+        a, b = js(h, "innerWidth"), js(L, "innerWidth")
+        verdict("I. the zoom is the same on both machines", state(h).get("zoom") == state(L).get("zoom") == state(L).get("szoom") == 150 and a == b == "683",
+                f"host {state(h).get('zoom')} % width {a}, second {state(L).get('zoom')} % width {b}")
+        print(" shots:", call(h, "Shot", "tv_host_zoom"), call(L, "Shot", "tv_second_zoom"))
+        call(h, "Zoom", 100); time.sleep(1)
+        print(" host unfocus:", call(h, "Unfocus"))
 
         # H. a replay on the host: the TV's pictures recorded and shown on its copy
         print(" host focus:", call(h, "Focus")[:120])
