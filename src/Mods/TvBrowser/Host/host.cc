@@ -16,7 +16,11 @@
 // wanted a new window (none is made: the mod decides what its TV does). When the connection closes (the game quit or
 // crashed), it closes every page and exits.
 //
-// Every other argument is Chromium's (--remote-debugging-port=..., --user-data-dir=..., --mute-audio, ...).
+// A page's sound is not played here: CEF hands it to this program (CefAudioHandler), which passes it on for the game to
+// play from the TV: "audio <key> <rate> <base64>" (16-bit stereo, little-endian, interleaved; about 20 ms a line), and
+// "audioend <key>" when the page goes quiet.
+//
+// Every other argument is Chromium's (--remote-debugging-port=..., --user-data-dir=..., ...).
 
 #include <cstdio>
 #include <functional>
@@ -28,6 +32,7 @@
 #include <vector>
 
 #include "include/cef_app.h"
+#include "include/cef_audio_handler.h"
 #include "include/cef_browser.h"
 #include "include/cef_client.h"
 #include "include/cef_command_line.h"
@@ -174,6 +179,21 @@ bool ReadLine(std::string& line) {
 }
 #endif
 
+// standard base64, for the sound's lines
+std::string Base64(const unsigned char* p, size_t n) {
+  static const char a[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  out.reserve((n + 2) / 3 * 4);
+  for (size_t i = 0; i < n; i += 3) {
+    unsigned v = p[i] << 16 | (i + 1 < n ? p[i + 1] << 8 : 0) | (i + 2 < n ? p[i + 2] : 0);
+    out += a[v >> 18 & 63];
+    out += a[v >> 12 & 63];
+    out += i + 1 < n ? a[v >> 6 & 63] : '=';
+    out += i + 2 < n ? a[v & 63] : '=';
+  }
+  return out;
+}
+
 class Fn : public CefTask {
  public:
   explicit Fn(std::function<void()> f) : f_(std::move(f)) {}
@@ -192,11 +212,38 @@ void QuitIfDone() {
   if (quitting && pages.empty()) CefQuitMessageLoop();
 }
 
-class Page : public CefClient, public CefRenderHandler, public CefLifeSpanHandler {
+class Page : public CefClient, public CefRenderHandler, public CefLifeSpanHandler, public CefAudioHandler {
  public:
   Page(std::string key, int w, int h) : key_(std::move(key)), w_(w), h_(h) {}
   CefRefPtr<CefRenderHandler> GetRenderHandler() override { return this; }
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
+  CefRefPtr<CefAudioHandler> GetAudioHandler() override { return this; }
+
+  // the page's sound, for the game
+  bool GetAudioParameters(CefRefPtr<CefBrowser>, CefAudioParameters& params) override {
+    params.channel_layout = CEF_CHANNEL_LAYOUT_STEREO;
+    params.sample_rate = 48000;
+    return true;
+  }
+  void OnAudioStreamStarted(CefRefPtr<CefBrowser>, const CefAudioParameters& params, int channels) override {
+    channels_ = channels;
+    rate_ = params.sample_rate;
+  }
+  void OnAudioStreamPacket(CefRefPtr<CefBrowser>, const float** data, int frames, int64_t) override {
+    int ch = channels_;
+    if (ch < 1 || frames <= 0) return;
+    pcm_.resize(static_cast<size_t>(frames) * 4);
+    for (int i = 0; i < frames; i++)
+      for (int c = 0; c < 2; c++) {
+        float f = data[c < ch ? c : 0][i];
+        int v = static_cast<int>((f > 1.f ? 1.f : f < -1.f ? -1.f : f) * 32767.f);
+        pcm_[i * 4 + c * 2] = static_cast<unsigned char>(v & 255);
+        pcm_[i * 4 + c * 2 + 1] = static_cast<unsigned char>(v >> 8 & 255);
+      }
+    Say("audio " + key_ + " " + std::to_string(rate_) + " " + Base64(pcm_.data(), pcm_.size()));
+  }
+  void OnAudioStreamStopped(CefRefPtr<CefBrowser>) override { Say("audioend " + key_); }
+  void OnAudioStreamError(CefRefPtr<CefBrowser>, const CefString&) override { Say("audioend " + key_); }
 
   void GetViewRect(CefRefPtr<CefBrowser>, CefRect& rect) override { rect = CefRect(0, 0, w_, h_); }
   // the mod takes its pictures over DevTools (Page.startScreencast), not from here
@@ -211,6 +258,8 @@ class Page : public CefClient, public CefRenderHandler, public CefLifeSpanHandle
     return true;
   }
   void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
+    // its sound only goes to the game (the audio handler still gets it); not --mute-audio, which silences that too
+    browser->GetHost()->SetAudioMuted(true);
     pages[key_] = browser;
     Say("made " + key_);
   }
@@ -223,6 +272,8 @@ class Page : public CefClient, public CefRenderHandler, public CefLifeSpanHandle
  private:
   std::string key_;
   int w_, h_;
+  int channels_ = 0, rate_ = 48000;   // the sound's (set before its packets)
+  std::vector<unsigned char> pcm_;    // CEF's audio thread only
   IMPLEMENT_REFCOUNTING(Page);
 };
 

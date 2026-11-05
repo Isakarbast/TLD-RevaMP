@@ -284,7 +284,9 @@ namespace TvBrowser
 
         // BackForwardCache: Chromium keeps the pages a TV went back from alive, each in a page process of its own (several
         // hundred MB each under Wine); without it Back reloads the page, alike on every machine
-        private const string CommonArgs = " --mute-audio --hide-scrollbars --disable-extensions --disable-sync --disable-background-networking" +
+        // No --mute-audio: it silences the pages' sound for tvbrowser-host too, which mutes each page itself instead
+        // and passes the sound on (Sound.cs)
+        private const string CommonArgs = " --hide-scrollbars --disable-extensions --disable-sync --disable-background-networking" +
                                           " --disable-component-update --disable-features=Translate,MediaRouter,OptimizationHints,BackForwardCache" +
                                           " --autoplay-policy=user-gesture-required";
 
@@ -370,6 +372,8 @@ namespace TvBrowser
                             while ((line = reader.ReadLine()) != null)
                             {
                                 if (line == "ready") ready.Set();
+                                // the pages' sound, straight into their buffers (it mustn't wait for the game's frames)
+                                else if (line.StartsWith("audio", StringComparison.Ordinal)) Sound.Line(line);
                                 else { string l = line; Main.Enqueue(() => HostSaid(h, l)); }
                             }
                         }
@@ -492,7 +496,7 @@ namespace TvBrowser
         public static void Stop()
         {
             foreach (var t in Tabs) t.Screen.TabLost(t);
-            Tabs.Clear(); HostPages.Clear();
+            Tabs.Clear(); HostPages.Clear(); Sound.Clear();
             var cdp = Connection; Connection = null;
             cdp?.Dispose();
             var host = _host; _host = null;
@@ -605,6 +609,7 @@ namespace TvBrowser
                     break;
                 case "closed":
                     HostPages.Remove(key);
+                    Sound.Forget(key);
                     // not one the mod closed (a page's window.close()): its TV makes a new one
                     if (tab != null && !tab.Closed) { Tabs.Remove(tab); tab.Screen.TabLost(tab); tab.Dispose(); }
                     break;

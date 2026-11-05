@@ -525,6 +525,8 @@ synthetic headers; tests also create report zips and corrupt inputs in temporary
   The mod browser's parser, URL allowlist, trust/ZIP/size checks and install/update/remove operations also run without
   the game: `dotnet run --project tools/unit/ModCatalogTest.csproj`. It links the production plain C# functions,
   uses synthetic bytes and temporary folders, and never downloads or loads a mod.
+- `tools/tvsound.py [--no-build] [--youtube]`: the TV Browser's sound in one game: a page's tone reaches the TV and the
+  TV's source, quieter farther away and gone beyond 20 m, a media file, YouTube, and no sound once the TV is off.
 - `tools/modupdatecheck.py [--no-build]`: the start-up mod update check in one game, against the real catalog on GitHub.
   It plants Road End's previous release as a browser install, runs the check (`mods check`), answers Yes (`mods yes`)
   and checks the downloaded file against the approved hash. Yes updates every managed mod with an update, so the copy's

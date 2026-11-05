@@ -14,8 +14,8 @@ namespace TvBrowser
     ///  - Everyone near the TV sees the same page: the address, the scroll position and the keys go to every player,
     ///    and each machine's own browser draws the page (TvScreen.cs, Keyboard.cs). Nothing is streamed.
     ///  - Replays show what was on the TV (ReplayTv.cs, a replay channel).
-    ///  - The browser is Chromium's headless shell, a separate program downloaded once with the player's consent
-    ///    (Browser.cs) and driven over the DevTools protocol (Cdp.cs).
+    ///  - The browser is CEF, downloaded once with the player's consent, run by tvbrowser-host (Browser.cs, Host/) and
+    ///    driven over the DevTools protocol (Cdp.cs). A page's sound plays from its TV (Sound.cs).
     [BepInPlugin(Guid, "TV Browser", Version)]
     [BepInDependency("tldrevamp.core", BepInDependency.DependencyFlags.SoftDependency)]
     public class Plugin : BaseUnityPlugin
@@ -31,7 +31,7 @@ namespace TvBrowser
 
         internal static ConfigEntry<KeyCode> FocusKey;
         internal static ConfigEntry<string> SearchUrl;
-        internal static ConfigEntry<float> ActiveRange, UseRange, PointerSpeed;
+        internal static ConfigEntry<float> ActiveRange, UseRange, PointerSpeed, Volume, HearWithin;
         internal static ConfigEntry<int> Fps, Quality;
 
         private void Awake()
@@ -44,6 +44,8 @@ namespace TvBrowser
             UseRange = Config.Bind("Keys", "UseWithin", 4f, new ConfigDescription("How close to a TV you must be to use its keyboard (metres)", new AcceptableValueRange<float>(1f, 10f)));
             Fps = Config.Bind("Browser", "Fps", 15, new ConfigDescription("Most pictures a second a TV's page is redrawn with (a still page costs nothing)", new AcceptableValueRange<int>(1, 30)));
             Quality = Config.Bind("Browser", "Quality", 70, new ConfigDescription("JPEG quality of the page's pictures (the browser makes them, the game shows them)", new AcceptableValueRange<int>(20, 95)));
+            Volume = Config.Bind("Sound", "Volume", 0.8f, new ConfigDescription("How loud a TV plays its page's sound (0 is silent; the game's own volume applies too)", new AcceptableValueRange<float>(0f, 1f)));
+            HearWithin = Config.Bind("Sound", "HearWithin", 20f, new ConfigDescription("How far away a TV can be heard (metres); it gets quieter all the way there", new AcceptableValueRange<float>(5f, 100f)));
 
             Mod = MpApi.RegisterMod("tvbrowser", "TV Browser", Version);
             StateType = MpApi.RegisterType(Mod, new TvStateType());

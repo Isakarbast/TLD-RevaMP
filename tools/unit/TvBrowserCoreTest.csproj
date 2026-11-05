@@ -7,6 +7,7 @@
     <Compile Include="../../src/Mods/TvBrowser/PageInput.cs" />
     <Compile Include="../../src/Mods/TvBrowser/Bzip2.cs" />
     <Compile Include="../../src/Mods/TvBrowser/Tar.cs" />
+    <Compile Include="../../src/Mods/TvBrowser/Sound.cs" />
     <Compile Include="../../src/TLDRevamp.Multiplayer/Records.cs" />
   </ItemGroup>
 </Project>

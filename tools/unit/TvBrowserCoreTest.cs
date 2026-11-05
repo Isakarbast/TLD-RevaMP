@@ -6,7 +6,7 @@ using TvBrowser;
 
 // The TV Browser example mod's pure core: the shared state and its edits, which addresses a TV may show, the keys and
 // commands that pass between players, the small JSON reader and writer its browser connection uses, and the bzip2 and
-// tar readers that unpack CEF.
+// tar readers that unpack CEF, and the playback of a page's sound.
 static class TvBrowserCoreTest
 {
     static int checks;
@@ -23,6 +23,7 @@ static class TvBrowserCoreTest
         Mouse();
         JsonRoundTrip();
         Unpacking();
+        Sound_();
         Console.WriteLine("TV Browser core: " + checks + " checks passed");
         return 0;
     }
@@ -72,6 +73,104 @@ static class TvBrowserCoreTest
     }
 
     static bool Throws(Action a) { try { a(); return false; } catch (Exception e) { return e is System.IO.InvalidDataException || e is System.IO.EndOfStreamException; } }
+
+    // A page's sound (Sound.cs): tvbrowser-host's lines into a TV's buffer, played by the TV source's filter
+    static int _soundKey;
+    static string Tone(int frames, int rate, double hz, double amp, ref long t)
+    {
+        var pcm = new byte[frames * 4];
+        for (int i = 0; i < frames; i++, t++)
+        {
+            short v = (short)(Math.Sin(2 * Math.PI * hz * t / rate) * amp * 32767);
+            pcm[4 * i] = pcm[4 * i + 2] = (byte)(v & 255);
+            pcm[4 * i + 1] = pcm[4 * i + 3] = (byte)(v >> 8 & 255);
+        }
+        return Convert.ToBase64String(pcm);
+    }
+    // one DSP block of the source: its carrier (the clip of 1.0s after volume and rolloff) times the page's sound
+    static float[] Block(Sound.Buffer b, int frames, int outRate, float carrier = 1f)
+    {
+        var d = new float[frames * 2];
+        for (int i = 0; i < d.Length; i++) d[i] = carrier;
+        Sound.Fill(b, d, 2, outRate);
+        return d;
+    }
+
+    static void Sound_()
+    {
+        foreach (int outRate in new[] { 48000, 44100 })
+        {
+            string key = "tv" + ++_soundKey;
+            var b = Sound.For(key);
+            Check(Sound.For(key) == b, "a page keeps its buffer");
+            long t = 0;
+            // the lines come every ~21 ms (1024 frames at 48 kHz); the source takes 1024-frame blocks at its own rate
+            Sound.Line("audio " + key + " 48000 " + Tone(1024, 48000, 440, 0.5, ref t));
+            Check(Array.TrueForAll(Block(b, 1024, outRate), v => v == 0f), "silence until 0.1 s is buffered");
+            Check(b.Played == 0 && b.Underruns == 0, "nothing played while priming");
+            for (int i = 0; i < 4; i++) Sound.Line("audio " + key + " 48000 " + Tone(1024, 48000, 440, 0.5, ref t));
+            var all = new List<float>(); bool same = true;
+            double inPerBlock = 1024.0 * 48000 / outRate;   // page frames one output block takes
+            double fed = 5 * 1024, taken = 0;
+            for (int blk = 0; blk < 200; blk++)
+            {
+                taken += inPerBlock;
+                while (fed - taken < 0.1 * 48000) { Sound.Line("audio " + key + " 48000 " + Tone(1024, 48000, 440, 0.5, ref t)); fed += 1024; }
+                var d = Block(b, 1024, outRate);
+                for (int i = 0; i < d.Length; i += 2) { same &= d[i] == d[i + 1]; all.Add(d[i]); }
+            }
+            Check(same, "both channels alike");
+            Check(b.Underruns == 0 && b.Dropped == 0, $"at {outRate}: no gaps, nothing skipped (underruns {b.Underruns}, skipped {b.Dropped})");
+            int zc = 0; float peak = 0;
+            for (int i = 1; i < all.Count; i++) { if ((all[i - 1] < 0) != (all[i] < 0)) zc++; peak = Math.Max(peak, Math.Abs(all[i])); }
+            double hz = zc / 2.0 / (all.Count / (double)outRate);
+            Check(Math.Abs(hz - 440) < 3, $"at {outRate}: the tone stays 440 Hz ({hz:0.0})");
+            Check(Math.Abs(peak - 0.5f) < 0.01f, $"at {outRate}: its loudness ({peak:0.000})");
+            // the jump between blocks is no bigger than a sine's step within them: no clicks
+            float maxStep = 0; for (int i = 1; i < all.Count; i++) maxStep = Math.Max(maxStep, Math.Abs(all[i] - all[i - 1]));
+            Check(maxStep < 0.5 * 2 * Math.PI * 440 / outRate * 1.1, $"at {outRate}: a smooth wave ({maxStep:0.0000})");
+            Check(Math.Abs(b.Level - 0.5f) < 0.02f && Math.Abs(b.Out - 0.5f) < 0.02f, "level and output read");
+            // the carrier carries the game's volume and rolloff
+            var half = Block(b, 1024, outRate, 0.25f);
+            float hp = 0; foreach (var v in half) hp = Math.Max(hp, Math.Abs(v));
+            Check(Math.Abs(hp - 0.125f) < 0.01f && Math.Abs(b.Out - 0.125f) < 0.01f, $"a quarter carrier, a quarter as loud ({hp:0.000})");
+            Sound.Forget(key);
+        }
+
+        // the game paused its sound (no blocks): the buffer keeps at most MaxLagS, then skips back to PrimeS behind
+        {
+            string key = "tv" + ++_soundKey; var b = Sound.For(key); long t = 0;
+            for (int i = 0; i < 47; i++) Sound.Line("audio " + key + " 48000 " + Tone(1024, 48000, 440, 0.5, ref t));
+            Check(b.Count <= 48000 * Sound.MaxLagS && b.Dropped > 0 && b.Count >= 48000 * Sound.PrimeS, $"a paused TV stays at most {Sound.MaxLagS} s behind (buffered {b.Count}, skipped {b.Dropped})");
+            Sound.Forget(key);
+        }
+
+        // the page goes quiet: what is left plays out, short of a full prime, and no underrun is counted
+        {
+            string key = "tv" + ++_soundKey; var b = Sound.For(key); long t = 0;
+            Sound.Line("audio " + key + " 48000 " + Tone(1024, 48000, 440, 0.5, ref t));
+            Sound.Line("audioend " + key);
+            var d = Block(b, 2048, 48000);
+            int sounding = 0; foreach (var v in d) if (v != 0) sounding++;
+            Check(b.Played >= 1020 && b.Played <= 1024 && b.Underruns == 0 && sounding > 1500, $"the end plays out (played {b.Played}, underruns {b.Underruns})");
+            Check(Array.TrueForAll(Block(b, 1024, 48000), v => v == 0f), "then silence");
+            Sound.Forget(key);
+        }
+
+        // a new rate starts afresh; bad lines change nothing
+        {
+            string key = "tv" + ++_soundKey; var b = Sound.For(key); long t = 0;
+            Sound.Line("audio " + key + " 48000 " + Tone(1024, 48000, 440, 0.5, ref t));
+            Sound.Line("audio " + key + " 44100 " + Tone(512, 44100, 440, 0.5, ref t));
+            Check(b.Rate == 44100 && b.Count == 512, "a new rate drops what came before");
+            foreach (var bad in new[] { "audio " + key + " 1000 AAAA", "audio " + key + " 48000 !!notbase64", "audio " + key, "audio" })
+                Sound.Line(bad);
+            Check(b.Rate == 44100 && b.Count == 512, "bad lines are ignored");
+            Sound.Forget(key);
+            Check(Sound.For(key) != b, "a forgotten page's buffer is gone");
+            Sound.Clear();
+        }
+    }
 
     static void Unpacking()
     {

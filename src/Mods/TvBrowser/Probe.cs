@@ -29,7 +29,11 @@ namespace TvBrowser
                 "frames", t?.Frames ?? 0, "tx", t?.ScrollX ?? 0, "ty", t?.ScrollY ?? 0, "hints", t?.Hints ?? -1,
                 "px", t?.Pointer.X ?? -1, "py", t?.Pointer.Y ?? -1, "held", t?.Pointer.Held ?? 0, "zoom", t?.Zoom ?? 0, "szoom", s?.Zoom ?? 0,
                 "sent", Keyboard.Sent, "received", Keyboard.Received, "dropped", Keyboard.Dropped,
-                "recorded", ReplayTv.Recorded, "shown", ReplayTv.Shown, "failed", ReplayTv.Failed));
+                "recorded", ReplayTv.Recorded, "shown", ReplayTv.Shown, "failed", ReplayTv.Failed,
+                "sound", tv.Speaker != null, "heard", tv.Speaker?.Buffer?.Received ?? 0, "played", tv.Speaker?.Buffer?.Played ?? 0,
+                "level", tv.Speaker?.Buffer?.Level ?? 0f, "out", tv.Speaker?.Buffer?.Out ?? 0f, "underruns", tv.Speaker?.Buffer?.Underruns ?? 0, "skipped", tv.Speaker?.Buffer?.Dropped ?? 0,
+                "volume", tv.Speaker != null ? tv.Speaker.Src.volume : 0f, "virtual", tv.Speaker != null && tv.Speaker.Src.isVirtual,
+                "playing", tv.Speaker != null && tv.Speaker.Src.isPlaying, "listener", AudioListener.volume));
         }
 
         /// The game's item index of the TV (for the bridge's devspawn).
@@ -173,6 +177,45 @@ namespace TvBrowser
             string path = Path.Combine(dir, name + ".png");
             File.WriteAllBytes(path, tab.Texture.EncodeToPNG());
             return path;
+        }
+
+        /// How loud the game's output is now (the listener's last 2048 samples, both channels: RMS), for telling the
+        /// TV's sound from the rest with Quiet.
+        public static string Output()
+        {
+            var d = new float[2048];
+            double sum = 0;
+            for (int c = 0; c < 2; c++)
+            {
+                AudioListener.GetOutputData(d, c);
+                foreach (var v in d) sum += v * v;
+            }
+            return System.Math.Sqrt(sum / (2 * d.Length)).ToString("0.00000", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        /// How loud the nearest TV's own source is now (its last 2048 samples, both channels: RMS), before the game's
+        /// master volume (test games are muted).
+        public static string SourceOutput()
+        {
+            var sp = Nearest()?.Speaker;
+            if (sp == null) return "-1";
+            var d = new float[2048];
+            double sum = 0;
+            for (int c = 0; c < 2; c++)
+            {
+                sp.Src.GetOutputData(d, c);
+                foreach (var v in d) sum += v * v;
+            }
+            return System.Math.Sqrt(sum / (2 * d.Length)).ToString("0.00000", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        /// The nearest TV's sound muted (true) or not, for Output.
+        public static string Quiet(bool on)
+        {
+            var sp = Nearest()?.Speaker;
+            if (sp == null) return "no sound";
+            sp.Quiet = on;
+            return "muted " + on + " at " + sp.Src.maxDistance + " m, volume " + sp.Src.volume;
         }
 
         /// During a replay: what the TV's copy shows (its material's picture size), from ReplayTv.

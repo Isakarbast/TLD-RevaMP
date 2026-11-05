@@ -36,8 +36,13 @@ off-screen by a normal Chromium, not a headless one, so sites see an ordinary br
 
 The start page has links to a few sites to begin with.
 
+A page's sound comes from its TV, as a sound in the game: quieter farther away (gone beyond 20 m), and with the game's
+own volume. The browser plays nothing itself; `tvbrowser-host` gets each page's sound from CEF and passes it to the
+mod (`Sound.cs`). Like the picture, each machine plays its own page's sound.
+
 Settings (`BepInEx/config/tldrevamp.tvbrowser.cfg`): the key, the pointer's speed, how close you must be, how far away a TV keeps its page
-open (25 m), the picture rate (15 a second at most) and quality, and the search address.
+open (25 m), the picture rate (15 a second at most) and quality, the search address, and the sound's volume and how
+far away a TV is heard.
 
 ### YouTube
 
@@ -93,7 +98,8 @@ TV's copy. Replays are local files, but they do hold those pictures of whatever 
 | `Tab.cs`, `PageInput.cs` | One TV's page: picture, addresses, keys and the wheel as DevTools input |
 | `Pages.cs` | The F2 link-hints script and the start page |
 | `ReplayTv.cs` | The replay channel |
-| `Probe.cs` | Checks for `tools/tvbrowser.py` through the debug bridge |
+| `Sound.cs` | A page's sound, played from its TV |
+| `Probe.cs` | Checks for `tools/tvbrowser.py` and `tools/tvsound.py` through the debug bridge |
 
 ## Tests
 
@@ -101,6 +107,7 @@ TV's copy. Replays are local files, but they do hold those pictures of whatever 
 dotnet run --project tools/unit/TvBrowserCoreTest.csproj                            # state, edits, addresses, keys
 TVB_CHROME=/path/to/chrome-headless-shell dotnet run --project tools/unit/TvBrowserPageTest.csproj   # in a real browser
 tools/tvbrowser.py                                                                  # two players in the game
+tools/tvsound.py [--youtube]                                                        # the sound, in one game
 ```
 
 Under Proton the game runs the Linux build. An empty file `BepInEx/config/TvBrowser/windows-build` makes it take the

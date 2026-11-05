@@ -65,14 +65,37 @@ namespace TvBrowser
         private void Update()
         {
             if (mainscript.s == null || mainscript.s.player == null) return;
-            if (ReplayTv.Playing) return;   // the replay draws its own copy of the TV; this one is hidden and stays as it is
-            if (Time.realtimeSinceStartup >= _findAt) { _findAt = Time.realtimeSinceStartup + 1f; Bind(); }
+            // the replay draws its own copy of the TV; this one is hidden and stays as it is, quiet
+            if (Speaker != null) Speaker.Src.mute = ReplayTv.Playing || Speaker.Quiet;
+            if (ReplayTv.Playing) return;
+            if (Time.realtimeSinceStartup >= _findAt) { _findAt = Time.realtimeSinceStartup + 1f; Bind(); Speaker?.Settings(); }
             bool show = On && Distance < Plugin.ActiveRange.Value && Browser.Installed && Browser.Now != Browser.Phase.Failed;
             if (!show) { CloseTab(); Unapply(); return; }
             if (Tab == null) { Tab = Browser.Open(this); _followed = false; }
             if (!Tab.Ready) return;
             Apply();
+            Hear();
             Sync();
+        }
+
+        // ------------------------------------------------------------------ the sound
+
+        internal TvSound Speaker;
+
+        /// The page's sound from this TV (Sound.cs).
+        private void Hear()
+        {
+            if (Speaker == null) Speaker = TvSound.Make(transform);
+            var b = Sound.For(Tab.Key);
+            if (Speaker.Buffer != b) Speaker.Buffer = b;
+        }
+
+        private void Unhear()
+        {
+            if (Speaker == null) return;
+            Speaker.Buffer = null;
+            Destroy(Speaker.gameObject);
+            Speaker = null;
         }
 
         // ------------------------------------------------------------------ the picture
@@ -101,13 +124,14 @@ namespace TvBrowser
 
         private void CloseTab()
         {
+            Unhear();
             if (Tab == null) return;
             Browser.Close(Tab);
             Tab = null; _followed = false;
         }
 
         internal void TabReady(Tab t) { if (t == Tab) _followed = false; }
-        internal void TabLost(Tab t) { if (t == Tab) { Tab = null; _followed = false; Unapply(); } }
+        internal void TabLost(Tab t) { if (t == Tab) { Tab = null; _followed = false; Unapply(); Unhear(); } }
 
         // ------------------------------------------------------------------ keeping to the shared page
 
@@ -268,7 +292,8 @@ namespace TvBrowser
             var s = State;
             return $"{(Item != null ? Item.name : name)} on {On} dist {Distance:0.0} key {Key()} state {(s == null ? "none" : $"#{StateObj.Id} owner {StateObj.Owner} url '{s.Url}' seq {s.NavSeq} driver {s.Driver} scroll {s.ScrollX:0},{s.ScrollY:0}")}"
                 + (Tab == null ? " tab none" : $" tab ready {Tab.Ready} url '{Tab.Url}' home {Tab.Home} loading {Tab.Loading} frames {Tab.Frames} scroll {Tab.ScrollX:0},{Tab.ScrollY:0} hints {Tab.Hints} pointer {Tab.Pointer.X},{Tab.Pointer.Y} held {Tab.Pointer.Held} zoom {Tab.Zoom}")
-                + $" applied {_applied} navigations {Navigations} scrollfixes {ScrollFixes} driving {Driving}";
+                + $" applied {_applied} navigations {Navigations} scrollfixes {ScrollFixes} driving {Driving}"
+                + (Speaker?.Buffer == null ? " sound none" : $" sound received {Speaker.Buffer.Received} played {Speaker.Buffer.Played} level {Speaker.Buffer.Level:0.00} underruns {Speaker.Buffer.Underruns} dropped {Speaker.Buffer.Dropped}");
         }
     }
 
