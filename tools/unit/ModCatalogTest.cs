@@ -37,7 +37,7 @@ static class ModCatalogTest
     {
         var catalog = ModCatalog.Parse(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "mods.json")));
         Check("real catalog includes World Map, Trailer Hitches, TV Browser and Road End", catalog.Mods.Count == 9 &&
-            catalog.Mods[0].Versions[0].Version == "0.2.0" && catalog.Mods[1].Versions[0].Version == "0.1.1" &&
+            catalog.Mods[0].Versions[0].Version == "0.2.1" && catalog.Mods[1].Versions[0].Version == "0.1.2" &&
             catalog.Mods[2].Id == "anonymoustld.busgut" && catalog.Mods[3].Id == "anonymoustld.mountanything" && catalog.Mods[4].Id == "anonymoustld.terrainchoice" && catalog.Mods[5].Id == "tldrevamp.worldmap" && catalog.Mods[6].Id == "tldrevamp.trailerhitches" && catalog.Mods[7].Id == "tldrevamp.tvbrowser" && catalog.Mods[8].Id == "tldrevamp.roadend");
         var approved = new Dictionary<string, string>();
         foreach (string raw in File.ReadAllLines(Path.Combine(AppContext.BaseDirectory, "approved-mods.txt")))
@@ -49,6 +49,10 @@ static class ModCatalogTest
         Check("CarTrailer released DLL approved locally", ModCatalog.ApprovalReason(catalog.Mods[1], catalog.Mods[1].Versions[0], approved, 16 << 20, _ => true) == null);
         for (int i = 2; i < catalog.Mods.Count; i++)
             Check(catalog.Mods[i].Id + " released DLL approved locally", ModCatalog.ApprovalReason(catalog.Mods[i], catalog.Mods[i].Versions[0], approved, 16 << 20, _ => true) == null);
+        // older versions stay listed: a RevaMP whose approved list predates the newest one still offers them
+        foreach (var m in catalog.Mods)
+            foreach (var v in m.Versions)
+                Check(m.Id + " " + v.Version + " approved locally", ModCatalog.ApprovalReason(m, v, approved, 16 << 20, _ => true) == null);
         string json = "{\"format\":1,\"future\":{\"a\":[1,true]},\"mods\":[{\"id\":\"test.mod\",\"future\":42,\"versions\":[{\"version\":\"1\",\"url\":\"https://github.com/o/r/releases/download/v/m.dll\",\"future\":\"ok\"},{\"url\":\"https://example.com/evil.dll\"}]}]}";
         var parsed = ModCatalog.Parse(Encoding.UTF8.GetBytes(json));
         Check("unknown fields ignored, bad URL removed", parsed.Mods.Count == 1 && parsed.Mods[0].Versions.Count == 1);

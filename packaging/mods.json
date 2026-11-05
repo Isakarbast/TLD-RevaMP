@@ -9,6 +9,13 @@
       "source": "https://github.com/Normal99/TLD-RevaMP",
       "versions": [
         {
+          "version": "0.2.1",
+          "url": "https://github.com/Normal99/TLD-RevaMP/releases/download/headunit-v0.2.1/HeadUnit-0.2.1.zip",
+          "file": "BepInEx/plugins/HeadUnit/HeadUnit.dll",
+          "sha256": "7d4fce422ee6324bdf040262ffbe97555740adcb0141c7e38a4e00f37aa03955",
+          "size": 61554
+        },
+        {
           "version": "0.2.0",
           "url": "https://github.com/Normal99/TLD-RevaMP/releases/download/v0.69.0/HeadUnit-0.2.0.zip",
           "file": "BepInEx/plugins/HeadUnit/HeadUnit.dll",
@@ -25,6 +32,13 @@
       "description": "A car trailer for hauling vehicles.",
       "source": "https://github.com/Normal99/TLD-RevaMP",
       "versions": [
+        {
+          "version": "0.1.2",
+          "url": "https://github.com/Normal99/TLD-RevaMP/releases/download/cartrailer-v0.1.2/CarTrailer-0.1.2.zip",
+          "file": "BepInEx/plugins/CarTrailer/CarTrailer.dll",
+          "sha256": "f36237ffef80e98fd0b277beb54d95007abadeee8773ae679167a8951eb823fa",
+          "size": 19771
+        },
         {
           "version": "0.1.1",
           "url": "https://github.com/Normal99/TLD-RevaMP/releases/download/v0.69.0/CarTrailer-0.1.1.zip",
@@ -93,6 +107,13 @@
       "source": "https://github.com/Normal99/TLD-WorldMap",
       "versions": [
         {
+          "version": "0.2.1",
+          "url": "https://github.com/Normal99/TLD-WorldMap/releases/download/v0.2.1/WorldMap-0.2.1.zip",
+          "file": "BepInEx/plugins/WorldMap/WorldMap.dll",
+          "sha256": "cd9c309cbbc2aba088cfa5921660ba78ff537a77036b26a39a13cfcf7b99baee",
+          "size": 23757
+        },
+        {
           "version": "0.2.0",
           "url": "https://github.com/Normal99/TLD-WorldMap/releases/download/v0.2.0/WorldMap-0.2.0.zip",
           "file": "BepInEx/plugins/WorldMap/WorldMap.dll",
@@ -134,6 +155,13 @@
       "source": "https://github.com/Normal99/TLD-RevaMP",
       "versions": [
         {
+          "version": "0.2.0",
+          "url": "https://github.com/Normal99/TLD-RevaMP/releases/download/trailerhitches-v0.2.0/TrailerHitches-0.2.0.zip",
+          "file": "BepInEx/plugins/TrailerHitches/TrailerHitches.dll",
+          "sha256": "b01405d00d924b6125059b6b0ea5ea7845462f3134184f79abfca9d97a3ff0c1",
+          "size": 16673
+        },
+        {
           "version": "0.1.0",
           "url": "https://github.com/Normal99/TLD-RevaMP/releases/download/trailerhitches-v0.1.0/TrailerHitches-0.1.0.zip",
           "file": "BepInEx/plugins/TrailerHitches/TrailerHitches.dll",
@@ -147,9 +175,16 @@
       "id": "tldrevamp.tvbrowser",
       "name": "TV Browser",
       "author": "Normal99",
-      "description": "A web browser on the in-game TV, used with the keyboard; everyone in a session sees the same page.",
+      "description": "A web browser on the in-game TV, used with the keyboard and mouse; everyone in a session sees the same page.",
       "source": "https://github.com/Normal99/TLD-RevaMP",
       "versions": [
+        {
+          "version": "0.2.0",
+          "url": "https://github.com/Normal99/TLD-RevaMP/releases/download/tvbrowser-v0.2.0/TvBrowser-0.2.0.zip",
+          "file": "BepInEx/plugins/TvBrowser/TvBrowser.dll",
+          "sha256": "8aab86fbdcbd08db3d0f35833718fd16589f59a96385db9259abf1531232fc95",
+          "size": 864405
+        },
         {
           "version": "0.1.0",
           "url": "https://github.com/Normal99/TLD-RevaMP/releases/download/tvbrowser-v0.1.0/TvBrowser-0.1.0.zip",
@@ -164,9 +199,16 @@
       "id": "tldrevamp.roadend",
       "name": "Road End",
       "author": "Normal99",
-      "description": "Picked on the new-game screen: the main road ends near 5000 km at the game's roadside grave, with a note. The land and side roads go on.",
+      "description": "Picked on the new-game screen: the main road ends after 5000 km of it, at the game's roadside grave, with a note. The land and side roads go on.",
       "source": "https://github.com/Normal99/TLD-RevaMP",
       "versions": [
+        {
+          "version": "0.2.0",
+          "url": "https://github.com/Normal99/TLD-RevaMP/releases/download/roadend-v0.2.0/RoadEnd-0.2.0.zip",
+          "file": "BepInEx/plugins/RoadEnd/RoadEnd.dll",
+          "sha256": "f9fb26852651a33ddeb76b971ff52bcb7f3f9b69ae3fccd936993ac403b32dbf",
+          "size": 23260
+        },
         {
           "version": "0.1.0",
           "url": "https://github.com/Normal99/TLD-RevaMP/releases/download/roadend-v0.1.0/RoadEnd-0.1.0.zip",

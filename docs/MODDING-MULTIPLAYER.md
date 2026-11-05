@@ -348,6 +348,11 @@ Road End 0.1.0 (`tldrevamp.roadend`) is a mod-only release (tag `roadend-v0.1.0`
 registers with the multiplayer API (`roadend`) and shares one session setting (`world`: the host's world has an end or
 not). It works without RevaMP too.
 
+Head Unit 0.2.1, Car Trailer 0.1.2, Trailer Hitches 0.2.0, TV Browser 0.2.0 and Road End 0.2.0 are mod-only releases
+(tags `<mod>-v<version>`, for example `tvbrowser-v0.2.0`), and World Map 0.2.1 is a release of its own repository.
+Each is approved by its DLL's hash in the approved list on `dev`, so the browser offers them only in a RevaMP built
+with that list. Their older versions stay in the catalog, and RevaMP 0.69.1 keeps offering those.
+
 ## 9. Order (all built)
 
 1. Registration + full records for objects a mod creates (sections 3 and 4).
