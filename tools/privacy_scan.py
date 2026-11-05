@@ -94,15 +94,20 @@ def tracked():
 # EXIF or other metadata chunks that could carry a name or a path).
 IMAGES = {"src/TLDRevamp/Assets/WipFont.png"}   # tools/wipfont.py
 
-# Programs the TV Browser mod carries in its DLL (src/Mods/TvBrowser/Host/build.sh), by exact path: each must be an
-# ELF file, and its readable strings pass the same checks as text (no home folders, names or addresses).
-PROGRAMS = {f"src/Mods/TvBrowser/Host/linux-x64/{n}" for n in ("tvbrowser-host", "libatk-bridge-2.0.so.0", "libatspi.so.0")}
+# Programs the TV Browser mod carries in its DLL (src/Mods/TvBrowser/Host/build.sh, build-windows.sh), by exact path:
+# each must be an ELF or PE file, and its readable strings pass the same checks as text (no home folders, names or
+# addresses).
+PROGRAMS = {f"src/Mods/TvBrowser/Host/linux-x64/{n}" for n in ("tvbrowser-host", "libatk-bridge-2.0.so.0", "libatspi.so.0")} | \
+           {"src/Mods/TvBrowser/Host/windows-x64/tvbrowser-host.dll"}
 
 
 def program_strings(p):
     data = p.read_bytes()
-    if data[:4] != b"\x7fELF": return None
-    return "\n".join(m.decode("ascii") for m in re.findall(rb"[\x20-\x7e]{4,}", data))
+    if data[:4] != b"\x7fELF" and data[:2] != b"MZ": return None
+    # ASCII strings, and Windows' UTF-16 ones
+    text = [m.decode("ascii") for m in re.findall(rb"[\x20-\x7e]{4,}", data)]
+    text += [m.decode("utf-16-le") for m in re.findall(rb"(?:[\x20-\x7e]\x00){4,}", data)]
+    return "\n".join(text)
 
 
 def bare_png(p):
@@ -122,7 +127,7 @@ def scan(paths):
         if not p.is_file(): continue
         if rel in PROGRAMS:
             text = program_strings(p)
-            if text is None: found.append((rel, 0, "not an ELF program", ""))
+            if text is None: found.append((rel, 0, "not an ELF or PE program", ""))
             else: found.extend(scan_text(rel, text))
             continue
         if BINARY.search(rel):

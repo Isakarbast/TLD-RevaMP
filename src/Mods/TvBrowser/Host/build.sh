@@ -3,7 +3,7 @@
 #   src/Mods/TvBrowser/Host/build.sh <cef_binary_..._linux64_minimal folder> [out folder]
 # The mod carries the result (Host/linux-x64, the default out folder) inside TvBrowser.dll and writes it next to CEF's
 # files when it starts the browser.
-# The CEF version must be the one Browser.cs pins (Browser.Cef): the program and libcef.so check each other's API.
+# The CEF version must be the one Browser.cs pins (Browser.CefLinux): the program and libcef.so check each other's API.
 set -euo pipefail
 here=$(dirname "$(realpath "$0")"); cef=$(realpath "$1"); out=$(realpath -m "${2:-$here/linux-x64}")
 obj=$(mktemp -d); trap 'rm -rf "$obj"' EXIT

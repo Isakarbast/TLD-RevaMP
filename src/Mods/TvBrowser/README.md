@@ -25,14 +25,14 @@ page until **Esc** (the view stays still meanwhile):
 | Ctrl+V | paste |
 
 The first time, the TV asks before downloading the browser, checked against a pinned SHA-256 and kept in
-`BepInEx/config/TvBrowser/`:
+`BepInEx/config/TvBrowser/`: the Chromium Embedded Framework (CEF), from Spotify's CEF builds. The browser is
+`tvbrowser-host` (`Host/`), a small program of this mod's on CEF that the mod carries in its DLL. Its pages are drawn
+off-screen by a normal Chromium, not a headless one, so sites see an ordinary browser.
 
-- **Under Proton**: the Chromium Embedded Framework (CEF), the Linux build from Spotify's CEF builds (about 320 MB to
-  download, 330 MB unpacked: only what the browser needs, and its 1.2 GB of debugging data left out). It runs outside
-  Wine, as `tvbrowser-host` (`Host/`), a small program of this mod's on CEF that the mod carries in its DLL. Its
-  pages are drawn off-screen by a normal Chromium, not a headless one, so sites see an ordinary browser.
-- **On Windows**: Chromium's headless shell (about 120 MB, from Google's Chrome for Testing storage), until the mod
-  carries a Windows build of `tvbrowser-host`.
+- **Under Proton**: CEF's Linux build (about 320 MB to download, 330 MB unpacked: only what the browser needs, and its
+  1.2 GB of debugging data left out). It runs outside Wine.
+- **On Windows**: CEF's Windows build (about 170 MB to download, 360 MB unpacked), sandboxed like Chrome: CEF's
+  `bootstrap.exe`, as `tvbrowser-host.exe`, sets up Chromium's sandbox and then loads `tvbrowser-host.dll`.
 
 The start page has links to a few sites to begin with.
 
@@ -41,10 +41,10 @@ open (25 m), the picture rate (15 a second at most) and quality, and the search 
 
 ### YouTube
 
-In Chromium's headless shell (Windows, and every version of this mod before CEF) YouTube's videos stop after about
-40 seconds with "Something went wrong": YouTube stops sending the video to a headless Chromium, and to any Chromium
-under Wine, whatever the mod does. That is why Proton runs CEF's Linux build, outside Wine: a normal Chromium, which
-played past that point (checked 2026-11-05 outside the game). YouTube may also ask a browser that isn't signed in to
+In Chromium's headless shell (every version of this mod before CEF) YouTube's videos stop after about 40 seconds with
+"Something went wrong": YouTube stops sending the video to a headless Chromium, and to any Chromium under Wine,
+whatever the mod does. That is why the browser is CEF, and why Proton runs CEF's Linux build, outside Wine: a normal
+Chromium, which played past that point (checked 2026-11-05 outside the game). YouTube may also ask a browser that isn't signed in to
 "confirm you're not a bot" when its network has sent it many automated requests; signing in on the TV is up to the
 player (the profile is thrown away when the game closes). The mod doesn't try to hide what the browser is.
 
@@ -88,7 +88,7 @@ TV's copy. Replays are local files, but they do hold those pictures of whatever 
 | `Core.cs` | The shared state and its edits, addresses and their checks, keys, commands (pure, unit tested) |
 | `Browser.cs` | Downloading, starting and stopping the browser; its pages; pop-ups |
 | `Bzip2.cs`, `Tar.cs` | Unpacking CEF's `.tar.bz2` (unit tested) |
-| `Host/` | `tvbrowser-host` (C++ on CEF) and how it is built (`build.sh`); `linux-x64/` is the build the DLL carries |
+| `Host/` | `tvbrowser-host` (C++ on CEF) and how it is built (`build.sh` for Linux, `build-windows.sh` with mingw-w64 for Windows); `linux-x64/` and `windows-x64/` are the builds the DLL carries |
 | `Cdp.cs`, `Json.cs` | The DevTools protocol over a WebSocket of its own (no libraries) |
 | `Tab.cs`, `PageInput.cs` | One TV's page: picture, addresses, keys and the wheel as DevTools input |
 | `Pages.cs` | The F2 link-hints script and the start page |
@@ -103,6 +103,10 @@ TVB_CHROME=/path/to/chrome-headless-shell dotnet run --project tools/unit/TvBrow
 tools/tvbrowser.py                                                                  # two players in the game
 ```
 
+Under Proton the game runs the Linux build. An empty file `BepInEx/config/TvBrowser/windows-build` makes it take the
+Windows build instead (without the sandbox, which Wine lacks), to test that build on Linux. YouTube still stops there:
+it is a Chromium under Wine.
+
 ## Licence
 
-GPL-3.0, like TLD RevaMP. CEF and Chromium's headless shell are BSD-licensed and are downloaded, not shipped.
+GPL-3.0, like TLD RevaMP. CEF is BSD-licensed and is downloaded, not shipped.

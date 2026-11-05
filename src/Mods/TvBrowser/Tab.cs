@@ -14,7 +14,7 @@ namespace TvBrowser
 
         public readonly TvScreen Screen;
         public string TargetId, Session;
-        /// tvbrowser-host's name for the page (null with the headless shell).
+        /// tvbrowser-host's name for the page.
         public string Key;
         public bool Ready => Session != null;
         public bool Closed;
@@ -46,17 +46,8 @@ namespace TvBrowser
         {
             var cdp = Browser.Connection;
             if (cdp == null || Closed || TargetId != null) return;
-            if (Browser.Host) { TargetId = ""; Key = Browser.NewPage(this); return; }   // attached when it's made (Made)
-            string spare = Browser.TakeSpare();
-            if (spare != null) { TargetId = spare; Attach(cdp); return; }
-            TargetId = "";   // asked for
-            cdp.Send("Target.createTarget", Json.O("url", "about:blank", "width", Width, "height", Height), null, r =>
-            {
-                TargetId = Json.Str(r.Result, "targetId");
-                if (TargetId == null) { Browser.Fail("the browser didn't make a page: " + Error(r)); return; }
-                if (Closed) { Browser.ClosePage(this); return; }
-                Attach(cdp);
-            });
+            TargetId = "";   // asked for: attached when it's made (Made)
+            Key = Browser.NewPage(this);
         }
 
         /// tvbrowser-host made the page: its DevTools target.
@@ -82,7 +73,6 @@ namespace TvBrowser
         {
             Send("Page.enable");
             Send("Network.enable");
-            if (Browser.UserAgent != null) Send("Emulation.setUserAgentOverride", Browser.UserAgentArgs());
             Send("Network.setBlockedURLs", Address.BlockArgs());
             Send("Fetch.enable", Address.FetchArgs());
             Metrics();
