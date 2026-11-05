@@ -364,8 +364,9 @@ namespace TvBrowser
             {
                 if (!Browser.Installed && Browser.Now != Browser.Phase.Downloading)
                 {
-                    lines.Add(("The TV shows web pages with Chromium's headless shell, a separate program: Google's \"Chrome for Testing\" build of the open-source Chromium " +
-                               $"(BSD licence), version {Browser.Version}, about {Browser.ZipBytes / 1048576} MB, checked against its SHA-256. It runs only while a TV near you is on.", _text));
+                    var pkg = Browser.Pinned;
+                    lines.Add(($"The TV shows web pages with a separate program, {pkg.Name} (BSD licence), version {pkg.Version}: " +
+                               $"about {pkg.Bytes / 1048576} MB to download, checked against its SHA-256. It runs only while a TV near you is on.", _text));
                     if (Browser.Now == Browser.Phase.Failed) lines.Add((Browser.Status, _small));
                     lines.Add(("Enter: download it    Esc: not now", _small));
                 }

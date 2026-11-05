@@ -14,6 +14,8 @@ namespace TvBrowser
 
         public readonly TvScreen Screen;
         public string TargetId, Session;
+        /// tvbrowser-host's name for the page (null with the headless shell).
+        public string Key;
         public bool Ready => Session != null;
         public bool Closed;
 
@@ -44,6 +46,7 @@ namespace TvBrowser
         {
             var cdp = Browser.Connection;
             if (cdp == null || Closed || TargetId != null) return;
+            if (Browser.Host) { TargetId = ""; Key = Browser.NewPage(this); return; }   // attached when it's made (Made)
             string spare = Browser.TakeSpare();
             if (spare != null) { TargetId = spare; Attach(cdp); return; }
             TargetId = "";   // asked for
@@ -51,16 +54,24 @@ namespace TvBrowser
             {
                 TargetId = Json.Str(r.Result, "targetId");
                 if (TargetId == null) { Browser.Fail("the browser didn't make a page: " + Error(r)); return; }
-                if (Closed) { Browser.CloseTarget(TargetId); return; }
+                if (Closed) { Browser.ClosePage(this); return; }
                 Attach(cdp);
             });
+        }
+
+        /// tvbrowser-host made the page: its DevTools target.
+        internal void Made(string targetId)
+        {
+            TargetId = targetId;
+            if (Closed) { Browser.ClosePage(this); return; }
+            if (Browser.Connection != null) Attach(Browser.Connection);
         }
 
         private void Attach(Cdp cdp)
         {
             cdp.Send("Target.attachToTarget", Json.O("targetId", TargetId, "flatten", true), null, a =>
             {
-                if (Closed) { Browser.CloseTarget(TargetId); return; }
+                if (Closed) { Browser.ClosePage(this); return; }
                 Session = Json.Str(a.Result, "sessionId");
                 if (Session == null) { Browser.Fail("the browser didn't attach to the page: " + Error(a)); return; }
                 Setup();
@@ -311,7 +322,7 @@ namespace TvBrowser
         internal void Dispose()
         {
             Closed = true;
-            if (!string.IsNullOrEmpty(TargetId)) Browser.CloseTarget(TargetId);
+            Browser.ClosePage(this);
             if (Texture != null) UnityEngine.Object.Destroy(Texture);
             Texture = null; Session = null; _picture = null;
         }

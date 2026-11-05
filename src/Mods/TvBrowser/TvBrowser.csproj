@@ -11,6 +11,9 @@
     <PathMap>$(MSBuildProjectDirectory)=/src/$(MSBuildProjectName)</PathMap>
   </PropertyGroup>
   <ItemGroup>
+    <!-- tvbrowser-host, the browser under Proton (Host/build.sh), written next to CEF's files when it starts -->
+    <!-- WithCulture: ".so" would otherwise be read as Somali, making them a satellite assembly -->
+    <EmbeddedResource Include="Host/linux-x64/*" LogicalName="host.%(Filename)%(Extension)" WithCulture="false" />
     <Reference Include="$(MSBuildThisFileDirectory)../../../lib/*.dll" Private="false" />
     <ProjectReference Include="../../TLDRevamp.Multiplayer/TLDRevamp.Multiplayer.csproj" Private="false" />
   </ItemGroup>

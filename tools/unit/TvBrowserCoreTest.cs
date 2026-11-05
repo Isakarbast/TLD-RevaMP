@@ -5,7 +5,8 @@ using TLDRevamp.Multiplayer;
 using TvBrowser;
 
 // The TV Browser example mod's pure core: the shared state and its edits, which addresses a TV may show, the keys and
-// commands that pass between players, and the small JSON reader and writer its browser connection uses.
+// commands that pass between players, the small JSON reader and writer its browser connection uses, and the bzip2 and
+// tar readers that unpack CEF.
 static class TvBrowserCoreTest
 {
     static int checks;
@@ -21,8 +22,80 @@ static class TvBrowserCoreTest
         KeysAndCommands();
         Mouse();
         JsonRoundTrip();
+        Unpacking();
         Console.WriteLine("TV Browser core: " + checks + " checks passed");
         return 0;
+    }
+
+    // two small archives of the same files (tar --format=gnu, bzip2 -9; tar --format=pax, bzip2 -1): top/runs.bin
+    // (long runs and every byte value) and top/sub/<120 n's>.txt, a name too long for a tar header
+    const string GnuTarBz2 =
+            "QlpoOTFBWSZTWcrfoMYAAb//////////////////////////////////////////////wAI8okQDv/1VVNTahgmRgE2p6mAGgJgmJpiYAADQAa" +
+            "NTA0ABMJgTAmATAAGgAAAAAJiYAEYACYATAJiTAATAAEwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASYACYAAmAAAAAAAAAAAAAAAAAAAA" +
+            "AAAAAAAAAAAAAAAAAAyiRpoEnqPSNAANAAZD0jD1MpoADQAANDQ0eiDT0I0AAAAAAAAAAAAAAAAAAAABoP2JF8A9u9MEXCughZZYBISgtEAly1" +
+            "ABI9H+CSYhddduktw5BEAEhdJC6pDQgXOCISATdEGYFiCJoUNShhNTBfWjBKUdQiKhUmfalSVo7LEtS5L0wTFMkzQyaI3NU2QQFJNKNLMEYMz0" +
+            "h8RTSsRHsC6MIaeagYUwxhzEFcxJdl4epFF5Ju3UlVCEhID+IMEGJQCAYyMjY5E3ABbld4oh2zYIQECGQUiHSksE1FVKhQhJUXipcVC4EUErMQ" +
+            "yLZogqloqpAjT5lPVBUVSVNVFVVZI6urCHVlWlbVxXVeV9YEJYU/j1fWJELGsiJQv5oxNE1WVZllg7OnC0LSjNqTtFLWtiDQIpQ5AASBflyFAI" +
+            "iUKA9ULt6WrEpMleTHFqL0YEyJWgb2VXxfF/cSRVVo0mFFBCBAl5mSWTa0CZkMCzBFaLYiAjJQt2TYhoVCzF9YxZFdcx8r02JfgI0CeKFvPiH8" +
+            "kODKlN+LNwWxv5wBwK/L+wD9mBYJg2EYVhn7sOxDEsUxbGMaxz+GPZBkWSZNlGVZZl2YZlmmbZxnUWzzPtA0LRNG0jStM07UNS1TVtY1rXNe2D" +
+            "Ytk2baNq2zbtw3LdN23jet837gOC/lwnDcR/TiuM47kIfkohBQIHKRLluY5rnOe6D+3+Oi6Tpuo6rrOu7Dsu07buL33Xdf67zvvA8LxPG8jyvM" +
+            "87/noel6nrex7UNAIEje5Fve/98HxF3JFOFCQyt+gxgA==";
+    const string PaxTarBz2 =
+            "QlpoMTFBWSZTWczykfQAAb9/////////////////////////////////////////////wAI8okQDv/1VVBoEwBM0Caep6TGgTAExGJiaYmEwTT" +
+            "0GgTANBBgmAAAJgAAGgCYAAmTAAAAAANCYAACTAATAAEwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASYACYAAmAAAAAAAAAAAAAAAAAAAA" +
+            "AAAAAAAAAAAAAAAAAAyhCE0xTajaQAA0aAyZNMnoAg0AAAAAaB6gMJoAAAAAAAAAAAAAAAAAAAAAD9CSAeQQlIMQwYYAUkPiC0QCUtACCPP/gk" +
+            "F3EO4hEkktg5BDoJZRKmAEAOCHoAW9ABMigvhWBDooalCz8UwaMEsSBLVytcwQb5kxfOkUI+hCpk+lM00TVDJsm6cJDAFENFNGNHMCYIsAXR/T" +
+            "BmENJMKaUYYw5pZdmIMSYoxZjDKQEJJx5SsgKIciBBBmCAQDaLFbJFC5INOMZIKEaGhKodIH0VOELu0lePS0UGCiOZGKXYWKSyfBHhSguyKyWj" +
+            "YvSxaMKWgRpHVQfiqKpKm/b8lVVZV1YVl+atP0Q6toeuK6ryIRFfQywLChrEsb9UJZE7WVZkigrOnq0LSjdqUFa0StiCQIlyLeALsbc4jiIuYs" +
+            "ARksAgXVRpjwt1ykrSr/eQG5b3ouK6YUtZIyZlC6bypXaiQvaQIAoDkvyWTgFJfWQLNBmRakS+WL2zlXshBUBBrVchnVXLxDaNYNQAtYE5UA2n" +
+            "hD6SJcZYvrha+Fybsu68LyvS9r4vq/L+wDAsEwbCMKwzDsQxL+2KYtjGNY5j2QZFkmTZRlWWZdmGZZpm2cZ1FM8z7QNC0TRtI0r/GmadqGpapq" +
+            "2sa1rmvbBsWybNtH+tq2z/m3bhuW6btvG9b5v3AcFwnDcRxXGcdEwIHIWZyXKctzHNc5z3QdF0nTdR1XWdd2HZdp23cW6LRbuu877/3geF4nje" +
+            "R5UL5nAed6Hpep63sR6AQPle1FPc974PiLuSKcKEhmeUj6AA==";
+
+    static byte[] Runs()
+    {
+        var b = new List<byte>();
+        for (int i = 0; i < 1000; i++) b.Add((byte)'a');
+        for (int k = 0; k < 3; k++) for (int i = 0; i < 256; i++) b.Add((byte)i);
+        for (int i = 0; i < 4; i++) b.Add((byte)'b');
+        for (int i = 0; i < 5; i++) b.Add((byte)'c');
+        for (int i = 0; i < 300; i++) b.Add(0);
+        return b.ToArray();
+    }
+
+    static Dictionary<string, byte[]> Untar(byte[] tarBz2)
+    {
+        var files = new Dictionary<string, byte[]>();
+        using (var bz = new Bzip2Stream(new System.IO.MemoryStream(tarBz2)))
+            Tar.Read(bz, (name, body) => { var m = new System.IO.MemoryStream(); body.CopyTo(m); files[name] = m.ToArray(); });
+        return files;
+    }
+
+    static bool Throws(Action a) { try { a(); return false; } catch (Exception e) { return e is System.IO.InvalidDataException || e is System.IO.EndOfStreamException; } }
+
+    static void Unpacking()
+    {
+        string longName = "top/sub/" + new string('n', 120) + ".txt";
+        foreach (var archive in new[] { GnuTarBz2, PaxTarBz2 })
+        {
+            var files = Untar(Convert.FromBase64String(archive));
+            Check(files.Count == 2 && files.ContainsKey("top/runs.bin") && files.ContainsKey(longName), "the archive's two files, the long name whole (GNU and pax)");
+            Check(((System.Collections.IStructuralEquatable)files["top/runs.bin"]).Equals(Runs(), System.Collections.StructuralComparisons.StructuralEqualityComparer), "runs and every byte value come back");
+            Check(System.Text.Encoding.ASCII.GetString(files[longName]) == "long name\n", "the small file too");
+        }
+        // two bzip2 streams back to back read as one
+        var gnu = Convert.FromBase64String(GnuTarBz2); var pax = Convert.FromBase64String(PaxTarBz2);
+        var both = new byte[gnu.Length + pax.Length];
+        Buffer.BlockCopy(gnu, 0, both, 0, gnu.Length); Buffer.BlockCopy(pax, 0, both, gnu.Length, pax.Length);
+        var all = new System.IO.MemoryStream();
+        using (var bz = new Bzip2Stream(new System.IO.MemoryStream(both))) bz.CopyTo(all);
+        Check(all.Length == 2 * 10240, "two streams, both archives");
+        // damaged or cut short: an error, never wrong bytes
+        var bad = (byte[])gnu.Clone(); bad[gnu.Length / 2] ^= 0x10;
+        Check(Throws(() => Untar(bad)), "a damaged archive is refused");
+        var cut = new byte[gnu.Length - 40]; Buffer.BlockCopy(gnu, 0, cut, 0, cut.Length);
+        Check(Throws(() => Untar(cut)), "a cut-short archive is refused");
+        Check(Throws(() => new Bzip2Stream(new System.IO.MemoryStream(new byte[] { 1, 2, 3, 4 }))), "not bzip2 at all");
     }
 
     static void Addresses()

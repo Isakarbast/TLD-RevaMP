@@ -33,7 +33,6 @@ namespace TvBrowser
         internal static ConfigEntry<string> SearchUrl;
         internal static ConfigEntry<float> ActiveRange, UseRange, PointerSpeed;
         internal static ConfigEntry<int> Fps, Quality;
-        internal static ConfigEntry<bool> SingleProcess;
 
         private void Awake()
         {
@@ -44,7 +43,6 @@ namespace TvBrowser
             PointerSpeed = Config.Bind("Keys", "PointerSpeed", 10f, new ConfigDescription("How fast the mouse moves the pointer on a TV's page (the page's pixels for one unit of the game's mouse input)", new AcceptableValueRange<float>(0.5f, 60f)));
             UseRange = Config.Bind("Keys", "UseWithin", 4f, new ConfigDescription("How close to a TV you must be to use its keyboard (metres)", new AcceptableValueRange<float>(1f, 10f)));
             Fps = Config.Bind("Browser", "Fps", 15, new ConfigDescription("Most pictures a second a TV's page is redrawn with (a still page costs nothing)", new AcceptableValueRange<int>(1, 30)));
-            SingleProcess = Config.Bind("Browser", "SingleProcessUnderProton", true, "Under Proton (Wine), run the browser as one process: about 0.7 GB instead of 1.4 GB, since Wine gives every process its own copy of the program. Turn off if pages crash the browser");
             Quality = Config.Bind("Browser", "Quality", 70, new ConfigDescription("JPEG quality of the page's pictures (the browser makes them, the game shows them)", new AcceptableValueRange<int>(20, 95)));
 
             Mod = MpApi.RegisterMod("tvbrowser", "TV Browser", Version);
@@ -62,7 +60,7 @@ namespace TvBrowser
             DontDestroyOnLoad(go);
             Runner = go.AddComponent<Runner>();
             Application.quitting += Browser.Shutdown;
-            Log.LogInfo($"TV Browser {Version}: multiplayer API {(MpApi.Available ? "found" : "not found (single player only)")}, browser {(Browser.Installed ? Browser.Version : "not downloaded")}");
+            Log.LogInfo($"TV Browser {Version}: multiplayer API {(MpApi.Available ? "found" : "not found (single player only)")}, browser {(Browser.Installed ? Browser.Pinned.Version : "not downloaded")}");
         }
 
         // its own method, so an older TLDRevamp.Multiplayer without replay channels fails here and not in Awake
