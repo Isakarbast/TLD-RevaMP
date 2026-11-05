@@ -88,6 +88,17 @@ namespace TLDRevamp.Net
         public static Release Offered(Mod m, IDictionary<string, string> approved, int maxBytes, Func<string, bool> validId) =>
             m.Versions.Find(v => ApprovalReason(m, v, approved, maxBytes, validId) == null) ?? m.Versions[0];
 
+        /// The version an installed mod can be updated to: the newest approved one, if it is newer than the installed one.
+        public static Release UpdateTo(Mod m, string installed, IDictionary<string, string> approved, int maxBytes, Func<string, bool> validId)
+        {
+            if (installed == null || m.Versions.Count == 0) return null;
+            var v = Offered(m, approved, maxBytes, validId);
+            return ApprovalReason(m, v, approved, maxBytes, validId) == null && Newer(v.Version, installed) ? v : null;
+        }
+
+        public static bool Newer(string offered, string installed) =>
+            System.Version.TryParse(offered, out var a) && System.Version.TryParse(installed, out var b) ? a > b : offered != installed;
+
         // Backslashes, rooted paths and dot segments are refused on every OS, including harmless-looking directories.
         public static bool SafeEntry(string path)
         {

@@ -49,6 +49,7 @@ static class ModCatalogTest
         Check("CarTrailer released DLL approved locally", ModCatalog.ApprovalReason(catalog.Mods[1], catalog.Mods[1].Versions[0], approved, 16 << 20, _ => true) == null);
         for (int i = 2; i < catalog.Mods.Count; i++)
             Check(catalog.Mods[i].Id + " released DLL approved locally", ModCatalog.ApprovalReason(catalog.Mods[i], catalog.Mods[i].Versions[0], approved, 16 << 20, _ => true) == null);
+        Check("real catalog offers Head Unit 0.2.0 an update to 0.2.1", ModCatalog.UpdateTo(catalog.Mods[0], "0.2.0", approved, 16 << 20, _ => true)?.Version == "0.2.1");
         // older versions stay listed: a RevaMP whose approved list predates the newest one still offers them
         foreach (var m in catalog.Mods)
             foreach (var v in m.Versions)
@@ -66,6 +67,13 @@ static class ModCatalogTest
         choices.Versions.Add(newer); choices.Versions.Add(older);
         Check("offer newest approved version, skipping unapproved newer version", ModCatalog.Offered(choices, Approved(), 1024, ValidId) == older);
         Check("retain latest unapproved entry for grey state", ModCatalog.Offered(choices, new Dictionary<string, string>(), 1024, ValidId) == newer);
+        // the start-up update check: only an approved version newer than the installed one
+        Check("update offered to an older install", ModCatalog.UpdateTo(choices, "0.9.0", Approved(), 1024, ValidId) == older);
+        Check("no update when the approved version is installed", ModCatalog.UpdateTo(choices, "1.0.0", Approved(), 1024, ValidId) == null);
+        Check("no update to an older approved version", ModCatalog.UpdateTo(choices, "1.2.0", Approved(), 1024, ValidId) == null);
+        Check("no update when not installed", ModCatalog.UpdateTo(choices, null, Approved(), 1024, ValidId) == null);
+        Check("no update when nothing is approved", ModCatalog.UpdateTo(choices, "0.9.0", new Dictionary<string, string>(), 1024, ValidId) == null);
+        Check("versions compare as numbers", ModCatalog.Newer("0.10.0", "0.9.0") && !ModCatalog.Newer("0.9.0", "0.10.0"));
         var tampered = (byte[])Dll.Clone(); tampered[0] ^= 1;
         Refused("tampered DLL refused", () => Verify(tampered));
         Refused("hash not approved refused", () => ModCatalog.Verify(Mod(), Release(Dll), Dll, new Dictionary<string, string>(), 1024, ValidId));

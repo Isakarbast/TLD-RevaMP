@@ -137,14 +137,14 @@ namespace TLDRevamp
             SetInfo(ui, DefaultInfo);
 
             // --- rows
-            // Browse on demand; opening settings alone never makes a network request.
+            // Browse on demand; opening settings alone never makes a network request (the start-up update check is ModsScreen's).
             var mods = Object.Instantiate(reset.gameObject, content);
             mods.name = "ButtonMods";
             Place(mods, 0f, -40f, 900f, 80f);
             mods.GetComponentInChildren<TextMeshProUGUI>().text = "Mods";
             var mb = mods.GetComponent<Button>(); mb.onClick = new Button.ButtonClickedEvent();
             mb.onClick.AddListener(() => Net.ModsScreen.Open(root.gameObject));
-            AddHover(ui, mods, "<b>Mods</b>\n\nBrowse approved single-file mods. Install, update, enable, disable or remove, then restart the game. Updates keep disabled mods disabled.\n\nThe catalog is fetched only when you open Mods or press Refresh. Downloads must match the approved files shipped with your RevaMP version. Mods installed by hand stay under your control.");
+            AddHover(ui, mods, "<b>Mods</b>\n\nBrowse approved single-file mods. Install, update, enable, disable or remove, then restart the game. Updates keep disabled mods disabled.\n\nThe catalog is fetched when you open Mods or press Refresh, and once at start to look for updates (Check for mod updates at start, below). Downloads must match the approved files shipped with your RevaMP version. Mods installed by hand stay under your control.");
             var marks = Object.Instantiate(reset.gameObject, content);
             marks.name = "ButtonMarks"; Place(marks, 0f, -140f, 900f, 80f);
             var markText = marks.GetComponentInChildren<TextMeshProUGUI>();

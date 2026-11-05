@@ -111,7 +111,18 @@ namespace TLDRevamp.Net
                 Action(parts[1], parts[0] == "enable" ? "enabled" : parts[0] == "disable" ? "disabled" : "removed");
                 return "{\"ok\":true}";
             }
-            if (arg.Trim() != "list") return "{\"error\":\"mods list | enable|disable|remove <id>\"}";
+            if (arg.Trim() == "check") { ModsScreen.CheckNow(); return "{\"ok\":true}"; }
+            if (arg.Trim() == "updates")
+            {
+                var hand = new List<string>(); var ups = ModsScreen.Updates(hand); var names = new List<string>();
+                foreach (var u in ups) names.Add(Json.Str(u.Key.Id + " " + u.Value.Version));
+                foreach (var h in hand) names.Add(Json.Str("by hand: " + h));
+                return "{\"busy\":" + (ModCatalog.Busy ? "true" : "false") + ",\"catalog\":" + (ModCatalog.Current != null ? "true" : "false") +
+                    ",\"open\":" + (ModsScreen.IsOpen ? "true" : "false") + ",\"question\":" + (ModsScreen.Question == null ? "null" : Json.Str(ModsScreen.Question)) +
+                    ",\"message\":" + Json.Str(ModCatalog.Message) + ",\"updates\":[" + string.Join(",", names) + "]}";
+            }
+            if (arg.Trim() == "yes" || arg.Trim() == "no") { ModsScreen.Answer(arg.Trim() == "yes"); return "{\"ok\":true}"; }
+            if (arg.Trim() != "list") return "{\"error\":\"mods list | check | updates | yes | no | enable|disable|remove <id>\"}";
             var sb = new StringBuilder("{\"mods\":["); bool comma = false;
             foreach (var m in Items())
             {

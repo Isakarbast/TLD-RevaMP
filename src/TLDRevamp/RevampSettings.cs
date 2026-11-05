@@ -344,6 +344,14 @@ namespace TLDRevamp
                 "A small banner in the top-right corner while a replay is recording. Turn it off for clean footage.",
                 () => Replay.ReplayRecorder.ShowBanner ? 1 : 0,
                 v => Replay.ReplayRecorder.ShowBanner = v == 1);
+            Header("Mods",
+                "The Mods button at the top of this page opens RevaMP's mod browser.");
+            Toggle("modUpdateCheck", "Check for mod updates at start", 1,
+                "When the main menu first shows, fetch the mod catalog from GitHub. If a mod you installed from the mod browser has a " +
+                "newer version that this RevaMP approves, the Mods screen opens and asks whether to update; the updates load at " +
+                "the next start. Mods installed by hand are named too, for you to update.\n\nOff: the catalog is fetched only " +
+                "when you open Mods or press Refresh.",
+                () => Net.ModCatalog.CheckAtStart ? 1 : 0, v => Net.ModCatalog.CheckAtStart = v == 1);
             Header("Branding",
                 "Controls the small development-state mark drawn over the game view.");
             Toggle("showWipMark", "Show WIP mark", 1,

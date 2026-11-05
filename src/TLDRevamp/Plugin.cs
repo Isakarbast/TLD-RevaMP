@@ -139,7 +139,7 @@ namespace TLDRevamp
             ShowWipMark.SettingChanged += (_, __) => { if (Overlay != null) Overlay.ShowWip = ShowWipMark.Value; };
             Feedback = new FeedbackReporter(Telemetry);
             Net.ModCatalog.Url = Config.Bind("Mods", "CatalogUrl", Net.ModCatalog.DefaultUrl,
-                "Catalog URL (HTTPS, or file URI for local testing), fetched only when opening Mods or pressing Refresh. Files still require local approved-mods.txt approval.");
+                "Catalog URL (HTTPS, or file URI for local testing), fetched when opening Mods or pressing Refresh, and at start for the update check (Settings → Revamp → Mods section). Files still require local approved-mods.txt approval.");
             Net.DedicatedServer.Awake(Config);
             Net.ModObjects.Install();   // the multiplayer API other mods reference (TLDRevamp.Multiplayer.dll)
             Replay.ReplayMods.Install();   // and its replay channels (API 4)

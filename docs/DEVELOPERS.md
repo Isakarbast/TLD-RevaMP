@@ -230,7 +230,15 @@ download. **Disable / Enable** keeps a managed mod installed and changes whether
 **Remove** also works while disabled and preserves the DLL as `.removed`. Restart after changes. Updates keep
 disabled mods disabled and preserve the old file as `.replaced`.
 
-The catalog is fetched only when the Mods screen is opened or **Refresh** is pressed. Offline, the screen says the
+**Updates at start** (like MSCLoader): when the main menu first shows, RevaMP fetches the catalog once in the
+background. If a mod installed from the browser has a newer version that this RevaMP approves, the Mods screen opens and
+asks *Update now?*; Yes downloads every listed update one after another, with the same checks as **Update**, and they load
+at the next start. Mods installed by hand that have a newer approved version are named, to update by hand. No goes back to
+the main menu; the question comes again at the next start. Offline, nothing shows. Turn it off with *Check for mod updates at
+start* (Settings → Revamp, Mods section). Test machines (bridge on) never check by themselves; `tools/modupdatecheck.py`
+runs the check with the bridge command `mods check`.
+
+Otherwise the catalog is fetched when the Mods screen is opened or **Refresh** is pressed. Offline, the screen says the
 catalog is unavailable and installed mods keep working. The default catalog is this repository's `packaging/mods.json`
 on the `dev` branch (`ModCatalog.DefaultUrl`); override it with `[Mods] CatalogUrl` in
 `BepInEx/config/tldrevamp.core.cfg`.

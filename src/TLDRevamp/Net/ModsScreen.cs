@@ -23,22 +23,94 @@ namespace TLDRevamp.Net
         private static List<ModCatalog.Mod> _items = new List<ModCatalog.Mod>();
         private static int _page, _selected;
         private static float _refreshAt;
+        private static Action _yes, _no;            // what the question's Yes and No do (remove the selected mod; update or not)
+        private static bool _checked, _offer;       // the start-up update check: started, and its answer still to show
         public static bool IsOpen => _root != null && _root.activeSelf;
         internal static bool IsVisible => _root != null && _root.activeInHierarchy;
 
-        internal static void Open(GameObject settings)
+        /// settings: the Revamp settings page to hide while open, or null over the main menu (the game shows it again).
+        internal static void Open(GameObject settings, bool fetch = true)
         {
             try
             {
                 if (menuhandler.s == null || menuhandler.s.SaveLoadObject == null) return;
                 MpScreen.Close();
                 if (_root == null || _builtFor != menuhandler.s) Build(menuhandler.s);
-                _settings = settings; _settings.SetActive(false);
+                _settings = settings; if (_settings != null) _settings.SetActive(false);
                 _root.transform.SetAsLastSibling(); _root.SetActive(true);
                 _page = 0; _selected = 0; _confirm.SetActive(false);
-                ModCatalog.Refresh(); Refresh();
+                if (fetch) { ModCatalog.Refresh(); _offer = false; }   // opened by hand: the start-up question is not needed any more
+                Refresh();
             }
             catch (Exception e) { Plugin.Log.LogError("ModsScreen: " + e); Close(); }
+        }
+
+        /// The start-up check (like MSCLoader's): once the main menu shows, fetch the catalog in the background; if a mod
+        /// installed from the browser has a newer approved version, open this screen and ask to update. Mods installed by
+        /// hand are named, to update by hand. Once per game run; the test machines (bridge on) only check when told to.
+        private static void StartupCheck(menuhandler mh)
+        {
+            if (!_checked)
+            {
+                _checked = true;
+                if (!ModCatalog.CheckAtStart || Plugin.BridgeEnabled || DedicatedServer.Enabled || ModCatalog.Busy) return;
+                ModCatalog.Refresh(true); _offer = ModCatalog.Busy;
+                return;
+            }
+            if (!_offer || ModCatalog.Busy || IsOpen || MpScreen.IsOpen || mh.Menu == null || !mh.Menu.activeSelf) return;
+            _offer = false;
+            if (ModCatalog.Current == null) return;
+            var byHand = new List<string>();
+            var updates = Updates(byHand);
+            if (updates.Count == 0 && byHand.Count == 0) return;
+            Plugin.Log.LogInfo("Mod update check: " + updates.Count + " to update, " + byHand.Count + " installed by hand");
+            Open(null, false);
+            var names = new List<string>();
+            foreach (var u in updates) names.Add(u.Key.Name + " " + (Installed(u.Key, out _) ?? "") + " to " + u.Value.Version);
+            string hand = byHand.Count == 0 ? "" : " Installed by hand, update yourself: " + string.Join(", ", byHand) + ".";
+            if (updates.Count > 0)
+                Ask("Mod updates: " + string.Join(", ", names) + "." + hand + " Update now?", () => { ModCatalog.UpdateAll(updates); Refresh(); }, Close);
+            else
+                Ask("Newer mod versions." + hand + " Open the mod browser?", Refresh, Close);
+            // select the first mod the question names
+            string first = updates.Count > 0 ? updates[0].Key.Id : null;
+            int at = first == null ? -1 : _items.FindIndex(x => x.Id == first);
+            if (at >= 0) { _selected = at; _page = at / Math.Max(1, Tiles.Count); Refresh(); }
+        }
+
+        /// For the bridge (mods check): run the start-up check again now, as at start, even with the bridge on.
+        internal static void CheckNow()
+        {
+            _checked = true;
+            ModCatalog.Refresh(true); _offer = ModCatalog.Busy;
+        }
+        internal static void Answer(bool yes) { if (Question != null) { _confirm.SetActive(false); (yes ? _yes : _no)?.Invoke(); } }
+        internal static string Question => _confirm != null && _confirm.activeInHierarchy ? _question.text : null;
+
+        /// Every catalog mod with a newer approved version than the installed one; byHand gets the ones installed by hand.
+        internal static List<KeyValuePair<ModCatalog.Mod, ModCatalog.Release>> Updates(List<string> byHand)
+        {
+            var list = new List<KeyValuePair<ModCatalog.Mod, ModCatalog.Release>>();
+            if (ModCatalog.Current == null) return list;
+            foreach (var m in ModCatalog.Current.Mods)
+            {
+                try
+                {
+                    if (ModActivation.Core(m.Id)) continue;
+                    string installed = Installed(m, out bool manual);
+                    var v = ModCatalog.UpdateTo(m, installed, ModTransfer.Approved(), ModTransfer.MaxBytes, MpApi.ValidId);
+                    if (v == null) continue;
+                    if (manual) byHand.Add(m.Name + " " + v.Version);
+                    else list.Add(new KeyValuePair<ModCatalog.Mod, ModCatalog.Release>(m, v));
+                }
+                catch (Exception e) { Plugin.Log.LogWarning("Mod update check: " + m.Id + ": " + e.Message); }
+            }
+            return list;
+        }
+
+        private static void Ask(string question, Action yes, Action no = null)
+        {
+            _question.text = Esc(question); _yes = yes; _no = no ?? Refresh; _confirm.SetActive(true); Refresh();
         }
 
         public static void Close()
@@ -53,6 +125,8 @@ namespace TLDRevamp.Net
         [HarmonyPostfix]
         private static void MenuUpdate(menuhandler __instance)
         {
+            if (__instance == menuhandler.s && DataFromMenuScript.s != null && DataFromMenuScript.s.mainmenu && Time.timeSinceLevelLoad > 1f)
+                StartupCheck(__instance);
             if (!IsOpen || __instance != _builtFor) return;
             if (DataFromMenuScript.s != null && !DataFromMenuScript.s.mainmenu && mainscript.s != null && !mainscript.s.pauseMenuOpen)
             { Close(); return; }
@@ -103,9 +177,9 @@ namespace TLDRevamp.Net
                 txt.richText = false; txt.overflowMode = TextOverflowModes.Ellipsis; Lines.Add(txt);
             }
             _message = Text(t, "TextCantSave");
-            var mr = (RectTransform)_message.transform; mr.anchoredPosition = new Vector2(439, 603); mr.sizeDelta = new Vector2(501, 100);
+            var mr = (RectTransform)_message.transform; mr.anchoredPosition = new Vector2(439, 603); mr.sizeDelta = new Vector2(501, 140);   // up to the card: room for an update summary
             _message.enableAutoSizing = true; _message.fontSizeMax = 32; _message.fontSizeMin = 16;
-            _message.alignment = TextAlignmentOptions.Center; _message.richText = false;
+            _message.alignment = TextAlignmentOptions.Center; _message.richText = false; _message.enableWordWrapping = true;
             _install = Button(t, "ButtonSave", Install);
             _remove = Button(t, "ButtonDelete", AskRemove, true); Label(_remove, "Remove");
             _source = Button(t, "ButtonLoad", Source); Label(_source, "Source");
@@ -115,7 +189,17 @@ namespace TLDRevamp.Net
             _up = Button(t, "ButtonUp", () => { _page--; Refresh(); }, true);
             _down = Button(t, "ButtonDown", () => { _page++; Refresh(); }, true);
             _confirm = t.Find("TextDelete").gameObject; _question = _confirm.GetComponent<TextMeshProUGUI>();
-            Button(_confirm.transform, "ButtonDeleteYes", Remove); Button(_confirm.transform, "ButtonDeleteNo", () => _confirm.SetActive(false));
+            _question.enableAutoSizing = true; _question.fontSizeMax = _question.fontSize; _question.fontSizeMin = 16; _question.enableWordWrapping = true;
+            // room for the update question (StartupCheck): the box grows left and up over the free space above Yes/No,
+            // which stay where they are; the text sits on the buttons
+            var qr = (RectTransform)_question.transform; float grow = Math.Max(0f, 500f - qr.sizeDelta.x);
+            var kids = new List<KeyValuePair<Transform, Vector3>>();
+            foreach (Transform c in qr) kids.Add(new KeyValuePair<Transform, Vector3>(c, c.localPosition));
+            qr.anchoredPosition -= new Vector2(grow, 0f); qr.sizeDelta = new Vector2(qr.sizeDelta.x + grow, Math.Max(qr.sizeDelta.y, 150f));
+            foreach (var k in kids) k.Key.localPosition = k.Value + new Vector3(grow, 0f, 0f);
+            _question.alignment = TextAlignmentOptions.BottomRight;
+            Button(_confirm.transform, "ButtonDeleteYes", () => { _confirm.SetActive(false); _yes?.Invoke(); });
+            Button(_confirm.transform, "ButtonDeleteNo", () => { _confirm.SetActive(false); _no?.Invoke(); });
             var tapes = new List<Transform>();
             for (int i = 0; i < t.childCount; i++) if (t.GetChild(i).name.StartsWith("ButtonFile")) tapes.Add(t.GetChild(i));
             tapes.Sort((a, b) =>
@@ -163,7 +247,7 @@ namespace TLDRevamp.Net
             return newest;
         }
 
-        private static bool Newer(string offered, string installed) => Version.TryParse(offered, out var a) && Version.TryParse(installed, out var b) ? a > b : offered != installed;
+        private static bool Newer(string offered, string installed) => ModCatalog.Newer(offered, installed);
 
         private static void Refresh()
         {
@@ -249,11 +333,10 @@ namespace TLDRevamp.Net
         private static void AskRemove()
         {
             if (ModCatalog.Busy || Selected() == null) return;
-            _question.text = "Remove " + Esc(Selected().Name) + " at the next start?"; _confirm.SetActive(true); Refresh();
+            Ask("Remove " + Selected().Name + " at the next start?", Remove);
         }
         private static void Remove()
         {
-            _confirm.SetActive(false);
             var m = Selected(); if (ModCatalog.Busy || m == null) return;
             Installed(m, out bool manual); if (manual) return;
             try
