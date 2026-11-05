@@ -20,7 +20,7 @@ namespace CarTrailer
     [HarmonyPatch]
     public class Plugin : BaseUnityPlugin
     {
-        public const string Version = "0.1.1";
+        public const string Version = "0.1.2";
         public const int ItemId = 9200;          // far above the game's own ids; never renumber (saves store it)
         public const int FullItemId = 9201;      // the same with its wheels on: what spawns; saves as ItemId
         public const int LootWeight = 8;         // against 100 for each of the game's two trailers
