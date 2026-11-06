@@ -84,6 +84,7 @@ namespace TLDRevamp.Net
     static class ItemTraffic { internal static bool Show; internal static void SetVisible(bool value) { Show = value; } }
     static class Reports { internal static bool Share, AskPlayers; }
     static class WorldCheck { internal static void SetScenery(bool on) { } internal static void SetObjGen(bool on) { } }
+    static class ModCatalog { internal static bool CheckAtStart; }
 }
 namespace TLDRevamp.VR.Native
 {

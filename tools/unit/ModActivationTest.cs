@@ -333,6 +333,13 @@ namespace TLDRevamp
 }
 namespace TLDRevamp.Net
 {
-    public static partial class ModCatalog { internal static Catalog Current; internal static string Message; internal static bool RestartRequired; }
+    public static partial class ModCatalog { internal static Catalog Current; internal static string Message; internal static bool RestartRequired; internal static bool Busy; }
+    // the Mods screen is game UI: the browser's bridge commands only read and press it
+    static class ModsScreen
+    {
+        internal static bool IsOpen; internal static string Question;
+        internal static void CheckNow() { } internal static void Answer(bool yes) { }
+        internal static System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<ModCatalog.Mod, ModCatalog.Release>> Updates(System.Collections.Generic.List<string> byHand) => new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<ModCatalog.Mod, ModCatalog.Release>>();
+    }
     static class ModTransfer { internal static string InstallDir; internal static string Sha256(byte[] bytes) => ModCatalog.Sha256(bytes); }
 }

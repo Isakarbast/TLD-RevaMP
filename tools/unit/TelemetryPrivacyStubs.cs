@@ -80,7 +80,7 @@ namespace UnityEngine
         internal static void Log(string msg, string stack, LogType type) => logMessageReceivedThreaded?.Invoke(msg, stack, type);
         internal static void OpenURL(string url) { }
     }
-    static class Mathf { internal static float Min(float a, float b) => Math.Min(a, b); internal static int Clamp(int n, int a, int b) => Math.Clamp(n, a, b); }
+    static class Mathf { internal static float Min(float a, float b) => Math.Min(a, b); internal static int Clamp(int n, int a, int b) => Math.Clamp(n, a, b); internal static float Max(float a, float b) => Math.Max(a, b); internal static float Log(float f, float p) => (float)Math.Log(f, p); }
 }
 namespace UnityEngine.Profiling { static class Profiler { internal static long GetTotalAllocatedMemoryLong() => 0; internal static long GetTotalReservedMemoryLong() => 0; } }
 namespace UnityEngine.SceneManagement
