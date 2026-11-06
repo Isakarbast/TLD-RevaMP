@@ -131,6 +131,8 @@ namespace TLDRevamp.Net
             rot = s.Rot; vel = s.Vel;
             return true;
         }
+        /// How old the newest sample is in the owner's time (Newest carries it forward by this, capped): infinite with none.
+        public double NewestAgeS(double now) => _buf.Count == 0 || _base == double.MaxValue ? double.PositiveInfinity : Math.Max(0.0, now - _base - _buf[_buf.Count - 1].T);
         public Quaternion LastRot => _buf.Count > 0 ? _buf[_buf.Count - 1].Rot : Quaternion.identity;
         internal bool LastPoseChanged => _buf.Count > 1 &&
             ((_buf[_buf.Count - 1].Pos - _buf[_buf.Count - 2].Pos).sqrMagnitude > .0001 ||

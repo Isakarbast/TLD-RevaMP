@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -34,6 +35,18 @@ namespace TLDRevamp.Net
             return "{\"leased\":" + net + ",\"returnTo\":" + (Server.TryGetValue(net, out var se) ? se.CrashReturnTo : -9) + "}";
         }
 
+        /// Test (`mp holdcopy <net> <s>`): this machine's physical copy of `net` stays where it is for `s` seconds while its
+        /// owner's poses keep coming — a copy left behind, as the host's copy of the joiner's car was at 10:49 (CrashGuard).
+        public static string TestHoldCopy(uint net, float seconds)
+        {
+            if (!ByNet.TryGetValue(net, out var e) || !e.Proxy) return "{\"error\":\"not another player's object here\"}";
+            if (!e.Physical) return "{\"error\":\"not a physical copy (no car simulated here within reach)\"}";
+            _testHeld[net] = Time.time + seconds;
+            return "{\"held\":" + net + ",\"seconds\":" + seconds.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + "}";
+        }
+        private static readonly Dictionary<uint, float> _testHeld = new Dictionary<uint, float>();
+        private static bool TestHeld(Ent e) => _testHeld.Count > 0 && _testHeld.TryGetValue(e.NetId, out float until) && (Time.time < until || !_testHeld.Remove(e.NetId));
+
         private sealed class HeldCrash { public Ent E; public Transform Partner; public float Since, CalmSince = -1f; }
         private static readonly List<HeldCrash> _held = new List<HeldCrash>();
 
@@ -45,6 +58,8 @@ namespace TLDRevamp.Net
             foreach (var h in _held) if (h.E == e) return false;
             NetOf(mine.transform.root, out uint partnerNet, out bool partnerProxy);
             if (partnerProxy) return false;
+            if (CrashCopyCheck && !CrashGuard.SpeedFits(relSpeed)) return Refuse(e, double.NaN, double.NaN, relSpeed, CrashGuard.TooFast);
+            if (CrashCopyCheck && !CopyWhereOwnerHasIt(e)) return false;   // a crash with a stale copy: not a crash for its owner
             e.CrashTaking = true;
             // simulated here from this instant, with the crash's motion as it is (no reset to the copy's last velocity)
             SetProxy(e, false, keepMotion: true);
@@ -81,6 +96,33 @@ namespace TLDRevamp.Net
                 EndHeld(e);
                 _held.RemoveAt(i);
             }
+        }
+
+        public static bool CrashCopyCheck = true;   // A/B: false = before 2026-11-06, any copy could be taken over (CrashGuard)
+        public static long CrashStaleRefused;
+
+        /// The copy's body against its owner's newest pose (CrashGuard): taken over, the owner's car would start from here.
+        private static bool CopyWhereOwnerHasIt(Ent e)
+        {
+            var rb = e.Root != null ? e.Root.GetComponent<Rigidbody>() : null;
+            double now = Time.realtimeSinceStartupAsDouble;
+            if (rb == null || e.Ip == null || !e.Ip.Newest(now, out var owner, out _, out var vel)) return Refuse(e, double.NaN, double.NaN, 0, CrashGuard.NoPose);
+            var at = mainscript.GlobalFromUnityPos(rb.position);
+            double dx = at.x - owner.x, dy = at.y - owner.y, dz = at.z - owner.z;
+            double off = Math.Sqrt(dx * dx + dy * dy + dz * dz), age = e.Ip.NewestAgeS(now);
+            if (CrashGuard.CopyFits(off, age, vel.magnitude, e.Ip.DelayMs / 1000.0, out string why, out double allow)) return true;
+            return Refuse(e, off, age, allow, why);
+        }
+
+        /// The event: value = metres from the owner's pose, dx = the pose's age (s), dy = the metres allowed (contact too
+        /// fast: the contact's speed).
+        private static bool Refuse(Ent e, double off, double age, double allow, string why)
+        {
+            CrashStaleRefused++;
+            LastCrash = "left net " + e.NetId + " to its owner: " + why + (why == CrashGuard.TooFast ? " (" + allow.ToString("F0") + " m/s)" : double.IsNaN(off) ? "" : " (" + off.ToString("F0") + " m, allowed " + allow.ToString("F0") + ", pose " + age.ToString("F1") + " s old)");
+            SessionLog.Event("crash-stale", e.NetId, epoch: e.Epoch, result: why, value: double.IsNaN(off) ? -1f : (float)off,
+                             dx: double.IsNaN(age) || double.IsInfinity(age) ? -1f : (float)age, dy: (float)allow);
+            return false;
         }
 
         private static void EndHeld(Ent e)
@@ -146,6 +188,6 @@ namespace TLDRevamp.Net
 
         public static string CrashAuthorityStatus() =>
             "{\"enabled\":" + (CrashAuthority ? "true" : "false") + ",\"claims\":" + CrashClaims + ",\"granted\":" + CrashGranted + ",\"refused\":" + CrashRefused +
-            ",\"releases\":" + CrashReleases + ",\"autoReturned\":" + CrashAutoReturned + ",\"held\":" + _held.Count + ",\"last\":" + Json.Str(LastCrash) + "}";
+            ",\"staleRefused\":" + CrashStaleRefused + ",\"releases\":" + CrashReleases + ",\"autoReturned\":" + CrashAutoReturned + ",\"held\":" + _held.Count + ",\"last\":" + Json.Str(LastCrash) + "}";
     }
 }

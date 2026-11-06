@@ -826,6 +826,7 @@ namespace TLDRevamp
                         case "outsidebodies": return Net.Entities.OutsideBodies(uint.Parse(ma[1]));
                         case "tow": return Net.Entities.Tow(ma);
                         case "crashlease": return Net.Entities.TestCrashLease(uint.Parse(ma[1]));
+                        case "holdcopy": return Net.Entities.TestHoldCopy(uint.Parse(ma[1]), ma.Length > 2 ? float.Parse(ma[2], System.Globalization.CultureInfo.InvariantCulture) : 5f);
                         case "paint":
                         {
                             var ci = System.Globalization.CultureInfo.InvariantCulture;
