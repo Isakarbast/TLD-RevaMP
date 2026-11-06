@@ -223,6 +223,29 @@ and `net compare all|differences` changes comparison detail. What each one does,
 [docs/DEVELOPERS.md](docs/DEVELOPERS.md#reports-marks-and-the-debug-tools) and
 [docs/TELEMETRY.md](docs/TELEMETRY.md).
 
+**Debugging V2:** set Settings → Revamp → Debugging → **Version** to V2 for one **Debug overlay** switch instead: the
+performance graph, the network packets panel, the focus card, owner ghosts and links, and one tab directly above each
+nearby shared object with everything about it (owner, simulated or copy, sync error, its network use, its colliders and
+fitted parts that can't be reached). **Right Shift** (`DebugLayout` in `tldrevamp.core.cfg`) edits the layout: every panel
+and every line of it on or off (the FPS line, the key hints, a panel's title…), drag the framed panels (item health too) onto
+a grid (Options: 5, 10, 20 or 40 px, or off), each panel's border
+(off, plain or coloured) and its border and title colours (a palette or RGB), and **custom panels** made of fields you pick
+(fps, lows, p99, ping, network, speed, position, the aimed object…). Legacy keeps its own switches untouched; going back
+restores them.
+
+**Item health:** aim at a shared object (or sit in a car, or hold an item) in a multiplayer game and press **Home**
+(`ItemHealth`): every check of it with ✓, ! or ✗ — loaded here, owner, position, held/stored/attached/locked and its slots
+against every other player's view (asked through the host), its body and colliders, fitted parts you can't reach,
+refusals and corrections — why each problem is one, and the recent events that led there. Home again closes it.
+
+**Found on their own:** in a multiplayer game RevaMP also runs these checks by itself, so a bug doesn't need someone to
+notice it first. The shared objects near you get item health's checks; every loaded object gets checked for what can never be
+right (a position or speed that isn't a number or is far beyond anything the game does, an object under the ground with
+nothing below it, a part and its slot that disagree, an owner who has left). Loose items you can see but can't pick up,
+and fitted parts you can't open or take off, are caught too, and so is a copy the census keeps failing to repair. A
+problem that lasts is written to the session log and saved as an automatic mark (both machines' state at that moment,
+in your next bug report), and the Debugging V2 tab over the object says `health: …` in red until it clears.
+
 If you are not sure whether something is a bug or just a work in progress, ask on the issue tracker before writing a
 long report. There is no shame in asking.
 

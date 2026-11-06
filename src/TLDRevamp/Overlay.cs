@@ -52,12 +52,20 @@ namespace TLDRevamp
                 _nextText = now + .25f;
                 float p50 = _t.Percentile(.5f);
                 _t.Lows(out float low1, out float low01);
-                _text = $"{Plugin.Version} ({Plugin.CommitLabel})  {_t.Fps:F0} fps - {_t.AvgFps:F0} avg - {low1:F0} 1% low - {low01:F0} 0.1% low\n" +
-                    $"p50  {p50:F1} ms     p99  {_t.Percentile(.99f):F1} ms\n" +
-                    $"Hitches  {_t.Hitches}     GC  {_t.GcCollections}     Heap  {_t.ManagedMB} MB\n" +
-                    $"{Plugin.KeyName(Plugin.KeyOverlay)} hide · {Plugin.KeyName(Plugin.KeyReport)} report";
+                // each line can be switched off in Debugging V2 (DebugV2.Line: always on in Legacy)
+                var lines = new System.Collections.Generic.List<string>(6);
+                if (DebugV2.Line("perf", "fps")) lines.Add($"{Plugin.Version} ({Plugin.CommitLabel})  {_t.Fps:F0} fps - {_t.AvgFps:F0} avg - {low1:F0} 1% low - {low01:F0} 0.1% low");
+                if (DebugV2.Line("perf", "times")) lines.Add($"p50  {p50:F1} ms     p99  {_t.Percentile(.99f):F1} ms");
+                if (DebugV2.Line("perf", "stats")) lines.Add($"Hitches  {_t.Hitches}     GC  {_t.GcCollections}     Heap  {_t.ManagedMB} MB");
+                if (DebugV2.Line("perf", "keys")) lines.Add($"{Plugin.KeyName(Plugin.KeyOverlay)} hide · {Plugin.KeyName(Plugin.KeyReport)} report");
                 string net = null; try { net = Net.Mp.NetStatsLine(); } catch { }
-                if (net != null) _text += "\n" + net.Replace("<b>", "").Replace("</b>", "").Replace("  down", "\nDown");
+                if (net != null)
+                {
+                    var parts = net.Replace("<b>", "").Replace("</b>", "").Replace("  down", "\nDown").Split('\n');
+                    if (DebugV2.Line("perf", "mp")) lines.Add(parts[0]);
+                    if (parts.Length > 1 && DebugV2.Line("perf", "net")) lines.Add(parts[1]);
+                }
+                _text = string.Join("\n", lines);
                 _content.text = OverlayStyle.Truncate(_text, Mathf.Max(0, width - 2 * OverlayStyle.Padding));
                 _textHeight = OverlayStyle.Height(_content, width - 2 * OverlayStyle.Padding);
             }
@@ -76,8 +84,8 @@ namespace TLDRevamp
             ObjectPanels.ReserveLayout(width);
             bool notice = DebugView.Active && !Net.Entities.InSession && (WorldOverlays.Ownership || WorldOverlays.Ghost || WorldOverlays.Links || Net.ItemTraffic.Show);
             DebugLayout.Arrange(Screen.width, Screen.height, new DebugLayout.Request {
-                Performance = Visible ? OverlayStyle.PanelHeight(36 * scale + _textHeight) : 0,
-                Packets = Net.NetMeter.Show ? _packetTable.Height : 0,
+                Performance = Visible && !DebugV2.Hidden ? OverlayStyle.PanelHeight((DebugV2.Line("perf", "graph") ? 36 * scale : 0) + (_text.Length > 0 ? _textHeight : 0), OverlayTool.Performance) : 0,
+                Packets = Net.NetMeter.Show && !DebugV2.Hidden ? _packetTable.Height : 0,
                 Card = ObjectPanels.CardHeight, Compare = ObjectPanels.CompareHeight,
                 Toast = toast ? _toastBar.Height : 0, ToastWidth = _toastBar.Width,
                 Network = NetworkConditions.BarHeight, NetworkWidth = NetworkConditions.BarWidth,
@@ -85,16 +93,21 @@ namespace TLDRevamp
                 More = WorldOverlays.MoreHeight, MoreWidth = WorldOverlays.MoreWidth,
                 Notice = notice ? _noticeBar.Height : 0, NoticeWidth = _noticeBar.Width,
                 Mark = MarkPanel.Measure(), Banner = Net.Banner.Measure() });
+            DebugV2.AfterArrange();
+            if (ItemHealth.Open && ItemHealth.Box.width > 0) DebugLayout.Labels.Reserve(new DebugBox(ItemHealth.Box.x, ItemHealth.Box.y, ItemHealth.Box.width, ItemHealth.Box.height));
             _toastBar.Draw(DebugLayout.Toast); _noticeBar.Draw(DebugLayout.Notice, OverlayKind.Muted);
             WorldOverlays.Draw(); ItemTrafficLabels.Draw();
             _packetTable.Draw(DebugLayout.Packets);
             if (ShowWip) WipMark.Draw();
-            if (DebugLayout.Performance.H <= 0) return;
-            if (now >= _nextGraph) { _nextGraph = now + .1f; RedrawGraph(); }
-            var content = OverlayStyle.Panel(DebugLayout.Performance, OverlayTool.Performance);
-            var old = GUI.color; GUI.color = Color.white;
-            GUI.DrawTexture(new Rect(content.x, content.y, content.width, Mathf.Min(32 * scale, content.height)), _graph); GUI.color = old;
-            OverlayStyle.Label(new Rect(content.x, content.y + 36 * scale, content.width, Mathf.Max(0, content.height - 36 * scale)), _content);
+            if (DebugLayout.Performance.H > 0)
+            {
+                if (now >= _nextGraph) { _nextGraph = now + .1f; RedrawGraph(); }
+                var content = OverlayStyle.Panel(DebugLayout.Performance, OverlayTool.Performance);
+                float graph = DebugV2.Line("perf", "graph") ? 36 * scale : 0;
+                if (graph > 0) { var old = GUI.color; GUI.color = Color.white; GUI.DrawTexture(new Rect(content.x, content.y, content.width, Mathf.Min(32 * scale, content.height)), _graph); GUI.color = old; }
+                OverlayStyle.Label(new Rect(content.x, content.y + graph, content.width, Mathf.Max(0, content.height - graph)), _content);
+            }
+            DebugV2.DrawCustom();
         }
 
         private float _nextPackets, _nextToast;

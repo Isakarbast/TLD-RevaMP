@@ -71,6 +71,8 @@ namespace TLDRevamp
     class Overlay { internal bool Visible; }
     static class WorldOverlays { internal static bool Ownership, Ghost, GhostAll, Links; }
     static class ObjectPanels { internal static bool Compare, Events; }
+    // Debugging V2 (DebugV2.cs): the settings rows only switch it and keep its layout text
+    static class DebugV2 { internal static bool Style, On, Hidden, HiddenByHand; internal const string LayoutKey = "debugV2Layout"; internal static void Apply() { } internal static void LoadLayout(string s) { } internal static void BeforeSave() { } internal static void AfterSave() { } }
     static class Sandstorms { internal static int Frequency; internal static void SetFrequency(int n) { Frequency = n; } }
 }
 namespace TLDRevamp.Net

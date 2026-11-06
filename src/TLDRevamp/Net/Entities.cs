@@ -417,6 +417,8 @@ namespace TLDRevamp.Net
             if (!InSession) return;
             WatchTick();
             AnomalyTick();
+            PartWatchTick();
+            HealthWatchTick();
             GrabRefusedTick();
             RefetchLaterTick();
             BreakWaitTick();

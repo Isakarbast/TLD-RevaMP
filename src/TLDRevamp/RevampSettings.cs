@@ -9,13 +9,16 @@ namespace TLDRevamp
     /// Stored in the mod's own file (BepInEx/config/tldrevamp-settings.txt), never in the game's settings.
     public static class RevampSettings
     {
-        public enum Kind { Header, Toggle, Choice }
+        public enum Kind { Header, Toggle, Choice, Button }
 
         public sealed class Entry
         {
             public string Key, Label, Help;
             public Kind Kind;
             public bool RuntimeOnly;
+            public Func<bool> Visible;        // null: always; else the Revamp tab shows the row only when true
+            public Func<string> Text;         // Button: what the button says (KeyBindings: the key)
+            public Action Click;              // Button: what a click does
             public string[] Options;          // Choice
             public int Default;               // Toggle: 0/1, Choice: index
             public Func<int> Get;
@@ -365,6 +368,23 @@ namespace TLDRevamp
                 "Page Down saves a debug report with recent game state, performance/network measurements, numeric settings " +
                 "and hardware models. Scroll Lock opens session marks: Enter saves a note, Escape cancels. Browse and rename " +
                 "notes from the list. The keys can be changed in BepInEx/config/tldrevamp.core.cfg (DebugReport and Mark).");
+            Choice("debugStyle", "Version", new[] { "Legacy", "V2" }, 0,
+                "Legacy: the switches below, one per tool, as before.\nV2: one switch for the whole debug overlay, a tab above each " +
+                "nearby shared object with everything about it (owner, sync, network use, colliders), and Right Shift to change the layout. " +
+                "Legacy's switches keep their values while V2 is used.",
+                () => DebugV2.Style ? 1 : 0, v => { DebugV2.Style = v == 1; DebugV2.Apply(); });
+            Toggle("debugV2", "Debug overlay", 0,
+                "Everything on: the performance graph, the network packets panel, the focus card, owner ghosts and links, and a tab " +
+                "directly above each nearby shared object: who owns it, simulated here or a copy, its sync error, its network use, " +
+                "and its colliders (switched on, and whether its fitted parts can be reached). " +
+                "Right Shift (Keys → DebugLayout in BepInEx/config/tldrevamp.core.cfg) edits the layout: switch parts off, drag the panels.",
+                () => DebugV2.On ? 1 : 0, v => { DebugV2.On = v == 1; DebugV2.Apply(); });
+            Entries[Entries.Count - 1].Visible = () => DebugV2.Style;
+            Toggle("debugShown", "Show debug overlays", 1,
+                "Off hides every RevaMP debug overlay — the performance graph, the packets panel, the focus card, the tabs over objects, " +
+                "ghosts, links and custom panels — without changing any of their settings. (V2 can also hide them while the game's F1 menu is open: Right Shift → Options.)",
+                () => DebugV2.HiddenByHand ? 0 : 1, v => DebugV2.Hidden = v == 0);
+            int legacyFrom = Entries.Count;
             Choice("debugView", "Debug view", new[] { "Off", "Focus", "Problems", "Everything" }, 0,
                 "Off: no object debug work.\nFocus: one target card, ghost and links.\nProblems: Focus plus tags on faulty objects.\nEverything: all nearby labels and ghosts. Key: DebugView (unbound).",
                 () => (int)DebugView.Mode, v => DebugView.Mode = (DebugViewMode)v);
@@ -404,6 +424,7 @@ namespace TLDRevamp
                 "Local events need no report sharing; partner events require it. " +
                 "Assign ObjectEvents in the BepInEx key settings; unbound by default.",
                 () => ObjectPanels.Events ? 1 : 0, v => ObjectPanels.Events = v == 1);
+            for (int i = legacyFrom; i < Entries.Count; i++) Entries[i].Visible = () => !DebugV2.Style;
             NetworkConditions.Settings();
             Toggle("bugRecording", "Record actions for bug reports", 1,
                 "While you are in a multiplayer session, keep a record of your own actions and position/look (10 Hz, in memory) so that a bug report can include them. " +
@@ -471,6 +492,8 @@ namespace TLDRevamp
                     if (e.Key != null && !e.RuntimeOnly && saved.TryGetValue(e.Key, out string text) && int.TryParse(text, out int v)) e.Set(v);
                 if (saved.TryGetValue("debugView", out string modeText) && int.TryParse(modeText, out int mode) && mode == 0) DebugView.Mode = DebugViewMode.Off;
                 TextValues.Clear(); IntegerValues.Clear();
+                if (saved.TryGetValue(DebugV2.LayoutKey, out string layout)) { TextValues[DebugV2.LayoutKey] = layout; DebugV2.LoadLayout(layout); }
+                DebugV2.Apply();
                 // The host password is not a persisted value: the old plaintext line is removed by the migration
                 // (Net.SessionSettingsDefaults.Migrate) and the value lives in memory for this session only.
                 if (saved.TryGetValue("hostJoinAtHost", out string joinAtHost) && int.TryParse(joinAtHost, out int join)) IntegerValues["hostJoinAtHost"] = join == 0 ? 0 : 1;
@@ -492,7 +515,9 @@ namespace TLDRevamp
             try
             {
                 var lines = new List<string> { "# TLD Revamp settings (edit in game: Settings → Revamp)" };
-                foreach (var e in Entries) if (e.Key != null && !e.RuntimeOnly) lines.Add(e.Key + "=" + e.Get());
+                DebugV2.BeforeSave();   // the Legacy switches as the player left them, not V2's
+                try { foreach (var e in Entries) if (e.Key != null && !e.RuntimeOnly) lines.Add(e.Key + "=" + e.Get()); }
+                finally { DebugV2.AfterSave(); }
                 var textKeys = new List<string>(TextValues.Keys); textKeys.Sort(StringComparer.Ordinal);
                 foreach (string key in textKeys) lines.Add(key + "=" + (TextValues[key] ?? "").Replace("\r", " ").Replace("\n", " "));
                 var intKeys = new List<string>(IntegerValues.Keys); intKeys.Sort(StringComparer.Ordinal);

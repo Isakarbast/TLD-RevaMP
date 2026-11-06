@@ -115,7 +115,7 @@ namespace TLDRevamp
         private static DebugBox Top(ref float top, float x, float width, float height, float bottom, float gap, float scale)
         {
             height = Math.Min(height, bottom - top);
-            if (height < 40 * scale || width <= 0) return default;
+            if (height < 16 * scale || width <= 0) return default;   // 16: a one-line panel without its title (Debugging V2) still fits
             var box = new DebugBox(x, top, width, height); top += height + gap; return box;
         }
         private static DebugBox Bottom(float width, ref float bottom, float w, float h, float gap, float margin)

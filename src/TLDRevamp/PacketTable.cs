@@ -9,6 +9,7 @@ namespace TLDRevamp
         private GUIContent[,] _cells;
         private readonly float[] _measured = new float[5], _left = new float[5], _right = new float[5];
         private float _nameWidth, _summaryHeight, _row;
+        private int _rows;   // the table's rows shown (none when Debugging V2 switched the table off)
         internal float Height;
         internal void Rebuild(float width, bool session)
         {
@@ -16,7 +17,7 @@ namespace TLDRevamp
             // The bridge keeps its existing text format. Only the in-game table uses cells.
             var rows = session ? Net.NetMeter.PanelRows(12) : new[] { new[] { "Not in a multiplayer game" } };
             _summary.text = OverlayStyle.Truncate(rows[0][0], width, OverlayStyle.Small);
-            _summaryHeight = OverlayStyle.Height(_summary, width, OverlayStyle.Small);
+            _summaryHeight = DebugV2.Line("packets", "summary") ? OverlayStyle.Height(_summary, width, OverlayStyle.Small) : 0;
             _row = OverlayStyle.Small.lineHeight;
             _cells = new GUIContent[rows.Length - 1, 6]; Array.Clear(_measured, 0, _measured.Length);
             for (int r = 1; r < rows.Length; r++)
@@ -27,14 +28,15 @@ namespace TLDRevamp
                 }
             _nameWidth = OverlayTableLogic.Columns(width, 10 * OverlayStyle.Scale, _measured, _left, _right);
             for (int r = 0; r < _cells.GetLength(0); r++) _cells[r, 0].text = OverlayStyle.Truncate(_cells[r, 0].text, _nameWidth, OverlayStyle.Small);
-            Height = OverlayStyle.PanelHeight(_summaryHeight + _cells.GetLength(0) * _row);
+            _rows = DebugV2.Line("packets", "table") ? _cells.GetLength(0) : 0;
+            Height = OverlayStyle.PanelHeight(_summaryHeight + _rows * _row, OverlayTool.Packets);
         }
         internal void Draw(DebugBox box)
         {
             if (box.H <= 0) return;
             var r = OverlayStyle.Panel(box, OverlayTool.Packets);
             OverlayStyle.Label(new Rect(r.x, r.y, r.width, Math.Min(r.height, _summaryHeight)), _summary, OverlayKind.Text, OverlayStyle.Small);
-            for (int row = 0; row < _cells.GetLength(0); row++)
+            for (int row = 0; row < _rows; row++)
             {
                 float y = r.y + _summaryHeight + row * _row, h = Math.Min(_row, r.y + r.height - y);
                 OverlayStyle.Label(new Rect(r.x, y, _nameWidth, h), _cells[row, 0], OverlayKind.Text, OverlayStyle.Small);

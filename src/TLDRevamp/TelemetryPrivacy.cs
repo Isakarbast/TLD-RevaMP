@@ -147,7 +147,7 @@ namespace TLDRevamp
 
         private static readonly HashSet<string> EventKinds = new HashSet<string>((
             "join-stage join-ready tpa-request-sent tpa-accept-sent tpa-refuse-sent add-applied add-assigned attach-applied attach-received attach-refused attach-request attach-sent claim-refused " +
-            "claim-sent crash-stale detach-applied detach-refused detach-request detach-sent edit-applied edit-refused edit-sent handover-applied handover-refused lease-refused lease-done-refused " +
+            "claim-sent crash-stale part-untargetable item-untargetable health-problem census-repair census-repair-failed census-repair-run detach-applied detach-refused detach-request detach-sent edit-applied edit-refused edit-sent handover-applied handover-refused lease-refused lease-done-refused " +
             "hitch-request hitch-accept hitch-refuse hitch-refused hitch-frozen hitch-ownership-claim speed-anomaly handover-sent itemcheck-drop join joint-broken joint-created leave live-applied live-sent owner-applied owner-change " +
             "owner-decision owner-teleport physlock-lock physlock-unlock part-detached-received part-off-applied part-off-deduped part-off-refused " +
             "part-off-sent part-state player-damage player-damage-queued player-death proxy-correction proxy-snap " +
@@ -160,7 +160,9 @@ namespace TLDRevamp
             "slot index", "not hitched to car", "hitch pending", "owner changed", "not loaded", "slot taken or incompatible", "joint change failed",
             "hitch changed during transfer", "old simulator frozen", "hitch handover", "hitched trailer", "hitch player handover", "hitch crash handover", "hitched to car",
             "unshared target or automatic attach", "connect", "disconnect",
-            "ok", "disabled", "cooldown", "no owner pose", "owner pose old", "copy far from owner", "contact too fast", "declined", "detach", "between sent states", "joint absent or parented",
+            "ok", "disabled", "cooldown", "no owner pose", "owner pose old", "copy far from owner", "contact too fast", "part colliders off", "part on held layer", "part not on use layer", "hidden object in front",
+            "item colliders off", "item on held layer", "item not on pickup layer", "healed",
+            "health body", "health position", "non-finite position", "runaway velocity", "under the ground", "owner left", "part slot mismatch", "repair keeps failing", "declined", "detach", "between sent states", "joint absent or parented",
             "invalid destination", "no ground after 30 s", "no local player", "arrival check superseded", "player lost before arrival",
             "within 5 m", "outside 5 m", "car or player lost", "target left", "request expired", "requester left", "missing target",
             "within 2 m; objects applied", "arrival failed; objects applied", "objects sent",

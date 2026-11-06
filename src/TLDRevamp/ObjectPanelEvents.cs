@@ -34,6 +34,8 @@ namespace TLDRevamp
             "seat-leave", "spawn-add", "speed-high", "speed-jump", "test-desync",
             "tpa-accept-request", "tpa-accepted", "tpa-applied", "tpa-arrived", "tpa-failure",
             "tpa-pending", "tpa-refuse-request", "tpa-refused", "tpa-request", "tpa-object-sent", "tpa-object-applied",
+            // appended only: the index is what goes over the wire
+            "part-untargetable", "item-untargetable", "health-problem",
         };
         internal static readonly string[] Reasons = {
             "reason unavailable",
@@ -69,6 +71,10 @@ namespace TLDRevamp
             "tank", "tank fluids", "part value", "colour edit, the item's part conditions unknown",
             "colour value", "painting", "food value", "ammo value",
             "plate", "bus doors", "blood: an edit only washes it off",
+            // appended only: the index is what goes over the wire
+            "part colliders off", "part on held layer", "part not on use layer", "hidden object in front",
+            "item colliders off", "item on held layer", "item not on pickup layer", "healed",
+            "health body", "health position", "non-finite position", "runaway velocity", "under the ground", "owner left", "part slot mismatch", "repair keeps failing",
         };
         internal static void Capture(EventRing ring, ObjectPanelState into, double now)
         {

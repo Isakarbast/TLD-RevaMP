@@ -667,7 +667,7 @@ namespace TLDRevamp.Replay
         }
     }
 
-    /// Takes every input from the player while a replay plays: the keys the replay and its camera use (W A S D, Space,
+    /// Takes every input from the player while a replay plays (and while the debug layout editor is open): the keys the replay and its camera use (W A S D, Space,
     /// the arrows, the number keys) must not also walk, jump, switch the inventory or drive the car under the player.
     /// The movement axes go to the camera instead. Runs right after the game's input script fills its fields, so the
     /// player, the car and everything else read zeroes this frame. The brake, the handbrake and the clutch are left as
@@ -708,11 +708,16 @@ namespace TLDRevamp.Replay
         [HarmonyPostfix]
         private static void Postfix(inputscript __instance)
         {
-            if (!ReplayViewer.Active || __instance == null) return;
+            // the debug layout editor (DebugV2, Right Shift) too: the mouse moves its cursor, so it must not turn the
+            // camera, and a click on the editor must not also grab or use something in the world
+            if (!ReplayViewer.Active && !DebugV2.Editing || __instance == null) return;
             Find();
-            CinematicInput.Forward = __instance.forward; CinematicInput.Backward = __instance.backward;
-            CinematicInput.Left = __instance.left; CinematicInput.Right = __instance.right;
-            CinematicInput.SpeedFactor = CinematicInput.SpeedFactorFor(__instance.run, __instance.duck);
+            if (ReplayViewer.Active)
+            {
+                CinematicInput.Forward = __instance.forward; CinematicInput.Backward = __instance.backward;
+                CinematicInput.Left = __instance.left; CinematicInput.Right = __instance.right;
+                CinematicInput.SpeedFactor = CinematicInput.SpeedFactorFor(__instance.run, __instance.duck);
+            }
             foreach (var f in _bools) f(__instance) = false;
             foreach (var f in _floats) f(__instance) = 0f;
             Frames++;

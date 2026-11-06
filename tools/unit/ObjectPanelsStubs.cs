@@ -38,6 +38,8 @@ namespace UnityEngine
 namespace TLDRevamp
 {
     internal static class SessionLog { internal static readonly EventRing PanelEventsRing = new EventRing(); internal static bool AllocCounter; }
+    // Debugging V2 (DebugV2.cs): the focus card asks only whether V2 hides it
+    internal static class DebugV2 { internal static bool Active, Hidden; internal static bool Has(string id) => true; }
 }
 namespace TLDRevamp.Net
 {

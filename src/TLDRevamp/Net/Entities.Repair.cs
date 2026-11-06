@@ -238,6 +238,7 @@ namespace TLDRevamp.Net
                 RepairsFailed++;
                 SessionLog.Event("census-repair-failed", net, to: MyId, result: text.Length > 200 ? text.Substring(0, 200) : text);
                 Anomaly($"repair did not take: {e.Root.name} net {net} owner {e.OwnerId} — {text}");
+                RepairFailedNote(e, net, text);
                 _repairWait[net] = new RepairWait { Until = now + back, Backoff = back };
                 return;
             }

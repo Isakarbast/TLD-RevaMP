@@ -256,6 +256,13 @@ namespace TLDRevamp.Net
                 if (Counts[i].Net != 0 && Counts[i].Rate.UpBps + Counts[i].Rate.DownBps > 0f) into.Add(Counts[i].Rate);
             into.Sort(Order);
         }
+        /// One object's rates over the last >= 1 s (Debugging V2's tabs); false when it had no traffic lately.
+        public static bool RateOf(uint net, out Row row)
+        {
+            Rates(); row = default;
+            if (!Slots.TryGetValue(Key(net, false), out int i)) return false;
+            row = Counts[i].Rate; return row.UpBps + row.DownBps > 0f;
+        }
         public static void Reset()
         {
             Slots.Clear(); Array.Clear(Counts, 0, _used); _used = _evict = 0; _free = -1; _rateAt = -1f; _packet = 0; Rows.Clear();

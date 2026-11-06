@@ -123,6 +123,8 @@ namespace TLDRevamp
     static class FeedbackReporter { internal static string Root; }
     static class BugReport { internal static bool Requested; internal static bool Request(string note) { Requested = true; return true; } }
     class Plugin { internal static Plugin Instance = new Plugin(); internal Overlay Overlay = new Overlay(); }
+    // Debugging V2 (DebugV2.cs): the packets table asks only whether a line is switched off (never, in these tests)
+    static class DebugV2 { internal static bool Line(string id, string line) => true; }
     class Overlay { internal void Toast(string text) { } }
 }
 namespace TLDRevamp.Net

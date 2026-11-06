@@ -35,7 +35,7 @@ namespace TLDRevamp
         /// Only Repaint draws; bounded caches keep projections, sorting and unchanged text allocation-free.
         internal static void Draw()
         {
-            if (!DebugView.Active || !Net.ItemTraffic.Show || Event.current.type != EventType.Repaint) return;
+            if (!DebugView.Active || DebugV2.Hidden || !Net.ItemTraffic.Show || Event.current.type != EventType.Repaint) return;
             for (int i = 0; i < _count; i++) Drawn[i].Placed = false;
             _count = 0; _frame = Time.frameCount;
             OverlayStyle.Ensure(); Init();

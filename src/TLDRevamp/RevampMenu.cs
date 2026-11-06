@@ -17,7 +17,14 @@ namespace TLDRevamp
     {
         public const int TabIndex = 90;
         // Per settings menu instance (the game can have more than one: main menu scene, game scene)
-        private sealed class Ui { public GameObject Tab, LedOn; public TextMeshProUGUI Info; public ScrollRect InfoScroll; public readonly List<System.Action> Refreshers = new List<System.Action>(); }
+        private sealed class Ui { public GameObject Tab, LedOn; public TextMeshProUGUI Info; public ScrollRect InfoScroll; public readonly List<System.Action> Refreshers = new List<System.Action>();
+            public readonly List<Row> Rows = new List<Row>(); public RectTransform Content; public float RowsTop; }
+        /// A settings row and where it goes: rows an entry hides (RevampSettings.Entry.Visible: Debugging Legacy or V2)
+        /// leave no gap — Layout places the shown ones top to bottom again after every change.
+        private sealed class Row { public GameObject Go; public RevampSettings.Entry Entry; public float X, Before, After; public bool Header, Button; }
+        private static readonly List<Ui> Built = new List<Ui>();
+        /// After a change made outside the tab (a key captured): every built Revamp tab shows the new values.
+        internal static void RefreshOpen() { foreach (var ui in Built) if (ui.Tab != null) Refresh(ui); }
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<settingsscript, Ui> Uis =
             new System.Runtime.CompilerServices.ConditionalWeakTable<settingsscript, Ui>();
         private const string DefaultInfo = "<b>TLD Revamp</b>\n\nHover over a setting to see what it does.\n\nSettings are saved by the mod, separately from the game's own settings.";
@@ -160,6 +167,9 @@ namespace TLDRevamp
             bugButton.onClick.AddListener(() => MarkPanel.Open(true));
             AddHover(ui, bug, "<b>Report a bug</b>\n\nWrite what went wrong (optional) and press Enter. Saves one bundle in BepInEx/tldrevamp-feedback: the report, your recorded actions and the world save the session started from. A banner shows while it records and when the bundle is saved. The bundle stays on your computer until you send it.");
             float y = -350f;
+            ui.Content = (RectTransform)content; ui.RowsTop = y;
+            Built.RemoveAll(u => u.Tab == null); Built.Add(ui);
+            var toggleLabel = toggleTpl.transform.Find("ToggleBackground/ToggleLabel").GetComponent<TextMeshProUGUI>();
             foreach (var e in RevampSettings.Entries)
             {
                 switch (e.Kind)
@@ -174,6 +184,7 @@ namespace TLDRevamp
                         Place(h, 0f, y, 900f, 70f);
                         AddHover(ui, h, "<b>" + e.Label + "</b>\n\n" + e.Help);
                         y -= 100f;
+                        ui.Rows.Add(new Row { Go = h, Entry = e, X = 0f, Before = 30f, After = 100f, Header = true });
                         break;
                     case RevampSettings.Kind.Toggle:
                         var t = Object.Instantiate(toggleTpl, content);
@@ -186,10 +197,11 @@ namespace TLDRevamp
                         var tg = t.GetComponent<Toggle>();
                         tg.onValueChanged = new Toggle.ToggleEvent();
                         var te = e;
-                        tg.onValueChanged.AddListener(on => { te.Set(on ? 1 : 0); RevampSettings.Save(); if (te.RuntimeOnly) Refresh(ui); });
+                        tg.onValueChanged.AddListener(on => { te.Set(on ? 1 : 0); RevampSettings.Save(); if (te.RuntimeOnly) Refresh(ui); else Layout(ui); });
                         ui.Refreshers.Add(() => tg.SetIsOnWithoutNotify(te.Get() == 1));
                         AddHover(ui, t, "<b>" + e.Label + "</b>\n\n" + e.Help);
                         y -= 100f;
+                        ui.Rows.Add(new Row { Go = t, Entry = e, X = 0f, Before = 0f, After = 100f });
                         break;
                     case RevampSettings.Kind.Choice:
                         var c = Object.Instantiate(choiceTpl, content);
@@ -201,10 +213,35 @@ namespace TLDRevamp
                         dd.ClearOptions();
                         dd.AddOptions(new List<string>(e.Options));
                         var ce = e;
-                        dd.onValueChanged.AddListener(v => { ce.Set(v); RevampSettings.Save(); if (ce.RuntimeOnly) Refresh(ui); });
+                        dd.onValueChanged.AddListener(v => { ce.Set(v); RevampSettings.Save(); if (ce.RuntimeOnly) Refresh(ui); else Layout(ui); });
                         ui.Refreshers.Add(() => { dd.SetValueWithoutNotify(ce.Get()); dd.RefreshShownValue(); });
                         AddHover(ui, c, "<b>" + e.Label + "</b>\n\n" + e.Help);
                         y -= 100f;
+                        ui.Rows.Add(new Row { Go = c, Entry = e, X = 500f, Before = 0f, After = 100f });
+                        break;
+                    case RevampSettings.Kind.Button:
+                        // a label on the left, a button on the right that says its value (KeyBindings: the key)
+                        var row = new GameObject("Button_" + e.Label, typeof(RectTransform));
+                        row.transform.SetParent(content, false);
+                        var rl = new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+                        rl.transform.SetParent(row.transform, false);
+                        var rlt = rl.GetComponent<TextMeshProUGUI>();
+                        rlt.font = toggleLabel.font; rlt.fontSharedMaterial = toggleLabel.fontSharedMaterial; rlt.fontSize = toggleLabel.fontSize; rlt.color = toggleLabel.color;
+                        rlt.alignment = TextAlignmentOptions.Left; rlt.text = e.Label; rlt.raycastTarget = true; rlt.enableWordWrapping = false;
+                        Place(rl, 0f, 0f, 480f, 80f);
+                        var btn = Object.Instantiate(reset.gameObject, row.transform);
+                        btn.name = "Value"; StripGameHooks(btn);
+                        Place(btn, 500f, 0f, 400f, 80f);
+                        var bt = btn.GetComponentInChildren<TextMeshProUGUI>(); bt.enableAutoSizing = true; bt.fontSizeMin = 18f;
+                        var bb = btn.GetComponent<Button>(); bb.onClick = new Button.ButtonClickedEvent();
+                        var be = e;
+                        bb.onClick.AddListener(() => { be.Click?.Invoke(); Refresh(ui); });
+                        ui.Refreshers.Add(() => bt.text = be.Text != null ? be.Text() : "");
+                        AddHover(ui, rl, "<b>" + e.Label + "</b>\n\n" + e.Help);
+                        AddHover(ui, btn, "<b>" + e.Label + "</b>\n\n" + e.Help);
+                        Place(row, 0f, y, 900f, 80f);
+                        y -= 100f;
+                        ui.Rows.Add(new Row { Go = row, Entry = e, X = 0f, Before = 0f, After = 100f, Header = true });
                         break;
                 }
             }
@@ -227,6 +264,25 @@ namespace TLDRevamp
         private static void Refresh(Ui ui)
         {
             foreach (var r in ui.Refreshers) { try { r(); } catch { } }
+            Layout(ui);
+        }
+
+        private static void Layout(Ui ui)
+        {
+            if (ui.Content == null || ui.Rows.Count == 0) return;
+            float y = ui.RowsTop;
+            foreach (var row in ui.Rows)
+            {
+                if (row.Go == null) continue;
+                bool shown = row.Entry.Visible == null || row.Entry.Visible();
+                if (row.Go.activeSelf != shown) row.Go.SetActive(shown);
+                if (!shown) continue;
+                y -= row.Before;
+                if (row.Header) Place(row.Go, 0f, y, 900f, 70f);
+                else ((RectTransform)row.Go.transform).anchoredPosition = new Vector2(row.X, y);
+                y -= row.After;
+            }
+            ui.Content.sizeDelta = new Vector2(ui.Content.sizeDelta.x, -y + 40f);
         }
 
         private static void Place(GameObject go, float x, float y, float w, float h)

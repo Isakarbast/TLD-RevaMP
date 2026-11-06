@@ -54,6 +54,19 @@ namespace TLDRevamp
         }
         internal static float Height(GUIContent text, float width, GUIStyle style = null) => (style ?? Body).CalcHeight(text, Math.Max(1, width));
         internal static float PanelHeight(float contentHeight) => Header + contentHeight + Padding;
+        /// Debugging V2's look for a panel: its title shown or not, its border (0 off, 1 plain, 2 coloured) and colours.
+        /// Looks is set by DebugV2 (null or a null answer: the panel's usual look).
+        internal struct PanelLook { public bool Title; public int Border; public Color BorderColour, TitleColour; }
+        internal static Func<OverlayTool, PanelLook?> Looks;
+        private static PanelLook? LookOf(OverlayTool tool) => Looks != null ? Looks(tool) : null;
+        /// The title strip's height: the header, or just padding when the title is off.
+        internal static float HeaderOf(OverlayTool tool) { var l = LookOf(tool); return l.HasValue && !l.Value.Title ? Padding : Header; }
+        internal static float PanelHeight(float contentHeight, OverlayTool tool) => HeaderOf(tool) + contentHeight + Padding;
+        internal static void Outline(Rect r, Color colour, float width)
+        {
+            Fill(new Rect(r.x, r.y, r.width, width), colour); Fill(new Rect(r.x, r.y + r.height - width, r.width, width), colour);
+            Fill(new Rect(r.x, r.y, width, r.height), colour); Fill(new Rect(r.x + r.width - width, r.y, width, r.height), colour);
+        }
         private static GUIStyle Make(GUIStyle source)
         {
             var style = new GUIStyle(source) { richText = false, wordWrap = false, padding = new RectOffset(0, 0, 0, 0), clipping = TextClipping.Clip };
@@ -66,12 +79,33 @@ namespace TLDRevamp
         internal static Rect Panel(Rect r, OverlayTool tool)
         {
             if (r.width <= 0 || r.height <= 0) return default;
+            var look = LookOf(tool);
+            if (look.HasValue) return Panel(r, look.Value, Headers[(int)tool]);
             if (Event.current.type == EventType.Repaint)
             {
                 Back(r); Fill(new Rect(r.x, r.y, 1, r.height), Muted);
                 Label(new Rect(r.x + Padding, r.y + 5 * Scale, r.width - 2 * Padding, Header - 5 * Scale), Headers[(int)tool], OverlayKind.Accent, Small);
             }
             return Content(r);
+        }
+        /// A panel in a given look (Debugging V2: the built-in panels restyled, and custom panels with their own title).
+        internal static Rect Panel(Rect r, PanelLook look, string title) { Scratch.text = "RevaMP · " + title; return Panel(r, look, Scratch); }
+        private static Rect Panel(Rect r, PanelLook look, GUIContent title)
+        {
+            if (r.width <= 0 || r.height <= 0) return default;
+            float head = look.Title ? Header : Padding;
+            if (Event.current.type == EventType.Repaint)
+            {
+                Back(r);
+                if (look.Border == 1) Outline(r, new Color(Muted.r, Muted.g, Muted.b, .6f), 1);
+                else if (look.Border == 2) Outline(r, look.BorderColour, 2);
+                if (look.Title)
+                {
+                    var old = GUI.color; GUI.color = look.TitleColour;
+                    GUI.Label(new Rect(r.x + Padding, r.y + 5 * Scale, r.width - 2 * Padding, Header - 5 * Scale), title, Small); GUI.color = old;
+                }
+            }
+            return new Rect(r.x + Padding, r.y + head, Math.Max(0, r.width - 2 * Padding), Math.Max(0, r.height - head - Padding));
         }
         internal static void Fill(Rect r, Color colour) { var old = GUI.color; GUI.color = colour; GUI.DrawTexture(r, Pixel); GUI.color = old; }
         internal static void Back(Rect r) => Fill(r, Background);

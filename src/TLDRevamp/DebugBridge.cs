@@ -925,6 +925,12 @@ namespace TLDRevamp
                         case "partin": return Net.Entities.PartIn(uint.Parse(ma[1]), uint.Parse(ma[2]));
                         case "attachto": return Net.Entities.AttachTo(uint.Parse(ma[1]), uint.Parse(ma[2]), int.Parse(ma[3]));
                         case "lookpick": return Net.Entities.LookPick(uint.Parse(ma[1]), ma.Length > 2 && ma[2] == "pick");
+                        case "lookmount": return Net.Entities.LookMount(uint.Parse(ma[1]), int.Parse(ma[2]));
+                        case "partwatch": return Net.Entities.PartWatchCommand(ma);
+                        case "healthwatch": return Net.Entities.HealthWatchCommand(ma);
+                        case "debugv2": return DebugV2.Command(ma);
+                        case "health": return ItemHealth.Command(ma);
+                        case "keys": return KeyBindings.Command(ma);
                         case "attachedparts": return Net.Entities.AttachedParts(uint.Parse(ma[1]));
                         case "carslots": return Net.Entities.CarSlots(uint.Parse(ma[1]));
                         case "namecount": return Net.Entities.NameCount(ma[1]);

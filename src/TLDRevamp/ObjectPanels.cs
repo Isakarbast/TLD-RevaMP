@@ -166,7 +166,7 @@ namespace TLDRevamp
         internal static void ReserveLayout(float availableWidth = 0)
         {
             CardHeight = CompareHeight = 0;
-            if (!DebugView.Active) return;
+            if (!DebugView.Active || DebugV2.Hidden || DebugV2.Active && !DebugV2.Has("card")) return;
             OverlayStyle.Ensure(); _style = OverlayStyle.Body;
             float width = availableWidth > 0 ? availableWidth : DebugLayout.LeftWidth(Screen.width, Screen.height, false);
             if (_dirty || _cardWidth != width || _styleRevision != OverlayStyle.Revision)
@@ -177,7 +177,7 @@ namespace TLDRevamp
                 Card.text = OverlayStyle.Truncate(_rawCard, width - 2 * OverlayStyle.Padding - 34 * OverlayStyle.Scale);
                 _focusHeight = Lines(Focus.text ?? "") * OverlayStyle.Line;
             }
-            CardHeight = OverlayStyle.Header + OverlayStyle.Padding + _focusHeight;
+            CardHeight = OverlayStyle.HeaderOf(OverlayTool.Focus) + OverlayStyle.Padding + _focusHeight;
             CompareHeight = (_compare || _events) && !string.IsNullOrEmpty(Card.text) ? OverlayStyle.Header + OverlayStyle.Padding + _height : 0;
         }
         internal static void Draw()
@@ -208,6 +208,15 @@ namespace TLDRevamp
             }
             finally { GUI.color = color; GUI.depth = depth; }
         }
+        /// ItemHealth: the other players' latest views of `net` from the live comparison (empty unless it compares `net`).
+        internal static void PartnerViews(uint net, List<(int Player, ObjectPanelState State, ObjectPanelState Mine, double Age)> into)
+        {
+            into.Clear();
+            if (!_compare || _net != net) return;
+            double now = Time.realtimeSinceStartupAsDouble;
+            foreach (var pair in Partners) if (pair.Value.State != null && pair.Value.State.Net == net) into.Add((pair.Key, pair.Value.State, pair.Value.Local, now - pair.Value.Received));
+        }
+        internal static bool Comparing(uint net) => _compare && _net == net;
         internal static string Command(bool comparison, string[] args)
         {
             string op = args.Length > 1 ? args[1] : "state";

@@ -520,6 +520,60 @@ long histories and pending hitch buffers add about **3.2 MiB**, excluding the ex
 
 ## World overlays
 
+**Debugging V2** (Version: V2, Debug overlay on) turns everything below on at once, with Debug view Everything, and
+replaces the separate labels over an object (ownership, item traffic) with one tab just above its meshes:
+
+```
+Car01Full · net 1
+you · simulated here · epoch 1
+at rest                                   (a copy: error, angle, age, interpolation mode)
+net ↓ 79 B/s ↑ 0 B/s                      (ItemTraffic, this object's last second)
+colliders 178/239 on · dynamic            (+ "N parts unreachable: <part>", Entities.PartWatch rules)
+```
+
+The collider line is worked out within 30 m, at most once a second per object. **Right Shift** (Keys → DebugLayout) opens
+the layout editor: a checklist (performance graph, network packets, focus card, tabs, network line, collider line,
+owner ghosts, links) and drag frames on the panels and the item health panel, snapped to a grid while dragging (Options:
+snap on/off, 5/10/20/40 px at 1080p); saved as `debugV2Layout` in `tldrevamp-settings.txt`. V2 snapshots
+the Legacy switches when it turns on, restores them when it turns off, and the settings file always keeps the Legacy
+values. The editor switches every panel and every line of it (performance: graph, FPS, p50/p99, hitches/GC/heap, key
+hints, multiplayer, network; packets: summary, table; tabs: name, owner, sync, network, colliders), sets each panel's
+title, border (off / plain / coloured; tabs: status colour) and colours (12 swatches and R/G/B), and makes custom panels
+from a field list. The layout is one JSON line (each panel inside it is its own JSON text: JsonUtility drops a list of nested objects in a
+mod assembly). Bridge: `mp debugv2 [style v2|legacy | on|off | edit | show|hide <panel> |
+line <panel> <line> on|off | move <panel> <x/y> | border <panel> 0|1|2 [#rrggbb] | title <panel> on|off [#rrggbb] |
+new <name> <field,field> | grid <px|off> | devmenu on|off | reset]`.
+
+**Item health** (Keys → ItemHealth, Home; bridge `mp health [net|close]`) checks one object: loaded here; owner and epoch
+against every other player's view; a copy's distance from its owner's last pose and the age of that pose, and every other
+player's position for it (ObjectPanelState.Severity); held / stored / attached / locked, parent and slots against each
+other player; its body (colliders on, held-item layer, collisions off without a known reason, a kinematic loose own
+object, a dynamic copy outside a crash); a loose item the pickup ray can't hit; fitted parts the use ray can't reach
+(PartWatchRules); refusals and corrections.
+Each problem lists the matching recent events (35 s) from this machine, else from the other player. While it is open the
+live comparison is pinned to that object; closing puts the comparison and debug view back.
+
+**The background watches** run the same checks without a key (A/B switches: `TLDRevamp.Net.Entities.HealthWatch`,
+`.ItemWatch`, `.PartWatch`, `.AutoMarks`):
+
+- *Health watch* (Entities.HealthWatch, HealthWatchRules): the shared objects within 60 m, 3 every 0.5 s — a copy's
+  position against its owner's poses, the body checks above, and the sanity checks; every other loaded object, 12 every
+  0.5 s, the sanity checks only. Sanity: a position or velocity that is not a number or over 200 m/s (reported on sight),
+  an object over 5 m under the ground's surface (`sand` layer) with nothing below it, a slot holding the same part twice
+  or a part naming another slot, an owner no longer in the session (15 s). A problem lasting 6 s (10 s for a copy behind
+  its owner) is an event `health-problem` (result: the check's fixed name) and a log line, once per object and check per
+  5 minutes; the Debugging V2 tab shows `health: …` in red while it lasts.
+- *Item watch* (Entities.ItemWatch): the loose shared item under the crosshair within reach (not held, stored, fitted, a
+  car or a ghost) with no collider the game's pickup ray hits, or a hidden object in front taking the ray. Event
+  `item-untargetable`, once per item. A loose item that can't be picked up at all is item health's own check ("Can't pick
+  it up": colliders on, none on the pickup layer), so the health watch, Home and the tab all show it.
+- *Part watch* (Entities.PartWatch): fitted parts, as before (`part-untargetable`).
+- *Census* (Entities.Repair): a repair that did not take is marked; three for one object are a `health-problem`
+  (`repair keeps failing`). Its events (`census-repair`, `-failed`, `-run`) are now kept in bug reports.
+
+Every find is also an automatic mark, at most one per 30 s across all watches. Bridge: `mp healthwatch [ground | reset |
+break <net> collisions|heldlayer|pickup|fling|sink|slot|fix]` (break: on purpose, here only, to test the watches).
+
 **Settings > Revamp > Debugging > Debug view** answers ?what is wrong right now??:
 
 - **Off** (default): object drawing and local panel ticks return before Unity access, scans or allocations.

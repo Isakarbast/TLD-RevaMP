@@ -16,7 +16,7 @@ namespace TLDRevamp.Fixes
         [HarmonyPrefix]
         private static void Prefix(ref bool _state)
         {
-            if (Enabled && (Net.JoinLoading.Visible || MarkPanel.Opened)) _state = true;
+            if (Enabled && (Net.JoinLoading.Visible || MarkPanel.Opened || DebugV2.Editing)) _state = true;
         }
     }
 }

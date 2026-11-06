@@ -51,6 +51,7 @@ namespace TLDRevamp
             internal Vector3d Pose;
             internal Quaternion Rotation;
             internal Vector3 Center, Extents;
+            internal float Lift;   // the label's height over the object's origin
             internal double Age, Error;
             internal float Angle;
             internal string Problem;
@@ -93,7 +94,7 @@ namespace TLDRevamp
         }
         internal static void Draw()
         {
-            if (!DebugView.Active || !Ownership && !Ghost && !Links || Event.current.type != EventType.Repaint) return;
+            if (!DebugView.Active || DebugV2.Hidden || !Ownership && !Ghost && !Links || Event.current.type != EventType.Repaint) return;
             long start = Stopwatch.GetTimestamp(), bytes = SessionLog.AllocCounter ? GC.GetAllocatedBytesForCurrentThread() : 0;
             Color colour = GUI.color; int depth = GUI.depth;
             try
@@ -150,7 +151,7 @@ namespace TLDRevamp
                     var r = _rows[i];
                     if (!Live(r) || !Ownership && !r.Ghost) continue;
                     if (DebugView.Mode != DebugViewMode.Everything && (DebugView.Mode != DebugViewMode.Problems || r.Problem == null)) continue;
-                    if (Project(cam, r.Frame.position + Vector3.up * (r.Entity.Root.car != null ? 2 : .75f), out var screen))
+                    if (Project(cam, r.Frame.position + Vector3.up * r.Lift, out var screen))
                     {
                         var c = r.Colour; c.a = Mathf.Clamp(1 - (r.Frame.position - cam.transform.position).magnitude / 350f, .2f, 1);
                         Paint(screen, r.Display, r.Size, c);
@@ -227,6 +228,7 @@ namespace TLDRevamp
         private static void Fill(Row r, Entities.Ent e, bool ghost, double now)
         {
             r.Entity = e; r.Frame = Entities.OverlayFrame(e); r.Epoch = e.Epoch; r.Owner = e.OwnerId; r.Proxy = e.Proxy; r.Ghost = ghost;
+            r.Lift = DebugV2.Active ? Top(e, r.Frame) : e.Root.car != null ? 2 : .75f;
             r.HasSample = Entities.OverlaySample(e, out r.Pose, out r.Rotation);
             r.Age = r.HasSample && e.TelemetryReceived > 0 ? Math.Max(0, now - e.TelemetryReceived) : double.NaN;
             r.Error = r.HasSample ? (mainscript.GlobalFromUnityPos(r.Frame.position) - r.Pose).magnitude : double.NaN;
@@ -235,7 +237,11 @@ namespace TLDRevamp
             r.Stale = WorldOverlayLogic.Stale(r.Age, moving);
             int c = WorldOverlayLogic.Colour(r.Error);
             r.Colour = !e.Proxy ? Green : c == 0 ? Green : c == 1 ? Yellow : c == 2 ? Red : Grey;
-            if (DebugView.Mode == DebugViewMode.Everything)
+            if (DebugV2.Active)
+            {
+                SetText(r.Text, r.Display, ref r.Size, Tab(e, r, moving, now));
+            }
+            else if (DebugView.Mode == DebugViewMode.Everything)
             {
                 string owner = WorldOverlayLogic.Owner(e.OwnerId, Entities.MyId);
                 string text = owner + (e.Proxy ? " / proxy" : " / simulated") + " / epoch " + e.Epoch.ToString(IC) + "\n" +
@@ -255,6 +261,48 @@ namespace TLDRevamp
             r.Extents = Vector3.Max(new Vector3(Mathf.Abs(x.x) + Mathf.Abs(y.x) + Mathf.Abs(z.x),
                 Mathf.Abs(x.y) + Mathf.Abs(y.y) + Mathf.Abs(z.y), Mathf.Abs(x.z) + Mathf.Abs(y.z) + Mathf.Abs(z.z)), Vector3.one * .1f);
         }
+        /// Debugging V2: one tab directly above the object with all of it — name, owner, simulated or copy, epoch; a copy's
+        /// sync error and age; its network use; its colliders, physics state and fitted parts that can't be reached.
+        private static string Tab(Entities.Ent e, Row r, bool moving, double now)
+        {
+            var sb = new StringBuilder();
+            void Next() { if (sb.Length > 0) sb.Append('\n'); }
+            if (DebugV2.Line("tabs", "name")) { Next(); sb.Append(Net.ItemTraffic.ObjectName(e.Root.name)).Append(" · net ").Append(e.NetId.ToString(IC)); }
+            if (DebugV2.Line("tabs", "owner")) { Next(); sb.Append(WorldOverlayLogic.Owner(e.OwnerId, Entities.MyId)).Append(e.Proxy ? " · copy" : " · simulated here").Append(" · epoch ").Append(e.Epoch.ToString(IC)); }
+            if (DebugV2.Line("tabs", "sync"))
+            {
+                Next();
+                if (e.Proxy) sb.Append(WorldOverlayLogic.Error(r.Error, r.Angle, r.Age, moving)).Append(" · ").Append(Entities.OverlayMode(e));
+                else sb.Append(Entities.OverlaySendState(e));
+            }
+            if (DebugV2.Line("tabs", "net"))
+            {
+                Next();
+                if (Net.ItemTraffic.RateOf(e.NetId, out var t)) sb.Append("net ↓ ").Append(Bytes(t.DownBps)).Append(" ↑ ").Append(Bytes(t.UpBps));
+                else sb.Append("net idle");
+            }
+            string cols = DebugV2.Line("tabs", "cols") || DebugV2.TabText.HasValue ? Entities.OverlayColliders(e, e.NetId == _focus) : "";
+            if (DebugV2.Line("tabs", "cols")) { Next(); sb.Append(cols); }
+            // a fitted part you can't reach is a problem too; and a tab with a problem says so in its first characters, so
+            // it shows whatever colours the player picked (their colour is for healthy tabs only, see Paint)
+            if (cols.Contains("unreachable") && r.Colour == Green) r.Colour = Yellow;
+            // a problem the background watch reported on it and that is still there (Entities.HealthWatch): always shown
+            string watch = Entities.HealthWatchLine(e.NetId);
+            if (watch != null) { Next(); sb.Append(watch); r.Colour = Red; }
+            if (r.Colour == Red) sb.Insert(0, "✗ "); else if (r.Colour == Yellow) sb.Insert(0, "! ");
+            return sb.ToString();
+        }
+        private static readonly System.Collections.Generic.List<Renderer> _renderers = new System.Collections.Generic.List<Renderer>();
+        /// Debugging V2: the tab sits just over the object — the top of its drawn meshes, 15 cm up, over its origin.
+        private static float Top(Entities.Ent e, Transform frame)
+        {
+            _renderers.Clear(); e.Root.GetComponentsInChildren(false, _renderers);
+            float top = float.MinValue;
+            foreach (var rd in _renderers) if (rd != null && rd.enabled && !(rd is ParticleSystemRenderer)) top = Mathf.Max(top, rd.bounds.max.y);
+            return top == float.MinValue ? (e.Root.car != null ? 2 : .75f) : Mathf.Clamp(top - frame.position.y + .15f, .2f, 6f);
+        }
+        private static string Bytes(float bps) => bps >= 1024f ? (bps / 1024f).ToString("F1", IC) + " KB/s" : bps.ToString("F0", IC) + " B/s";
+
         internal static void Link(Transform a, Transform b, int ownerA, int ownerB, string kind, bool sameOwner, bool reciprocal, uint netA, uint netB, int rider = -1)
         {
             if (a == null || b == null || a == b) return;
@@ -300,7 +348,13 @@ namespace TLDRevamp
             if (!DebugLayout.Labels.Place(ref box, Screen.width, Screen.height)) { _hidden++; return; }
             rect.y = box.Y;
             OverlayStyle.Back(rect);
-            var edge = rect; edge.width = 2; OverlayStyle.Fill(edge, colour);
+            int border = DebugV2.Active ? DebugV2.TabBorder : 3;
+            if (border == 3) { var edge = rect; edge.width = 2; OverlayStyle.Fill(edge, colour); }   // Legacy: the status colour's left edge
+            else if (border == 1) OverlayStyle.Outline(rect, new Color(OverlayStyle.Muted.r, OverlayStyle.Muted.g, OverlayStyle.Muted.b, .6f * colour.a), 1);
+            else if (border == 2) OverlayStyle.Outline(rect, colour, 2);
+            // the player's own text colour is for healthy tabs: a problem (amber, red) keeps its status colour
+            bool healthy = colour.r == Green.r && colour.g == Green.g && colour.b == Green.b;
+            if (DebugV2.Active && DebugV2.TabText.HasValue && healthy) { var t = DebugV2.TabText.Value; t.a = colour.a; colour = t; }
             GUI.color = colour;
             rect.x += 4; rect.y += 2; GUI.Label(rect, text, _style);
         }
