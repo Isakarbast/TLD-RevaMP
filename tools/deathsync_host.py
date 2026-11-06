@@ -60,12 +60,12 @@ try:
         if not net:
             time.sleep(1); net = b("mp deathinfo").get("corpseNetId", 0)
         verdict("CORPSE SHARED", net > 0, f"net {net}")
-        # the corpse on both machines while it flies and settles, until the respawn takes it away
+        # the corpse on both machines while it flies and settles
         gaps, centres, jfollow, jerr = [], [], None, None
         while time.time() - t0 < 30:
             h, _ = limbs(b, net)
             j, jf = limbs(L, net)
-            if h is None: break                          # gone on the host: the respawn released it
+            if h is None: break
             if j is None: jerr = jf
             else:
                 jfollow = jf
@@ -114,9 +114,10 @@ try:
             rows = [(int(r[0]), round(dist(tuple(float(v) for v in r[1:4]), anchor, True), 2)) for r in b("mp itemslist 0 0 999999999")["items"] if len(r) >= 4]
             print("host: items of the death's models", models, "within 5 m (model, m):", [r for r in rows if r[0] in models and r[1] <= 5], flush=True)
         print("host respawned at", b("gpos"), flush=True)
-        try: gone = "limbs" not in L(f"mp ragdoll {net}")
-        except Exception as e: gone = "no such entity" in str(e)
-        verdict("CORPSE GONE ON THE JOINER TOO", gone)
+        # the corpse stays after the respawn (Entities.DeathCorpseStays; tools/corpses.py checks it in full)
+        try: kept = "limbs" in b(f"mp ragdoll {net}") and "limbs" in L(f"mp ragdoll {net}")
+        except Exception: kept = False
+        verdict("CORPSE STAYS ON BOTH MACHINES", kept)
         b("set kaposztaleves.s.settings.god True")
         b("mp stop"); L("mp stop")
         print("VERDICT:", "PASS" if all(v[1] for v in V) else "FAIL")

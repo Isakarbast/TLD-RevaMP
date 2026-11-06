@@ -365,6 +365,9 @@ synthetic headers; tests also create report zips and corrupt inputs in temporary
   changes the mod needs (docs/MODDING-MULTIPLAYER.md §7).
 - `tools/terrainhorizon.py` writes a read-only bridge snapshot of near/distant terrain, far meshes, camera clipping and
   road coverage around a global point (or the player). `--compare before.json after.json` summarises coverage changes.
+- `tools/corpses.py` (two players): players' corpses stay after the respawn, wear their player's outfit on every
+  machine, are drawn whole and solid, follow whoever grabs them, and come back for a player who joins again
+  (`--old`: the switches off, the corpse goes at the respawn as before).
 - `tools/cinematic.py check` drives the cinematic camera (issue #36) through the bridge and proves, from the game's
   own values, that the gameplay cameras and the player did not move while the camera was on, that the speed, the
   field of view and the orbit radius are clamped, and that the cursor is given back. `cinematic.py shot <file>` loads

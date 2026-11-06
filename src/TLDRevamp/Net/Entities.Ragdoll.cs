@@ -412,7 +412,7 @@ namespace TLDRevamp.Net
         private static Ent RagdollOf(pickupable p) =>
             p != null && RagdollLimbOwner.TryGetValue(p.gameObject, out var e) ? e : null;
 
-        /// Test hooks (bridge `mp ragdoll net kill|grab`): the creature dies the game's way (newAiScript / aiscript.Die, as a
+        /// Test hooks (bridge `mp ragdoll net kill|grab|hold`): the creature dies the game's way (newAiScript / aiscript.Die, as a
         /// shot does); a limb is picked up by the local player the game's way (pickupable.Pickup, as the E press does).
         public static string RagdollTest(uint net, string what)
         {
@@ -433,7 +433,9 @@ namespace TLDRevamp.Net
             foreach (var p in rp.ps)
                 if (p != null) { float d = (p.transform.position - pl.transform.position).sqrMagnitude; if (d < bd) { bd = d; best = p; } }
             if (best == null) return "{\"error\":\"no limb\"}";
-            best.Pickup();
+            // grab: the limb's own pickup (the claim alone); hold: the player's own pickup, the E press, so the limb
+            // is in the hand and follows it
+            if (what == "hold") pl.Pickup(best); else best.Pickup();
             return "{\"picked\":" + Json.Str(best.name) + ",\"dist\":" + Mathf.Sqrt(bd).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
                    ",\"proxyNow\":" + (e.Proxy ? "true" : "false") + "}";
         }

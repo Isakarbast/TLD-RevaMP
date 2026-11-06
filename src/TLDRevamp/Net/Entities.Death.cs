@@ -12,6 +12,13 @@ namespace TLDRevamp.Net
         /// replaces the corpse object but never destroys the old one, so without this every death leaked one shared
         /// entity and one orphan body per machine).
         public static long DeathCorpsesReleased;
+        /// A/B: a player's corpse stays in the world after the respawn and after the session, a shared object like any
+        /// other body, as the game itself leaves it in single player (its RagdolReset makes a new corpse object for the
+        /// next death and leaves the old one lying). False is the old behaviour: the respawn removed the corpse on every
+        /// machine (DeathCorpsesReleased).
+        public static bool DeathCorpseStays = true;
+        /// How many corpses were left lying at a respawn or a session's end (DeathCorpseStays).
+        public static long DeathCorpsesKept;
         /// How many times the game's own Death was called again for a death that already happened: the corpse was
         /// already shared, so it is the same corpse (not a second one).
         public static long DeathCorpseDuplicates;
@@ -48,7 +55,7 @@ namespace TLDRevamp.Net
             var sb = new System.Text.StringBuilder();
             sb.Append("{\"corpseSaveId\":").Append(DeathCorpseSaveId).Append(",\"corpseNetId\":").Append(DeathCorpseNetId);
             sb.Append(",\"corpsesShared\":").Append(DeathCorpsesShared).Append(",\"corpsesMissed\":").Append(DeathCorpseShareMissed);
-            sb.Append(",\"corpsesReleased\":").Append(DeathCorpsesReleased);
+            sb.Append(",\"corpsesReleased\":").Append(DeathCorpsesReleased).Append(",\"corpsesKept\":").Append(DeathCorpsesKept);
             sb.Append(",\"corpsesDuplicated\":").Append(DeathCorpseDuplicates);
             sb.Append(",\"itemIds\":[");
             for (int i = 0; i < DeathItemSaveIds.Count; i++)
@@ -64,15 +71,24 @@ namespace TLDRevamp.Net
             return sb.ToString();
         }
 
-        /// A new session: the death's ids belong to the session that made them. The corpse of the last death is
-        /// released first: it is a shared entity, and the session's teardown has already removed the other shared
-        /// objects, so the corpse would otherwise be left behind.
+        /// A new session: the death's ids belong to the session that made them. The corpse of the last death stays
+        /// like the session's other objects (the host keeps them in its world); with DeathCorpseStays off it is
+        /// released, as before.
         internal static void DeathReset()
         {
-            ReleaseDeathCorpse();
+            EndDeathCorpse();
             DeathCorpseSaveId = 0; DeathCorpseNetId = 0;
             DeathItemSaveIds.Clear(); DeathItemNetIds.Clear();
             _deathCorpseNet = 0;
+        }
+
+        /// The death is over (the respawn, the session's end): its corpse stays where it lies (DeathCorpseStays), and
+        /// only this machine's note of "the open death's corpse" goes; or, with the switch off, it is released.
+        private static void EndDeathCorpse()
+        {
+            if (!DeathCorpseStays) { ReleaseDeathCorpse(); return; }
+            if (_deathCorpse != null) DeathCorpsesKept++;
+            _deathCorpse = null; _deathCorpseNet = 0;
         }
 
         /// Release the corpse of the death that just ended. The game's own Revive calls RagdolReset, which replaces
@@ -158,8 +174,8 @@ namespace TLDRevamp.Net
             }
         }
 
-        /// The respawn ended the death: the corpse of that death goes away (it was the corpse of a moment, not a
-        /// permanent object), so the next death starts with a clean world and the one-record budget holds.
+        /// The respawn ended the death: its corpse stays (DeathCorpseStays; before, it went away on every machine). The
+        /// game's own RagdolReset, which ran just before, has made the corpse object of the next death already.
         [HarmonyLib.HarmonyPatch(typeof(fpscontroller), nameof(fpscontroller.Revive))]
         private static class ReleaseCorpseOnRevive
         {
@@ -167,7 +183,7 @@ namespace TLDRevamp.Net
             private static void Postfix(fpscontroller __instance)
             {
                 if (!InSession || __instance == null || mainscript.s == null || __instance != mainscript.s.player) return;
-                ReleaseDeathCorpse();
+                EndDeathCorpse();
             }
         }
 

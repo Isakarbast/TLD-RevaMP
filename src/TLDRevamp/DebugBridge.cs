@@ -428,7 +428,7 @@ namespace TLDRevamp
         private static readonly System.Collections.Generic.HashSet<string> _readMp = new System.Collections.Generic.HashSet<string> { "entities", "status", "players", "breakables", "carparts", "physical", "sitestate", "farrec", "caps", "ownerlog",
                                                                                 "attachedparts", "carslots", "pcs", "wheelpose", "physlocks", "ipdump", "attach", "anomalies", "recsize", "mods", "saverecords", "usables", "poiu", "poius",
                                                                                 // the death test's reads: these are `mp` commands (they sat in the top-level list, so a joiner was refused them)
-                                                                                "deathstats", "deathinfo", "itemslist", "shared", "ragdolls",
+                                                                                "deathstats", "deathinfo", "itemslist", "shared", "ragdolls", "corpses",
                                                                                 // the join's status reads: a joiner still connecting has no session policy yet
                                                                                 // (DeveloperAccess: denied until Ready), and tests poll these while it joins
                                                                                 "session" };
@@ -895,6 +895,8 @@ namespace TLDRevamp
                         // The game's own Death, called again for a death that already happened: the duplicate path.
                         case "deathagain": return Net.Entities.DeathAgain();
                         case "deathinfo": return Net.Entities.DeathInfo();
+                        case "corpses": return Net.Entities.CorpseList();
+                        case "outfit": return Net.Entities.OutfitTest(ma.Length > 1 && ma[1] == "random");
                         case "shared": return Net.Entities.SharedList(ma.Length > 1 ? ma[1] : "");
                         case "ragdolls": return Net.Entities.RagdollPrefabs();
                         case "grips": return Net.Entities.GripPrefabs();

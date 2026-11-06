@@ -579,6 +579,14 @@ and yaw there, before `Death2` creates and launches the ragdoll and before the d
 under the corpse. The corpse itself is shared through the ordinary item lifecycle only after `Death` completes, so the
 existing limb transport carries its fall and final rest pose.
 
+The corpse stays, as the game leaves it in single player: after the respawn and after the session it is a shared object
+like any other body (it can be picked up by a limb, it streams, late joiners get it, the host keeps it in its world).
+It wears its player's outfit: the game's `SpawnRagdol` copies the player's outfit onto it, and its record carries the
+outfit (`save_outfit`), so every copy is dressed the same. A corpse loaded from a record is drawn whole: the game's
+outfit load gives it the first-person cut (`_Dist`) meant only for the local player's own model, and the mod undoes it
+(`Entities.CorpseWhole`). `Entities.DeathCorpseStays` off is the old behaviour (the respawn removed the corpse on every
+machine). `tools/corpses.py` checks both.
+
 A pocket handed back to a returning joiner stays with the host until the joiner's record names what came back. A joiner whose game stops while loading, or who can't spawn an item, gets it again at the next join; it can't be lost in between (`PlayerSave.RestoreConfirmed`). The cost: a joiner whose game stops in the moment between spawning its items and sending that record gets them twice.
 
 The per-player record is not a periodic stream during a death. The death sends exactly one record, at the recorded
