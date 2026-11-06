@@ -140,6 +140,19 @@ namespace TLDRevamp.Fixes
             return count;
         }
 
+        /// Whether the whole box (min/max x and z) lies strictly between the two radii around (cx, cz): then every
+        /// segment inside it is outside the near disc and inside the far one, and ClipToRing returns it unclipped.
+        internal static bool BoxInRing(double minX, double minZ, double maxX, double maxZ, double cx, double cz,
+                                       double nearRadius, double farRadius)
+        {
+            if (!Finite(minX) || !Finite(minZ) || !Finite(maxX) || !Finite(maxZ) || !Finite(cx) || !Finite(cz)) return false;
+            if (minX > maxX || minZ > maxZ || nearRadius < 0 || farRadius <= nearRadius) return false;
+            double nx = Math.Max(minX, Math.Min(cx, maxX)) - cx, nz = Math.Max(minZ, Math.Min(cz, maxZ)) - cz;   // the nearest point
+            if (!(nx * nx + nz * nz > nearRadius * nearRadius)) return false;
+            double fx = Math.Max(Math.Abs(minX - cx), Math.Abs(maxX - cx)), fz = Math.Max(Math.Abs(minZ - cz), Math.Abs(maxZ - cz));   // the farthest corner
+            return fx * fx + fz * fz < farRadius * farRadius;
+        }
+
         /// The same clipping, for a caller that wants at most one piece (the longest one).
         internal static bool ClipToRing(Point a, Point b, double cx, double cz,
                                         double nearRadius, double farRadius, out Segment outSeg)

@@ -43,6 +43,15 @@ namespace TLDRevamp.Fixes
         /// replaces stay on screen until their road is done; a road whose strips came out the same is not uploaded again.
         public static bool SpreadRebuild = true;   // A/B: false = the whole rebuild in one frame (before v0.69.2)
         internal static double StepBudgetMs = 2.0;
+        /// One mesh per road type and map cell (CellM square), instead of one per road type for the whole view. A
+        /// rebuild then only redoes the cells that can come out different: a cell whose roads all lie inside the ring,
+        /// as they did when its mesh was built, gives exactly the same strips (ClipToRing hands an unclipped segment back
+        /// unchanged), so its mesh is kept. Before, every 35 m driven redid every road in the view: 55-80 ms of work at a
+        /// 25 km view distance (FrameProbe ddprof6, 2026-11-05), and the per-type meshes reached their vertex cap there, so
+        /// roads went missing. Cells behind the player are also culled by the camera.
+        public static bool CellBatches = true;   // A/B: false = one mesh per road type, every road redone each rebuild
+        internal const double CellM = 3000;
+        internal static long CellsReused, CellsRebuilt;
         /// How far the ribbon sits above the road it is drawn on, in metres.
         ///
         /// The road mesh of the game is drawn on the ground; a ribbon that is lifted above it
@@ -91,8 +100,8 @@ namespace TLDRevamp.Fixes
         private static int _signatureFrame = -1;
         private static int _signatureValue;
         private static Transform _parent;
-        private static readonly Dictionary<int, Batch> Batches = new Dictionary<int, Batch>();
-        private static readonly List<int> Stale = new List<int>();
+        private static readonly Dictionary<long, Batch> Batches = new Dictionary<long, Batch>();
+        private static readonly List<long> Stale = new List<long>();
         private static readonly Dictionary<int, Material> Materials = new Dictionary<int, Material>();
         /// The fallback materials this fix created. The road prefab's own material is a shared game
         /// asset: it must never be destroyed here, only the ones we made ourselves.
@@ -108,6 +117,9 @@ namespace TLDRevamp.Fixes
             /// The strips on screen, and the ones the rebuild in progress writes (swapped in by Upload).
             public TerrainHorizonGeometry.Batch Data, Next;
             public bool Capped;
+            /// What Data was built from: its cell's roads, whether they all lay inside the ring then, and the world's
+            /// origin and the ribbon root's position (the local vertices depend on both).
+            public CellSig Built; public bool BuiltFull; public Vector3 BuiltOrigin, BuiltParent;
             public Vector3[] Vertices = new Vector3[0];
             public Vector2[] Uvs = new Vector2[0];
             public Batch(int id) { Data = new TerrainHorizonGeometry.Batch(id, MaxBatchVertices); Next = new TerrainHorizonGeometry.Batch(id, MaxBatchVertices); }
@@ -237,12 +249,67 @@ namespace TLDRevamp.Fixes
         private sealed class Job
         {
             public Vector3d At; public int Signature; public float Limit; public double NearCut;
+            public Vector3 Origin, ParentAt;
             public readonly List<roadGenScript.roadClass> Roads = new List<roadGenScript.roadClass>();
-            public readonly HashSet<int> Used = new HashSet<int>();
-            public readonly List<int> ToUpload = new List<int>();
-            public int Road, Element, Upload, Frames;
+            /// The road elements in range by mesh (road type and cell), and the meshes this rebuild redoes.
+            public readonly Dictionary<long, Cell> Cells = new Dictionary<long, Cell>();
+            public readonly List<long> ToBuild = new List<long>();
+            public readonly HashSet<long> Used = new HashSet<long>();
+            public readonly List<long> ToUpload = new List<long>();
+            public int Cell, Element, Upload, Frames;
             public bool Uploading;
             public double Work, StepMax;
+        }
+
+        /// The road elements that go into one mesh, and what identifies them: the same elements with the same bones
+        /// give the same strips (the bounds are exact doubles; the element identities are summed, so their order does
+        /// not matter). Points hashes every bone's x, y and z and the road's type (its width): a bone moved in place,
+        /// even only in height and inside the bounds, makes the mesh be redone.
+        internal struct CellSig
+        {
+            public int Count, Bones; public long Ids, Points; public double MinX, MinZ, MaxX, MaxZ;
+            public bool Same(CellSig o) => Count == o.Count && Bones == o.Bones && Ids == o.Ids && Points == o.Points && MinX == o.MinX && MinZ == o.MinZ && MaxX == o.MaxX && MaxZ == o.MaxZ;
+        }
+
+        private sealed class Cell
+        {
+            public bool Full;
+            public CellSig Sig = new CellSig { MinX = double.MaxValue, MinZ = double.MaxValue, MaxX = double.MinValue, MaxZ = double.MinValue };
+            public readonly List<roadGenScript.roadClass> Roads = new List<roadGenScript.roadClass>();
+            public readonly List<roadGenScript.roadElementClass> Elements = new List<roadGenScript.roadElementClass>();
+            public void Add(roadGenScript.roadClass road, roadGenScript.roadElementClass element)
+            {
+                Roads.Add(road); Elements.Add(element);
+                Sig.Count++; Sig.Bones += element.bonePos.Count;
+                unchecked { Sig.Ids += (long)((ulong)(uint)System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(element) * 0x9E3779B97F4A7C15UL); }
+                ulong h = 14695981039346656037UL ^ (ulong)(int)road.roadType;   // in order along the element
+                foreach (var b in element.bonePos)
+                {
+                    if (b.x < Sig.MinX) Sig.MinX = b.x;
+                    if (b.x > Sig.MaxX) Sig.MaxX = b.x;
+                    if (b.z < Sig.MinZ) Sig.MinZ = b.z;
+                    if (b.z > Sig.MaxZ) Sig.MaxZ = b.z;
+                    h = Mix(Mix(Mix(h, b.x), b.y), b.z);
+                }
+                unchecked { Sig.Points += (long)Mix(h, element.bonePos.Count); }
+            }
+
+            private static ulong Mix(ulong h, double v) => Mix(h, BitConverter.DoubleToInt64Bits(v));
+            private static ulong Mix(ulong h, long v)
+            {
+                unchecked { h ^= (ulong)v; h *= 0x100000001B3UL; h ^= h >> 29; h *= 0x9E3779B97F4A7C15UL; return h ^ (h >> 32); }
+            }
+        }
+
+        /// Bit-for-bit equal (Unity's == allows a small difference; a kept mesh needs the very same local space).
+        private static bool Exact(Vector3 a, Vector3 b) => a.x == b.x && a.y == b.y && a.z == b.z;
+
+        /// The mesh a road element goes into: its road type, and with CellBatches the map cell of its first bone.
+        private static long BatchKey(int roadID, Vector3d first)
+        {
+            if (!CellBatches) return roadID;
+            long cx = (long)Math.Floor(first.x / CellM), cz = (long)Math.Floor(first.z / CellM);
+            return ((long)roadID << 40) ^ ((cx & 0xFFFFF) << 20) ^ (cz & 0xFFFFF);
         }
         private static Job _job;
 
@@ -267,7 +334,6 @@ namespace TLDRevamp.Fixes
                     Batches.Clear();
                 }
                 var job = new Job { At = at, Signature = signature };
-                foreach (var b in Batches.Values) { b.Next.Reset(); b.Capped = false; }
                 var map = menuhandler.s != null ? menuhandler.s.currentMainMap : null;
                 job.Limit = Mathf.Clamp(settingsscript.s.S.FDrawDistance, MinDrawM, MaxDrawM);
                 job.NearCut = NearCutRadius();
@@ -290,6 +356,28 @@ namespace TLDRevamp.Fixes
                                 if (road != null && road.generated && road.roadElements != null && RoadInRange(road, at, job.Limit)) job.Roads.Add(road);
                         }
                     }
+                // by mesh: which elements go where, and whether a mesh's strips can come out different from the ones it has
+                job.Origin = mainscript.UnityPosFromGlobal(new Vector3d(0, 0, 0));
+                job.ParentAt = _parent.position;
+                foreach (var road in job.Roads)
+                    foreach (var element in road.roadElements)
+                    {
+                        if (element == null || element.bonePos == null || element.bonePos.Count < 2 || element.roadID <= 0) continue;
+                        long key = BatchKey(element.roadID, element.bonePos[0]);
+                        if (!job.Cells.TryGetValue(key, out var cell)) job.Cells[key] = cell = new Cell();
+                        cell.Add(road, element);
+                    }
+                foreach (var kv in job.Cells)
+                {
+                    var cell = kv.Value;
+                    // a metre's margin either side: inside it, ClipToRing hands every segment back whole
+                    cell.Full = TerrainHorizonGeometry.BoxInRing(cell.Sig.MinX, cell.Sig.MinZ, cell.Sig.MaxX, cell.Sig.MaxZ, at.x, at.z, job.NearCut + 1.0, job.Limit - 1.0);
+                    if (CellBatches && cell.Full && Batches.TryGetValue(kv.Key, out var kept) && kept.BuiltFull && kept.Built.Same(cell.Sig) &&
+                        Exact(kept.BuiltOrigin, job.Origin) && Exact(kept.BuiltParent, job.ParentAt) && kept.Mesh != null)
+                    { job.Used.Add(kv.Key); CellsReused++; continue; }
+                    job.ToBuild.Add(kv.Key); CellsRebuilt++;
+                    if (Batches.TryGetValue(kv.Key, out var redo)) { redo.Next.Reset(); redo.Capped = false; }
+                }
                 // the gate moves on now: the ribbons being built are for here
                 _builtUnityAt = mainscript.s.player.transform.position;
                 _hasBuilt = true;
@@ -320,29 +408,37 @@ namespace TLDRevamp.Fixes
                 long stripsAt = System.Diagnostics.Stopwatch.GetTimestamp();
                 while (!job.Uploading)
                 {
-                    if (job.Road >= job.Roads.Count)
+                    if (job.Cell >= job.ToBuild.Count)
                     {
-                        // every road done: the meshes, the batches this rebuild wrote and the ones it no longer needs
+                        // every mesh to redo done: those are the ones to upload (the kept ones are unchanged)
                         job.Uploading = true;
-                        job.ToUpload.AddRange(Batches.Keys);
+                        job.ToUpload.AddRange(job.ToBuild);
                         break;
                     }
-                    var road = job.Roads[job.Road];
-                    if (road == null || road.roadElements == null || job.Element >= road.roadElements.Count) { job.Road++; job.Element = 0; continue; }
-                    AddElement(road, road.roadElements[job.Element++], job.At, job.Used, job.NearCut);
+                    long key = job.ToBuild[job.Cell];
+                    var cell = job.Cells[key];
+                    if (job.Element >= cell.Elements.Count) { job.Cell++; job.Element = 0; continue; }
+                    int i = job.Element++;
+                    AddElement(cell.Roads[i], cell.Elements[i], key, job.At, job.Used, job.NearCut);
                     if (Ms(started) >= budget) break;
                 }
                 LastBuildMs += Ms(stripsAt);
                 long uploadAt = System.Diagnostics.Stopwatch.GetTimestamp();
                 for (int n = 0; job.Uploading && job.Upload < job.ToUpload.Count && (n == 0 || Ms(started) < budget); n++)   // at least one a frame
-                    if (Batches.TryGetValue(job.ToUpload[job.Upload++], out var b)) Upload(b);
+                {
+                    long key = job.ToUpload[job.Upload++];
+                    if (!Batches.TryGetValue(key, out var b)) continue;
+                    Upload(b);
+                    var cell = job.Cells[key];
+                    b.Built = cell.Sig; b.BuiltFull = cell.Full && !b.Capped; b.BuiltOrigin = job.Origin; b.BuiltParent = job.ParentAt;
+                }
                 if (job.Uploading && job.Upload >= job.ToUpload.Count)
                 {
                     // A road that is no longer drawn is removed completely, with its mesh: leaving the mesh
                     // behind leaked a native mesh every time a road went out of range.
                     Stale.Clear();
-                    foreach (int id in Batches.Keys) if (!job.Used.Contains(id)) Stale.Add(id);
-                    foreach (int id in Stale)
+                    foreach (long id in Batches.Keys) if (!job.Used.Contains(id)) Stale.Add(id);
+                    foreach (long id in Stale)
                     {
                         if (!Batches.TryGetValue(id, out var b)) continue;
                         if (b.Go != null) { b.Go.SetActive(false); b.Go.transform.SetParent(null); UnityEngine.Object.Destroy(b.Go); }
@@ -414,7 +510,7 @@ namespace TLDRevamp.Fixes
             return NearCutM;
         }
 
-        private static void AddElement(roadGenScript.roadClass road, roadGenScript.roadElementClass element, Vector3d at, HashSet<int> used, double nearCut)
+        private static void AddElement(roadGenScript.roadClass road, roadGenScript.roadElementClass element, long key, Vector3d at, HashSet<long> used, double nearCut)
         {
             float width = road.roadType == roadGenScript.roadTypeEmu.mainRoad ? 16f : road.roadType == roadGenScript.roadTypeEmu.sideRoad ? 12f : 10f;
             double halfWidth = width * 0.5;
@@ -447,11 +543,11 @@ namespace TLDRevamp.Fixes
                     var probe = new TerrainHorizonGeometry.Point(unityA.x, unityA.y, unityA.z);
                     var probe2 = new TerrainHorizonGeometry.Point(unityB.x, unityB.y, unityB.z);
                     if (!TerrainHorizonGeometry.StripAcceptable(probe, probe2, halfWidth, RibbonLiftM)) { StripsRejected++; continue; }
-                    var batch = EnsureBatch(element.roadID);
+                    var batch = EnsureBatch(key, element.roadID);
                     if (batch.Next.AddStrip(probe, probe2, halfWidth, RibbonLiftM))
                     {
                         StripsAdded++;
-                        used.Add(element.roadID);
+                        used.Add(key);
                     }
                     else
                     {
@@ -513,11 +609,11 @@ namespace TLDRevamp.Fixes
             return 0;
         }
 
-        private static Batch EnsureBatch(int roadID)
+        private static Batch EnsureBatch(long key, int roadID)
         {
-            if (Batches.TryGetValue(roadID, out var b)) return b;
+            if (Batches.TryGetValue(key, out var b)) return b;
             b = new Batch(roadID);
-            var go = new GameObject("road " + roadID);
+            var go = new GameObject("road " + roadID + (CellBatches ? " cell " + key.ToString("x") : ""));
             go.layer = DistantRoadLayer();
             go.transform.SetParent(_parent, false);
             var mf = go.AddComponent<MeshFilter>(); var mr = go.AddComponent<MeshRenderer>();
@@ -525,7 +621,7 @@ namespace TLDRevamp.Fixes
             mr.sharedMaterial = Material(roadID); mr.shadowCastingMode = ShadowCastingMode.Off; mr.receiveShadows = false;
             mr.lightProbeUsage = LightProbeUsage.Off; mr.reflectionProbeUsage = ReflectionProbeUsage.Off;
             b.Go = go; b.Mesh = mesh; b.Filter = mf; b.Renderer = mr;
-            Batches[roadID] = b;
+            Batches[key] = b;
             return b;
         }
 
@@ -917,7 +1013,8 @@ namespace TLDRevamp.Fixes
             ",\"lastBuildMs\":" + LastBuildMs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
             ",\"lastUploadMs\":" + LastUploadMs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
             ",\"maxRebuildMs\":" + MaxRebuildMs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
-            ",\"spread\":" + (SpreadRebuild ? "true" : "false") + ",\"lastRebuildFrames\":" + LastRebuildFrames +
+            ",\"spread\":" + (SpreadRebuild ? "true" : "false") + ",\"cellBatches\":" + (CellBatches ? "true" : "false") +
+            ",\"cellsReused\":" + CellsReused + ",\"cellsRebuilt\":" + CellsRebuilt + ",\"lastRebuildFrames\":" + LastRebuildFrames +
             ",\"lastStepMaxMs\":" + LastStepMaxMs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
             ",\"maxStepMs\":" + MaxStepMs.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) +
             ",\"uploads\":" + Uploads + ",\"uploadsSkipped\":" + UploadsSkipped + ",\"rebuildsDropped\":" + RebuildsDropped + ",\"building\":" + (_job != null ? "true" : "false") +
