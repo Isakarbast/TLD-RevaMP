@@ -21,8 +21,23 @@ namespace TLDRevamp.Net
         public static int HandPerTick = 16;
         public static long Handoffs, HandoffKeptCarried, HandoffLogged;
         public static bool HandoffKeepCarried = true;   // A/B: false = before v0.65.55 (invsync.py --carry)
+        /// A/B: an object mounted on another shared object (a rim bolted on a car, a thing glued on it) goes with what it's
+        /// on: CascadeOwner gives it the car's new owner. Handed off on its own, by where it was last seen, it went to
+        /// another player than the car's (playtest 2026-11-06: the client teleported with its car, the car was in a crash
+        /// lease and stayed theirs, and four rims and two things on it went to the host, whose game then stored the
+        /// client's wheels away and destroyed them). False = before.
+        public static bool HandoffKeepsMounted = true;
+        public static long HandoffKeptMounted;
         private static float _handAcc;
         private static readonly List<KeyValuePair<int, Vector3d>> _handPlayers = new List<KeyValuePair<int, Vector3d>>();
+
+        /// On another shared object: by the server's record of its attach, or (no record: the playtest's rims had none, the
+        /// lease that passed the car on didn't take them along) by the host's own copy, attached to another item.
+        private static bool Mounted(SEnt se)
+        {
+            if (se.AttachParent != 0 && Server.ContainsKey(se.AttachParent)) return true;
+            return ByNet.TryGetValue(se.NetId, out var e) && e.Root != null && e.Root.attachable != null && e.Root.attachable.attached && AttachedToItem(e.Root);
+        }
 
         private static void ServerHandoffTick(float dt)
         {
@@ -43,6 +58,7 @@ namespace TLDRevamp.Net
             foreach (var se in Server.Values)
             {
                 if (se.HitchCar != 0 || se.PartIndex >= 0 || se.CrashReturnTo >= 0) continue;                       // parts go with their car
+                if (HandoffKeepsMounted && Mounted(se)) { HandoffKeptMounted++; continue; }   // goes with what it's on
                 if (se.Driven && Time.realtimeSinceStartup - se.DrivenAt < 1f) continue;        // its driver keeps it
                 if (HandoffKeepCarried && (se.Held || se.Stored)) { HandoffKeptCarried++; continue; }   // in someone's hands or inventory: theirs, wherever it was last seen
                 if (WornSync && ServerWornNow(se)) { HandoffKeptCarried++; continue; }   // on its owner's head (Entities.Worn)

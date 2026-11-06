@@ -425,7 +425,7 @@ namespace TLDRevamp
         // them (a joiner must be able to ask what the policy is, and the tests read the state through them).
         private static readonly System.Collections.Generic.HashSet<string> _readCmds = new System.Collections.Generic.HashSet<string> { "get", "gpos", "ground", "tpalanding", "errors", "ping", "status", "roadpoint", "seatraw", "items", "telemetry", "genbacklog", "devaccess", "vr", "terrainhorizon", "terrainhorizonstats",
                                                                                 "ragdolls", "worldcheck" };
-        private static readonly System.Collections.Generic.HashSet<string> _readMp = new System.Collections.Generic.HashSet<string> { "entities", "status", "players", "breakables", "carparts", "physical", "sitestate", "farrec", "caps", "ownerlog",
+        private static readonly System.Collections.Generic.HashSet<string> _readMp = new System.Collections.Generic.HashSet<string> { "entities", "status", "copyjoints", "players", "breakables", "carparts", "physical", "sitestate", "farrec", "caps", "ownerlog",
                                                                                 "attachedparts", "carslots", "pcs", "wheelpose", "physlocks", "ipdump", "attach", "anomalies", "recsize", "mods", "saverecords", "usables", "poiu", "poius",
                                                                                 // the death test's reads: these are `mp` commands (they sat in the top-level list, so a joiner was refused them)
                                                                                 "deathstats", "deathinfo", "itemslist", "shared", "ragdolls", "corpses",
@@ -941,6 +941,7 @@ namespace TLDRevamp
                         case "repairrows": { Net.Entities.TryRows(uint.Parse(ma[1]), out var rr); return rr; }
                         case "censusnow": return Net.Entities.CensusNow(uint.Parse(ma[1]));
                         case "places": return Net.Entities.PlacesJson();
+                        case "copyjoints": return Net.Entities.CopyJointsJson();
                         case "trail": return ObjectTrail.Rows(uint.Parse(ma[1], mic));
                         case "handcopy": return Net.Entities.TestHandCopy(uint.Parse(ma[1]));
                         case "losecopy": return Net.Entities.TestLoseCopy(uint.Parse(ma[1]));
@@ -1104,6 +1105,7 @@ namespace TLDRevamp
                 case "shot": return CaptureLocalShot(arg);
                 case "nudge": return DriveLab.Nudge(arg.Length > 0 ? float.Parse(arg, System.Globalization.CultureInfo.InvariantCulture) : 12f);
                 case "fuelup": return DriveLab.FuelUp();
+                case "handlayers": return Fixes.HandLayersAfterVr.Json();
                 case "poiretype": { var pr = arg.Split(' '); return PoiRetype(pr[0], int.Parse(pr[1])); }
                 case "poihide": return PoiHide(arg.Trim());
                 case "poialign": return Diagnostics.PoiAlignLog.Query(arg);

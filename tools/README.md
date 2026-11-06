@@ -368,6 +368,14 @@ synthetic headers; tests also create report zips and corrupt inputs in temporary
 - `tools/corpses.py` (two players): players' corpses stay after the respawn, wear their player's outfit on every
   machine, are drawn whole and solid, follow whoever grabs them, and come back for a player who joins again
   (`--old`: the switches off, the corpse goes at the respawn as before).
+- `tools/copyjoint.py` (two players): a thing glued on with a joint of its own (Attachable07) on one player's car
+  doesn't hold the other machine's copy of that car, nor the other player's car it is glued on (`--old`: the joints
+  stay locked on copies, as before).
+- `tools/trunkcontents.py` (two players, `TLD_PLAYSAVE_DIR` = a save with things in a car's trunk, e.g. a bug bundle's
+  `world/start`): stored things are objects of their own, and one the joiner takes out leaves the trunk on the host too
+  (`--old`: members of the car's group, as before).
+- `tools/handlayer.py` (two players, the host's game): a lamp in the right hand stays on the hand's layer after the
+  game's VR switch (`mainscript.SetVR(false)`, the settings refresh); `--drive` then drives the car past 65 km/h.
 - `tools/cinematic.py check` drives the cinematic camera (issue #36) through the bridge and proves, from the game's
   own values, that the gameplay cameras and the player did not move while the camera was on, that the speed, the
   field of view and the orbit radius are clamped, and that the cursor is given back. `cinematic.py shot <file>` loads

@@ -83,9 +83,11 @@ namespace TLDRevamp.Net
                 if (mine != null && mine.RB != null && !mine.RB.isKinematic && !IsProxy(mine) && !_localCars.Contains(mine)) _localCars.Add(mine);
                 CarCargoTick();
                 RefreshOwnCars();
+                RefreshJointed();
                 foreach (var car in _ownCars) ClaimContents(car, false);
             }
             ColliderLodTick();
+            CopyJointTick();
             LinkedDelayTick();
             TowTick(dt);
             CargoNearTick(dt);   // before the copies move this step: claimed before they touch

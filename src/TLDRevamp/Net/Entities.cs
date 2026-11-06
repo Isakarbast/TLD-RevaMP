@@ -285,6 +285,7 @@ namespace TLDRevamp.Net
             if (PendingShare.ContainsKey(root.idInSave)) return "{\"pending\":true}";
             RabbitBeforeShare(root);
             var items = group ?? ItemSnapshot.Group(root);
+            var contents = StoredContentsApart ? StoredContents(root, items) : null;
             var perItem = new List<itemDataClass>();
             var cap = ItemSnapshot.CaptureGroup(items, perItem);
             // one record per member, or the copies' indices drift from ours (parts go by index): a member the game
@@ -309,7 +310,36 @@ namespace TLDRevamp.Net
             W.Reset(); W.U8(Share); W.U32(root.idInSave); W.VarU32((uint)rec.Length); W.Bytes(rec, 0, rec.Length);
             WriteShareWorn(W, root);   // [u8 slot, pose]: already on the local player's head (Entities.Worn)
             ToServer(W, true);
+            if (contents != null) foreach (var c in contents) { ShareItem(c, null); StoredContentsShared++; }
             return "{\"shared\":true,\"items\":" + items.Count + ",\"bytes\":" + rec.Length + "}";
+        }
+
+        /// A/B: what lies stored in a container of the object (a car's trunk, a crate: physics-locked, loose) is shared as
+        /// an object of its own, stored there, as everything stored after the car was shared already is. As a member of
+        /// the car's group it had no way to leave it: no pose of its own, the census sees a loose member only as "off",
+        /// and another player picking it up claimed the whole car (no object of its own to claim) or, with someone in
+        /// the car, nothing. Playtest 2026-11-06 ("things from my trunk are STILL desynced, they don't appear for me when
+        /// they take it from my trunk"): the host's Car06P held three such members from the session's start. False = before.
+        public static bool StoredContentsApart = true;
+        public static long StoredContentsShared;
+
+        /// Takes the stored contents (and what is on or in them) out of `items`; returns them, the outermost ones only.
+        private static List<tosaveitemscript> StoredContents(tosaveitemscript root, List<tosaveitemscript> items)
+        {
+            List<tosaveitemscript> outer = null;
+            foreach (var it in items)
+            {
+                if (it == null || it == root || it.P == null || it.P.physlock == null) continue;
+                if (it.attachable != null && it.attachable.attached) continue;
+                (outer ?? (outer = new List<tosaveitemscript>())).Add(it);
+            }
+            if (outer == null) return null;
+            // stored inside another stored thing (cans in a crate in the trunk): they go with that one's own share
+            outer.RemoveAll(c => outer.Exists(o => o != c && c.transform.IsChildOf(o.transform)));
+            var gone = new HashSet<tosaveitemscript>();
+            foreach (var c in outer) foreach (var m in ItemSnapshot.Group(c)) gone.Add(m);
+            items.RemoveAll(m => m != root && (gone.Contains(m) || outer.Exists(c => m != null && m.transform.IsChildOf(c.transform))));
+            return outer;
         }
 
         private static void ToServer(NetWriter w, bool reliable)

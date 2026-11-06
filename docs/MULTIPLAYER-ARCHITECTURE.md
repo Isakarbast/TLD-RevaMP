@@ -118,6 +118,12 @@ placed from the measured direction, snapped to the real road.
   which aren't children of the car) and `carscript.DamageStuff` / `attachablescript.FallOFf` / `Detach` skipped on
   copies. Before: parts flew off the watcher's copy while driving (the vanilla MP symptom: teleported car → collision
   spikes → the game's crash roll). After: 34/34 parts stay on; 11,163 crash calls suppressed in one drive.
+- A thing glued on with a body of its own (the game's ball joint, `parentAtAttach` off) that is a shared object of
+  its own is a copy on the other machines: kinematic, on a locked joint to the car it's on. A kinematic body on a
+  locked joint holds the other body where it was put last frame, so it held a car simulated there (a physical copy, or
+  a car that player drives) in place: the 2026-11-06 playtest's roof item kept the host's copy of the client's car
+  5–16 m off it. While the copy is kinematic and the car isn't, its joint's position is free (`Entities.CopyJoints`,
+  switch `CopyJointsFree`, `mp copyjoints`, `tools/copyjoint.py`); the game still puts the thing on its spot every frame.
 - Parts that come off on the owner (crash or wrench, `attachablescript.Detach`) are reported by index in the record
   group; the server gives the part its own network id; everyone detaches the same part through the game's `Detach`
   and shows it from the owner's stream; later joiners get the car + the same detaches. Crash scenario (head-on into a
@@ -313,6 +319,14 @@ items spawned differently, "black shiny cars without anything on them".
   cross-item relations (physLocks: items locked on a pallet / in a car reference each other's ids) and rope segment
   positions — so snapshots go out as **groups** (an item + everything locked/attached to it), which our shared-id rule
   makes work unchanged.
+- **Stored contents are their own objects** (2026-11-06, `Entities.StoredContentsApart`, `tools/trunkcontents.py`):
+  what lies stored in a container of the object when it is shared (a car's trunk, physics-locked, not attached) is
+  taken out of its group and shared as an object of its own, stored there, as everything stored after the share
+  already was. As a group member it had no way out: no pose of its own, and another player picking it up claimed the
+  whole car instead (or nothing, with someone in it); the playtest's host saw things taken from the trunk never leave.
+- **Mounted objects go with what they're on** (`Entities.HandoffKeepsMounted`): the distance hand-off skips an object
+  attached to another shared object; `CascadeOwner` gives it the new owner of what it's on. Handed off by where it was
+  last seen, the client's rims went to the host while the client's car (in a crash lease) stayed the client's.
 - **RecordCodec** instead of JSON/BinaryFormatter: JsonUtility isn't round-trip exact for doubles (printed
   −947.0699462890625 as …0624); BinaryFormatter from the network can run a peer's code. RecordCodec walks the same
   fields BinaryFormatter saves, doubles as raw bits, types only from the local structure; schema hash of the field graph
