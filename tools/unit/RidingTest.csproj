@@ -9,6 +9,7 @@
     <Compile Include="../../src/TLDRevamp/Net/BandwidthRules.cs" />
     <Compile Include="../../src/TLDRevamp/Net/NetBuffer.cs" />
     <Compile Include="HandItemPoseTest.cs" />
+    <Compile Include="PoseDelayTest.cs" />
     <Compile Include="../../src/TLDRevamp/Net/HandItemPose.cs" />
   </ItemGroup>
 </Project>

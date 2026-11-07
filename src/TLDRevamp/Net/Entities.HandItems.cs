@@ -24,7 +24,12 @@ namespace TLDRevamp.Net
             return Finite(lp) && Finite(lq) && Mathf.Abs(lp.x) <= 2f && Mathf.Abs(lp.y) <= 2f && Mathf.Abs(lp.z) <= 2f;
         }
 
-        private static Transform ItemHand(Ent e) => e.Proxy && e.HandPose && e.HandEpoch == e.Epoch && e.HandOwner == e.OwnerId &&
+        /// A/B: the owner's state rate for an item in its player's hands and for FastAfterReleaseS after letting go
+        /// (Protocol.StateHz or less = off, before 0.69.2).
+        public static float HeldStateHz = 50f, FastAfterReleaseS = 1.5f;   // 50 = once per physics step (fixedDeltaTime 0.02): 40 Hz gave uneven 20-60 ms gaps
+        public static bool HandItemDraw = true;
+        public static float HandItemPullM = .08f, HandItemPullDeg = 10f;   // A/B: HandItemPullM < 0 = shown at the hand alone (before 0.69.2)   // A/B: false = a held copy is shown by its world interpolation only
+        private static Transform ItemHand(Ent e) => HandItemDraw && e.Proxy && e.HandPose && e.HandEpoch == e.Epoch && e.HandOwner == e.OwnerId &&
             e.Held && !e.Stored && !e.PoseLocked && e.WornBy < 0 ? RemotePlayers.ItemHand(e.OwnerId) : null;
 
         // The ordinary transform/body movers yield until the release glide ends. Never put a hand pose into Ip:
@@ -69,6 +74,15 @@ namespace TLDRevamp.Net
                     SampleHandOffset(e, now, out var lp, out var lq);
                     HandItemPose.World(hand, lp, lq, out var world, out rot);
                     pos = mainscript.GlobalFromUnityPos(world);
+                    // The hand plays back on the pose stream, later than the grip offset arrives: mid-swing the new offset
+                    // went onto an old hand and a barrel showed up to 0.83 m from its owner's pose (2026-11-07, swing.py;
+                    // the world interpolation alone: 0.13 m). Shown where the interpolation says, pulled at most
+                    // HandItemPullM / HandItemPullDeg towards the hand: in the hand at rest, never far off while moving.
+                    if (HandItemPullM >= 0f && e.Ip != null && e.Ip.Ready && !WornRides(e))
+                    {
+                        EvalShown(e, Time.realtimeSinceStartupAsDouble, Time.deltaTime, out var ipPos, out var ipRot);
+                        HandItemPose.Pull(ipPos, ipRot, pos, rot, HandItemPullM, HandItemPullDeg, out pos, out rot);
+                    }
                 }
                 else if (e.Ip != null && e.Ip.Ready && !WornRides(e))
                     EvalShown(e, Time.realtimeSinceStartupAsDouble, Time.deltaTime, out pos, out rot);

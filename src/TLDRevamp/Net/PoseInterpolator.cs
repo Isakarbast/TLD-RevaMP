@@ -48,6 +48,28 @@ namespace TLDRevamp.Net
         /// (playtest 2026-10-09: cars desynced when players met again; "copy sweep stopped: 110, 93, 79, 67, 57 m").
         /// Now a display idle longer than IdleS starts anew at the next Evaluate, and an offset bigger than MaxBlendM is
         /// a jump (snap) — blending only hides small corrections.
+        /// A/B: false = every gap up to 0.5 s counts as the send interval (before 0.69.2), also a nearly still object's.
+        public static bool GapsMovingOnly = true;
+        public static float MovingGapSpeed = 0.25f;
+        /// A/B: false = a pause before an object moves again counts as the send interval (before 0.69.2).
+        public static bool IgnorePauses = true;
+        public static float PauseGapFactor = 2f;
+        /// A/B: false = the longest recent gap is the interval and the delay falls 2 % of an interval per state (before 0.69.2).
+        public static bool TypicalInterval = true;
+        public static float MinInterval = 0.01f, RecoverShare = 0.15f;
+        /// Let go (CatchUp): the display runs up to CatchUpRate x real time until it is back at its own delay behind the
+        /// newest state, at most CatchUpS. Before, the last ~0.1-0.4 s of it hanging in the hand were played back first.
+        public static bool CatchUpOnRelease = true;
+        public static float CatchUpRate = 4f, CatchUpS = 0.4f;
+        private float _target;
+        private double _catchUntil = double.NegativeInfinity;
+        /// Let go: stop replaying the held part. The delay drops to what the stream needs now, and the display catches up.
+        public void CatchUp(double now)
+        {
+            if (!CatchUpOnRelease || _target <= 0f) return;
+            if (_delay > _target) _delay = _target;
+            _catchUntil = now + CatchUpS;
+        }
         public static bool FreshAfterIdle = true;   // A/B: false = before v0.66.2
         public static float IdleS = 0.5f, MaxBlendM = 25f;
         public static long IdleRestarts, BigCorrSnaps;
@@ -67,6 +89,7 @@ namespace TLDRevamp.Net
         // the display has to run that far behind, or it extrapolates most of the time and corrects at every state
         private readonly float[] _gaps = new float[8];
         private int _gapN;
+        private readonly float[] _sorted = new float[8];
         public float Interval { get; private set; } = 1f / Protocol.StateHz;
         private readonly List<double> _tmp = new List<double>(64);
         private double _base = double.MaxValue;
@@ -169,12 +192,39 @@ namespace TLDRevamp.Net
             }
             if (_buf.Count > 0)
             {
-                // gaps of a moving stream only: a car at rest sends nothing, its first state after is no "interval"
-                float gap = (float)(s.T - _buf[_buf.Count - 1].T);
-                if (gap <= 0.5f) { _gaps[_gapN++ % _gaps.Length] = gap; }
-                float mx = SendInterval;
-                for (int i = 0; i < Math.Min(_gapN, _gaps.Length); i++) if (_gaps[i] > mx) mx = _gaps[i];
-                Interval = mx;
+                // gaps of a moving stream only: a car at rest sends nothing, its first state after is no "interval". Nor is
+                // the gap of an object that hardly moved: the owner sends a state only once it moved 1 cm / 0.3 degrees, so
+                // a held item kept nearly still sent every 0.2-0.5 s. Counted as the send interval, those gaps put the copy
+                // up to ~0.5 s behind, and the delay comes down only 1 ms per state: a barrel let go after being held
+                // still fell 0.2-0.5 s after its owner's (2026-11-07). Counted only when it moved MovingGapSpeed or faster
+                // over the gap (by its sent velocity or the distance covered): a far car thinned to 4 Hz still is.
+                var prev = _buf[_buf.Count - 1];
+                float gap = (float)(s.T - prev.T);
+                bool moved = !GapsMovingOnly || gap <= 0f ||
+                             Math.Max(prev.Vel.sqrMagnitude, s.Vel.sqrMagnitude) >= MovingGapSpeed * MovingGapSpeed ||
+                             (s.Pos - prev.Pos).sqrMagnitude >= (double)MovingGapSpeed * MovingGapSpeed * gap * gap;
+                if (gap <= 0.5f && moved) { _gaps[_gapN++ % _gaps.Length] = gap; }
+                // A pause is no send interval either: an object still for a moment sends nothing, and the first state when it
+                // moves again comes 0.1-0.5 s after the one before. As the longest recent gap, that pause became the
+                // delay at once (a held barrel lifted in steps: 330-390 ms with 40-60 ms between its states and 15 ms of
+                // jitter) and came back down at ~24 ms/s: let go, it fell ~0.35 s after its owner's. Gaps more than
+                // PauseGapFactor x the median recent gap are left out; a stream the server thins (a far car: 4 Hz) has
+                // that as its median and keeps it.
+                int n = Math.Min(_gapN, _gaps.Length);
+                float limit = float.MaxValue;
+                if (IgnorePauses && n >= 3)
+                {
+                    for (int i = 0; i < n; i++) _sorted[i] = _gaps[i];
+                    Array.Sort(_sorted, 0, n);
+                    limit = _sorted[n / 2] * PauseGapFactor;
+                }
+                float mx = TypicalInterval ? 0f : SendInterval, sum = 0f; int used = 0;
+                for (int i = 0; i < n; i++) if (_gaps[i] <= limit) { if (_gaps[i] > mx) mx = _gaps[i]; sum += _gaps[i]; used++; }
+                // the typical gap, not the longest: a 20 Hz sender at 63 FPS sends 40 and 60 ms apart in turn, and the
+                // longest put every copy 10 ms further back than needed (the jitter and margin cover the longer one). A
+                // stream the server thins unevenly (10 and 4 Hz) still gets most of its longest gap. A faster sender (a held
+                // item: HeldStateHz) gets its own, shorter interval.
+                Interval = TypicalInterval && used > 0 ? Math.Max(MinInterval, Math.Max(sum / used, 0.75f * mx)) : Math.Max(mx, SendInterval);
             }
             if (FreshAfterIdle && _hasClock && arrival - _lastEval > IdleS)
             {
@@ -209,8 +259,11 @@ namespace TLDRevamp.Net
             _tmp.Sort();
             JitterMs = _tmp.Count > 0 ? (float)(_tmp[Math.Min(_tmp.Count - 1, (int)(_tmp.Count * 0.95))] * 1000.0) : 0f;
             float target = Interval + JitterMs / 1000f + Margin;
+            _target = target;
             if (_delay < 0 || target > _delay) _delay = target;
-            else _delay = Mathf.MoveTowards(_delay, target, 0.02f * Interval);
+            // back down: a share of the excess per state, not 1 ms (a bump took ~5 s to wear off: a barrel let go 2 s after
+            // being lifted was still shown 150 ms behind instead of 90). The display clock still eases there within ±RateRange.
+            else _delay = Mathf.MoveTowards(_delay, target, Math.Max(0.02f * Interval, (_delay - target) * RecoverShare));
         }
 
         /// The display continues from `shown` (a physical copy handing back to the display): the difference to the curve
@@ -229,6 +282,12 @@ namespace TLDRevamp.Net
             _lastEval = now;
             double target = now - _base - _delay - Hold;
             if (!_hasClock || Math.Abs(target - _renderT) > 1.0) { _renderT = target; _smoothErr = 0; _hasClock = true; }
+            else if (now < _catchUntil && target - _renderT > 0.003)
+            {
+                // let go: run fast to the target, then normal steering again
+                _renderT += dt + Math.Max(0.0, Math.Min(target - _renderT - dt, dt * (CatchUpRate - 1f)));
+                _smoothErr = 0;
+            }
             else
             {
                 // gentle steering: the error is low-passed (single packets move the target) and the rate stays within

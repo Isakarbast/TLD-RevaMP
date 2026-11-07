@@ -143,6 +143,15 @@ real Steam persona registration and the whole-game cost; offline tests do not ru
 Bridge `mp itemcheck` records `itemcheck-drop` if the game releases its requested hold: `value` is the
 pickup-to-target gap in metres, `dx` is the game's effective drop distance and `count` is 1 when `pickupUp`
 was set. It contains no object labels or input text. An explicit helper `release` does not record this event.
+`mp itemcheck <net> grab` picks the item up where it lies, at the point of its collider nearest the camera (as a
+player grabs it), instead of moving it to the hand at its centre.
+
+Held-item lag tests (two games on one PC): `mp fakeinput <mmb> <rmb> <lookX> <lookY> <scroll> <seconds>` gives the
+game that mouse input for a while (turn the camera, rotate or move a held item); `mp track <net> <seconds>` records
+the item's shown position every frame with the wall clock, `mp track get` returns it, so both machines' records line
+up in time; `mp myhands` is the local player's hand targets in its body frame; `mp hands` also has each remote body's
+facing and its right-hand target in that frame; `mp interp <net>` is a copy's display delay, jitter, interval and
+recent gaps.
 
 ## Clock
 

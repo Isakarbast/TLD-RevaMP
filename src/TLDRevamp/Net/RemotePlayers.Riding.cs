@@ -169,7 +169,10 @@ namespace TLDRevamp.Net
                     ",\"lgrip\":" + (car != null ? T(car.LHDrivePos) : "null") + ",\"rgrip\":" + (car != null ? T(car.RHDrivePos) : "null") +
                     ",\"body\":" + (rp.Go != null ? V(rp.Go.transform.position) : "null") + ",\"handTargets\":[" + Json.Str(Id(rp.HandId[0])) + "," + Json.Str(Id(rp.HandId[1])) + "]" +
                     ",\"heldItems\":" + Entities.HandItemsJson(rp.Id, a != null ? a.RHTarget : null) +
-                    ",\"shownFrame\":" + rp.RidingShownFrame + ",\"frame\":" + Time.frameCount + "}");
+                    ",\"tYaw\":" + (a != null ? (a.T != null ? a.T : a.transform).eulerAngles.y.ToString("F2", ic) : "null") +
+                    ",\"goYaw\":" + (rp.Go != null ? rp.Go.transform.eulerAngles.y.ToString("F2", ic) : "null") +
+                    ",\"rhLocal\":" + (a != null ? V((a.T != null ? a.T : a.transform).InverseTransformPoint(a.RHTarget.position)) : "null") +
+                    ",\"poseQ\":" + rp.PoseQ.Count + ",\"shownFrame\":" + rp.RidingShownFrame + ",\"frame\":" + Time.frameCount + "}");
             }
             return "{\"players\":[" + string.Join(",", rows) + "]}";
         }

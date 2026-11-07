@@ -10,6 +10,14 @@ namespace TLDRevamp.Net
         { lp = hand.InverseTransformPoint(pos); lq = Quaternion.Inverse(hand.rotation) * rot; }
         internal static void World(Transform hand, Vector3 lp, Quaternion lq, out Vector3 pos, out Quaternion rot)
         { pos = hand.TransformPoint(lp); rot = hand.rotation * lq; }
+        /// From the interpolated pose towards the hand pose, by at most maxM metres and maxDeg degrees.
+        internal static void Pull(Vector3d from, Quaternion fromRot, Vector3d to, Quaternion toRot, float maxM, float maxDeg, out Vector3d pos, out Quaternion rot)
+        {
+            var d = to - from; double m = Math.Sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+            pos = m <= maxM || m <= 0 ? to : from + d * (maxM / m);
+            float a = Quaternion.Angle(fromRot, toRot);
+            rot = a <= maxDeg ? toRot : Quaternion.Slerp(fromRot, toRot, maxDeg / a);
+        }
     }
 
     /// Preserve the last drawn pose on a source switch, then remove its error against the moving destination.

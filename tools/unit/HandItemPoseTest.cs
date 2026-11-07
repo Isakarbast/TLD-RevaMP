@@ -19,6 +19,15 @@ static class HandItemPoseTest
             check((world - hand.TransformPoint(lp)).magnitude < .00001f && Quaternion.Angle(facing, hand.rotation * lq) < .04f,
                 "newest unchanged grip follows moving final hand without another state");
         }
+        // held copy: shown at the interpolated pose, pulled at most 8 cm / 10 degrees towards the hand (hand plays back later)
+        var ip = new Vector3d(1000000, 2, 3); var ipQ = Quaternion.Euler(0, 30, 0);
+        HandItemPose.Pull(ip, ipQ, ip + new Vector3d(.05, 0, 0), Quaternion.Euler(0, 35, 0), .08f, 10f, out var near, out var nearQ);
+        check((near - (ip + new Vector3d(.05, 0, 0))).magnitude < 1e-9 && Quaternion.Angle(nearQ, Quaternion.Euler(0, 35, 0)) < .04f, "hand within the pull: shown in the hand");
+        HandItemPose.Pull(ip, ipQ, ip + new Vector3d(0, .6, .8), Quaternion.Euler(0, 90, 0), .08f, 10f, out var far, out var farQ);
+        check(Math.Abs((far - ip).magnitude - .08) < 1e-6 && Math.Abs(far.y - ip.y - .048) < 1e-6 && Math.Abs(Quaternion.Angle(ipQ, farQ) - 10f) < .05f,
+            "hand 1 m off mid-swing: 8 cm and 10 degrees towards it, not more");
+        HandItemPose.Pull(ip, ipQ, ip, ipQ, .08f, 10f, out var same, out _);
+        check((same - ip).magnitude < 1e-12, "hand on the interpolated pose: unchanged");
         var glide = new HandItemGlide();
         glide.Seed(new Vector3d(1000000, 2, 3), Quaternion.Euler(12, 25, 7));
         object first = new object(), second = new object();

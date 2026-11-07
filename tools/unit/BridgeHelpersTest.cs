@@ -36,6 +36,7 @@ namespace TLDRevamp.Net
         static void TelemetryTouch(uint net) { }
         static Transform[] Limbs(Ent e) => e.Root.ragdollPos?.childs;
         static bool Limp(Ent e) => true;
+        static bool GrabPoint(Ent e, out Vector3 at) { at = e.Root.transform.position; return true; }   // Entities.FakeInput.cs (game colliders)
         static bool IsHeld(BridgeFakes.Item it) => it.P == mainscript.s.player.pickedUp ||
             it.ragdollPos != null && Array.IndexOf(it.ragdollPos.ps, mainscript.s.player.pickedUp) >= 0;
         static bool IsStored(BridgeFakes.Item it) => false;

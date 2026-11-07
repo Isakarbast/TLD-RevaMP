@@ -77,6 +77,7 @@ namespace TLDRevamp.Net
             internal Vector3 HandPos, HandFrom, SentHandPos;
             internal Quaternion HandRot = Quaternion.identity, HandFromRot = Quaternion.identity, SentHandRot = Quaternion.identity;
             internal double HandSince;
+            internal double FastSendUntil;   // owner: sends at HeldStateHz until then (just let go)
             internal Vector3d HandWorld; internal Quaternion HandWorldRot = Quaternion.identity;
             internal readonly HandItemGlide HandDraw = new HandItemGlide();
             public int WornBy = -1, WornSlot = -1; public Vector3 WornLp; public Quaternion WornLq = Quaternion.identity;   // copy: on this player's head (Entities.Worn)
@@ -509,9 +510,12 @@ namespace TLDRevamp.Net
                     uint lockContainer = locked && lockFrame == 0 && lockPos.sqrMagnitude <= 1e4f ? WorldLockContainer(e) : 0;
                     bool lockChange = e.LockPose.Transition(locked, mount, lockFrame, e.Epoch) || lockContainer != e.SentLockContainer;
                     e.SendAcc += dt;
-                    if (!lockChange && e.SendAcc < 1f / Protocol.StateHz) continue;
-                    e.SendAcc = Mathf.Max(0f, e.SendAcc - 1f / Protocol.StateHz);
-                    if (e.SendAcc > 1f / Protocol.StateHz) e.SendAcc = 0;
+                    // held, or let go less than FastAfterReleaseS ago: HeldStateHz. The copies need about one send interval of
+                    // buffer to show it smoothly: at 20 Hz a held barrel was drawn ~90 ms behind and fell that late.
+                    float sendEvery = 1f / (HeldStateHz > Protocol.StateHz && (e.SentHeld || now < e.FastSendUntil) ? HeldStateHz : Protocol.StateHz);
+                    if (!lockChange && e.SendAcc < sendEvery) continue;
+                    e.SendAcc = Mathf.Max(0f, e.SendAcc - sendEvery);
+                    if (e.SendAcc > sendEvery) e.SendAcc = 0;
                     if (attachedRides && !lockChange && (!ClearHeldOnAttach || !(e.SentHeld || e.SentStored))) { StatesSkippedAttached++; continue; }
                     var rb = e.Root.GetComponent<Rigidbody>();
                     var t = RagdollFrame(e);
@@ -556,6 +560,7 @@ namespace TLDRevamp.Net
                     // Resume across release, ownership and unlock, including the sample before physics starts.
                     // Position/rotation above count even when the solver reports no velocity or sleeps.
                     ReleaseMotion(ref e.ReleaseMoving, released, held, stored, ref moving, first, unlocked);
+                    if (released && e.SentHeld) e.FastSendUntil = now + FastAfterReleaseS;
                     bool control = lockChange || wStored || wHeld || wHand || wSig || wSpray || wDriver;
                     WS.Reset(); WriteWheels(WS, e); WriteEngine(WS, e); WriteSignals(WS, e);
                     bool visual = BandwidthRules.CarVisualChanged(e.SentState, e.SentStateLength, WS.Buf, WS.Len);
@@ -1143,6 +1148,7 @@ namespace TLDRevamp.Net
                     e.LastVel = sv;   // the world velocity (a car-frame state's sample has the frame's own)
                     // loose only: a container's item riding a car it can't read the speed of sends its moves at 0 m/s
                     e.Ip?.Add(s, Time.realtimeSinceStartupAsDouble, CopyJumpSnaps && !ReadLockedState && e.CarriedBy == 0 && !held && !stored);
+                    if (letGo) e.Ip?.CatchUp(Time.realtimeSinceStartupAsDouble);   // the fall now, not after the held part
                     if (letGo) ClaimLetGoInCar(e, stored);   // let go in our car: ours from where it was let go, before the next physics step
                     TelemetryReceived(e, st, sp, sq, sv);
                     if (e.Root == null) UpdateFarRecord(e, sp, sq);   // records always use world space, including framed states

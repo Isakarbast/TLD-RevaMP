@@ -859,6 +859,9 @@ namespace TLDRevamp
                         case "detachpart": return Net.Entities.DetachPart(int.Parse(ma[1]), ma.Length > 2 ? uint.Parse(ma[2]) : 0);
                         case "telemetrydesync": return Net.Entities.TelemetryDesync(uint.Parse(ma[1]), int.Parse(ma[2]));
                         case "pickupnet": return Net.Entities.PickupNet(uint.Parse(ma[1]), ma.Length > 2 && ma[2] == "here");
+                        case "fakeinput": return Net.Entities.FakeInput(ma);
+                        case "track": return Net.Entities.Track(ma);
+                        case "myhands": return Net.Entities.MyHands();
                         case "itemcheck": return Net.Entities.ItemCheck(uint.Parse(ma[1]), ma.Length > 2 ? ma[2] : "");
                         case "wear": return Net.Entities.WearNet(uint.Parse(ma[1]));
                         case "takeoff": return Net.Entities.TakeOffNet(uint.Parse(ma[1]), ma.Length > 2 && ma[2] == "drop");

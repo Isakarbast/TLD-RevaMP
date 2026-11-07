@@ -56,7 +56,16 @@ namespace TLDRevamp.Net
             TelemetryTouch(net);
             var pl = mainscript.s.player;
             var limbs = Limbs(e);
-            if (action == "hold")
+            if (action == "grab")
+            {
+                // as a player grabs it: where it lies, at the point of its collider nearest the camera (not its centre)
+                var p = e.Root.P;
+                if (p == null || pl == null || !GrabPoint(e, out var at)) return "{\"error\":\"no pickupable or player\"}";
+                pl.Pickup(p, at);
+                _itemCheckHold = p; _itemCheckNet = net; _itemCheckDropGap = _itemCheckDropLimit = 0f;
+                ItemCheckHoldInput(inputscript.i);
+            }
+            else if (action == "hold")
             {
                 var p = e.Root.P;
                 if (limbs != null && Limp(e) && e.Root.ragdollPos.ps != null)
