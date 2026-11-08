@@ -308,6 +308,14 @@ namespace TLDRevamp.Net
             }
         }
 
+        /// A member that came off (its own object since: PartDetached) or rides one that did keeps its place in the car's
+        /// item list, and the LOD switched its colliders off with the car's. The playtest of 2026-11-06: the host's rear
+        /// wheel came off in a crash and lay in the sand, the host's own and simulated there; the host died, the car went
+        /// to the client, and the host respawned over 50 m from that car — the wheel fell through the desert floor in
+        /// front of the host. A/B: false = before (every member's colliders go with the car's).
+        public static bool LodKeepsPartsOff = true;
+        public static long LodPartsOffKept;
+
         private static void SetPartColliders(Ent e, bool on)
         {
             if (!on && e.PartCols == null)
@@ -318,6 +326,7 @@ namespace TLDRevamp.Net
                 {
                     var it = e.Items[i];
                     if (it == null || it == e.Root) continue;
+                    if (LodKeepsPartsOff && CameOff(e, i)) { LodPartsOffKept++; continue; }
                     foreach (var c in it.GetComponentsInChildren<Collider>(true)) if (c.enabled && !(c is WheelCollider)) e.PartCols.Add(c);
                 }
             }

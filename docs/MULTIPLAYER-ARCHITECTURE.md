@@ -327,6 +327,12 @@ items spawned differently, "black shiny cars without anything on them".
 - **Mounted objects go with what they're on** (`Entities.HandoffKeepsMounted`): the distance hand-off skips an object
   attached to another shared object; `CascadeOwner` gives it the new owner of what it's on. Handed off by where it was
   last seen, the client's rims went to the host while the client's car (in a crash lease) stayed the client's.
+- **A member that came off keeps its collisions** (2026-11-08, `Entities.LodKeepsPartsOff`, `tools/partlod.py`): it
+  stays in its car's item list (marked in `Split`), and the collider LOD, which switches a far car copy's parts'
+  colliders off, switched its colliders off too. A wheel thrown off in a crash and simulated by the machine that had
+  the car then fell through the ground once the car became another player's copy over 50 m away (the playtest's host:
+  died in the crash, the car went to the client, the wheel sank into the desert). The LOD now leaves members that came
+  off, and what rides on them, alone; a part coming off a copy whose parts' colliders are off turns them all back on.
 - **RecordCodec** instead of JSON/BinaryFormatter: JsonUtility isn't round-trip exact for doubles (printed
   −947.0699462890625 as …0624); BinaryFormatter from the network can run a peer's code. RecordCodec walks the same
   fields BinaryFormatter saves, doubles as raw bits, types only from the local structure; schema hash of the field graph

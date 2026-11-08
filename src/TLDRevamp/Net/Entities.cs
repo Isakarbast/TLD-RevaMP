@@ -1173,6 +1173,7 @@ namespace TLDRevamp.Net
                         if (KeepPartsOnRemove && carrierNet == 0 && had.Root != null && car.Items[idx] != null && car.Items[idx] != had.Root && (car.Split == null || !car.Split.Contains(idx)))
                         {
                             (car.Split ?? (car.Split = new HashSet<int>())).Add(idx);
+                            if (car.PartsColOff && LodKeepsPartsOff) SetPartColliders(car, true);
                             var twin = car.Items[idx];
                             car.Items[idx] = had.Root;
                             if (car.ItemIds != null && idx < car.ItemIds.Count) car.ItemIds[idx] = had.Root.idInSave;
@@ -1193,6 +1194,8 @@ namespace TLDRevamp.Net
                     // from now on the part's state is its own entity's: a car resync (captured before the crash, or later
                     // by the car's owner, who may no longer simulate it) must not re-bolt or overwrite it
                     if (car != null) (car.Split ?? (car.Split = new HashSet<int>())).Add(idx);
+                    // its colliders may be off with the car copy's (the collider LOD): all back on, the LOD decides again without it
+                    if (car != null && car.PartsColOff && LodKeepsPartsOff) SetPartColliders(car, true);
                     var it = car != null && idx >= 0 && idx < car.Items.Count ? car.Items[idx] : null;
                     if (it == null && carrierNet != 0) { it = CarriedItem(carrierNet, carrierSlot, owner); if (it != null) CarriedOffApplied++; }
                     LiveUsablesChanged(it);
