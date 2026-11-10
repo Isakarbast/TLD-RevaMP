@@ -40,7 +40,8 @@ namespace TLDRevamp.Net
             }
             if (under == null) { FootWhy = "nothing under"; return; }
             var root = under.root;
-            foreach (var e in ByNet.Values)
+            // placed objects only (Entities.Placed): on plain ground both loops below ran through every shared object
+            foreach (var e in Placed())
             {
                 if (e.Root == null || e.PartIndex >= 0 || e.Root.transform != root) continue;
                 // only what moves: a vehicle, or a loose object in motion. Stepping over a tyre on the ground flipped the
@@ -60,7 +61,7 @@ namespace TLDRevamp.Net
             }
             // a body of a vehicle outside its hierarchy (the back of a bus: its own body on a joint, as for its seats,
             // LocalSeat): the position in the vehicle's frame
-            foreach (var e in ByNet.Values)
+            foreach (var e in Placed())
             {
                 if (e.Root == null || e.PartIndex >= 0 || e.Root.car == null || e.Root.partslotscripts == null) continue;
                 bool mine = false;

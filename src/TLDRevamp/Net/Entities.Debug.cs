@@ -1112,7 +1112,7 @@ namespace TLDRevamp.Net
                 }
             }
             var root = pl.seat.transform.root;
-            foreach (var e in ByNet.Values)
+            foreach (var e in Placed())
             {
                 if (e.Root == null || e.PartIndex >= 0) continue;
                 // only the vehicle itself: an item in the seated player's hand is in the car's hierarchy too (hand →

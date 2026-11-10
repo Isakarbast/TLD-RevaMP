@@ -332,7 +332,11 @@ items spawned differently, "black shiny cars without anything on them".
   (the DevTest world: ~12,000, about 25 placed). Each per-frame loop walked all of them, and the host's frame took
   11 ms of the mod's (35 ms frames in the session, 2 physics steps a frame). `Placed()` is built once a frame, binds what
   the game placed since, and drops the destroyed item an object stored away pointed at; the loops walk it. Measured
-  on that world, standing beside the second player: FixedTick 5.3 → 1.8 ms a frame, Mp.Tick 4.5 → 1.8.
+  on that world, standing beside the second player: FixedTick 5.3 → 1.8 ms a frame, Mp.Tick 4.5 → 1.8. Then: the
+  full pass only when something may have changed (else last frame's list, less what went), the owner's state loop,
+  the footing and seat lookups, the rabbits' claims and the host's locked-pose updates (a set of the locked ones, not
+  every server object at every car state) off the whole table too. DevTest itself, hosting alone at the gas station:
+  the mod 16 → 2 ms a frame, 38 → 55 fps (the test window, 1280x720).
 - **A member that came off keeps its collisions** (2026-11-08, `Entities.LodKeepsPartsOff`, `tools/partlod.py`): it
   stays in its car's item list (marked in `Split`), and the collider LOD, which switches a far car copy's parts'
   colliders off, switched its colliders off too. A wheel thrown off in a crash and simulated by the machine that had

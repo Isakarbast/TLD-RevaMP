@@ -538,7 +538,7 @@ namespace TLDRevamp.Net
                 }
             }
             if (_rabMine.Count == 0) return;
-            foreach (var o in ByNet.Values)
+            foreach (var o in Placed())
             {
                 if (!o.Proxy || o.Root == null || o.PartIndex >= 0 || o.Held || o.Stored || o.Physical || o.CrashTaking || NyOf(o) != null) continue;
                 bool car = o.Root.car != null;

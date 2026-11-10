@@ -72,7 +72,7 @@ namespace TLDRevamp.Net
                     // placed again in the same frame (Fixes.StreamRace): a new object holds the id — the entity follows it
                     if (savedatascript.s.items.TryGetValue(__instance.idInSave, out var now) && now != null && now != __instance)
                     {
-                        e.Root = null; e.RootId = __instance.idInSave; Replaced++;
+                        e.Root = null; e.RootId = __instance.idInSave; Replaced++; _placedDirty = true;
                         return;
                     }
                     // only the owner deletes a shared object. A copy this machine's game destroyed on its own (streaming

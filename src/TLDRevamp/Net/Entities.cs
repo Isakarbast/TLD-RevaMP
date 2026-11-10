@@ -247,7 +247,7 @@ namespace TLDRevamp.Net
                 foreach (var go in kv.Value) if (go != null) go.SetActive(true);
             DisabledBuiltIn.Clear();
             HitchReset(wasHost);
-            ByNet.Clear(); Server.Clear(); PendingShare.Clear(); _nextNet = 1;
+            ByNet.Clear(); Server.Clear(); PendingShare.Clear(); _nextNet = 1; _serverLocked.Clear(); _placed.Clear(); _placedDirty = true;
             // keyed by copies and network ids (which start at 1 again next session). (Known, the server's "sent to player N"
             // sets, needs nothing here: ServerOnJoin starts every joiner with an empty one - rehost.py)
             PhysicalCars.Clear(); _refetchedAt.Clear(); _refetchLater.Clear(); _lostParts.Clear(); BreaksReset();
@@ -483,12 +483,17 @@ namespace TLDRevamp.Net
             GentleTick();
             ClaimTraceTick();
             ResyncFrameTick(dt);
-            foreach (var e in ByNet.Values)
+            // the stored-away objects' far records: every DormantEveryFrames frames, not every frame (Entities.Placed)
+            if (LoopPlacedOnly && Time.frameCount - _dormantFrame >= DormantEveryFrames)
+            {
+                _dormantFrame = Time.frameCount;
+                foreach (var e in ByNet.Values) if (ReferenceEquals(e.Root, null) || e.Root == null) DormantTick(e);
+            }
+            foreach (var e in LoopPlacedOnly ? Placed() : AllEnts())
             {
                 if (e.Root == null)   // ResyncFrameTick resolved the group; still in the far store: dormant
                 {
-                    if (e.Proxy && e.PoseLocked && e.ReceivedStateEpoch == e.Epoch && LockedWorld(e, out var lockedPos, out var lockedRot)) UpdateFarRecord(e, lockedPos, lockedRot);
-                    if (e.FarDirty && Time.realtimeSinceStartup >= e.FarFlushAt) { e.FarFlushAt = Time.realtimeSinceStartup + 1f; FlushFarRecords(e); }
+                    if (!LoopPlacedOnly) DormantTick(e);
                     continue;
                 }
                 // bolted in: moves with its parent — after one last state if the last one said "in my hands" (held, then
@@ -671,7 +676,7 @@ namespace TLDRevamp.Net
             if (pl == null || !pl.Bsitting || pl.seat == null || !pl.seat.driverSeat0) { _claimedFor = 0; return; }
             var root = pl.seat.transform.root.GetComponent<tosaveitemscript>();
             if (root == null || root.car == null) return;
-            foreach (var e in ByNet.Values)
+            foreach (var e in Placed())
                 if (e.Root == root)
                 {
                     if (e.OwnerId != MyId && _claimedFor != e.NetId)
@@ -754,10 +759,13 @@ namespace TLDRevamp.Net
                     se.Stored = stored; se.Held = held; se.Speed = sv.magnitude; se.AtRest = final || stored;
                     se.Pos = sp; se.Rot = sq; se.HasState = true; se.Where = sp;
                     se.LockFrame = ReadLockedState ? ReadCarriedBy : 0;
+                    if (se.LockFrame != 0) _serverLocked.Add(se); else _serverLocked.Remove(se);
                     se.LockContainer = ReadLockContainer;
                     se.Locked = ReadLockedState;
                     se.LockLocalPos = ReadLocalPos; se.LockLocalRot = ReadLocalRot;
-                    foreach (var child in Server.Values) if (child.LockFrame != 0) ServerLockedPose(child);
+                    // what is locked in something follows it: the locked ones only (every server object at every car state before)
+                    if (LoopPlacedOnly) { foreach (var child in _serverLocked) if (child.LockFrame != 0) ServerLockedPose(child); }
+                    else foreach (var child in Server.Values) if (child.LockFrame != 0) ServerLockedPose(child);
                     se.Driven = driven; se.DrivenAt = Time.realtimeSinceStartup;
                     if (se.PartIndex >= 0 && Server.TryGetValue(se.ParentNet, out var parentCar)) { } // (parts: position kept for later joiners)
                     // relay the same bytes to everyone else, by distance (MpServer.SendCarState); the host applies it locally
@@ -1553,6 +1561,7 @@ namespace TLDRevamp.Net
             }
             if (e.RootId == 0 || savedatascript.s == null || !savedatascript.s.items.TryGetValue(e.RootId, out var root) || root == null) return false;
             e.Root = root;
+            _placedDirty = true;
             // Placed: the live copy carries the pose from now on, and the game writes its record when it streams it out
             // again. A far pose still waiting for its flush was written over that record right after the next stream-out:
             // a car driven away came back at the place it was first seen, inside the range, and flickered in and out
