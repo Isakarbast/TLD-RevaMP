@@ -151,6 +151,7 @@ namespace UnityEngine
         public List<Collider> Colliders = new List<Collider>();
         public new T GetComponent<T>() where T : class => Item as T;
         public new T[] GetComponentsInChildren<T>() => typeof(T) == typeof(Rigidbody) ? (T[])(object)Bodies.ToArray() : (T[])(object)Colliders.ToArray();
+        public void GetComponentsInChildren<T>(bool inactive, List<T> into) { into.Clear(); into.AddRange(GetComponentsInChildren<T>()); }
         public T GetComponentInChildren<T>() where T : class => Item as T;
         public Vector3 TransformPoint(Vector3 p) => position + p;
         public Vector3 InverseTransformPoint(Vector3 p) => p - position;
@@ -164,7 +165,8 @@ namespace UnityEngine
         public Bounds bounds => new Bounds(transform.position, new Vector3(2, 2, 2));
     }
     public class TerrainCollider : Collider { }
-    public struct RaycastHit { public Collider collider; public Vector3 point, normal; }
+    public class WheelCollider : Collider { }
+    public struct RaycastHit { public Collider collider; public Vector3 point, normal; public float distance; }
     public struct Bounds
     {
         public Vector3 center, size;
