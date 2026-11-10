@@ -1,6 +1,6 @@
 // The old 2023 terrain: the public game v2023.05.02d's own code, from the player's Steam download (OldBuild). The
 // way it is put into the beta's world (the old world 60 m east of the beta's origin, its one road, its roadside
-// buildings) follows YujiroX2's TerrainChoice (github.com/YujiroX2/TLD-TerrainChoice, GPL-3.0, the same licence as
+// buildings) follows YujiroX2's TerrainChoice (github.com/TLD-RevaMP/TLD-Mods, GPL-3.0, the same licence as
 // TLD RevaMP), with YujiroX2's permission as a project collaborator.
 using System;
 using System.Collections.Generic;

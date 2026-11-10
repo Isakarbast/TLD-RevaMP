@@ -53,11 +53,11 @@
       "name": "BusGut",
       "author": "YujiroX2",
       "description": "Empties the buses into cargo space: passenger seats and handrails removed, driver seat and dashboard kept.",
-      "source": "https://github.com/YujiroX2/TLD-BusGut",
+      "source": "https://github.com/TLD-RevaMP/TLD-Mods/tree/main/mods/BusGut",
       "versions": [
         {
           "version": "0.2.0",
-          "url": "https://github.com/YujiroX2/TLD-BusGut/releases/download/v0.2.0/BusGut-0.2.0.zip",
+          "url": "https://github.com/TLD-RevaMP/TLD-Mods/releases/download/busgut-v0.2.0/BusGut-0.2.0.zip",
           "file": "BepInEx/plugins/BusGut/BusGut.dll",
           "sha256": "45b843b18413151555be1d9c21f54a89a46bf6ab0a4dd06e3ccac28d30c5b581",
           "size": 11683,
@@ -70,11 +70,11 @@
       "name": "MountAnything",
       "author": "YujiroX2",
       "description": "Mount any held item anywhere: on a car, the ground, a building or another item, with a placement preview.",
-      "source": "https://github.com/YujiroX2/TLD-MountAnything",
+      "source": "https://github.com/TLD-RevaMP/TLD-Mods/tree/main/mods/MountAnything",
       "versions": [
         {
           "version": "0.2.1",
-          "url": "https://github.com/YujiroX2/TLD-MountAnything/releases/download/v0.2.1/MountAnything-0.2.1.zip",
+          "url": "https://github.com/TLD-RevaMP/TLD-Mods/releases/download/mountanything-v0.2.1/MountAnything-0.2.1.zip",
           "file": "BepInEx/plugins/MountAnything/MountAnything.dll",
           "sha256": "df94dfebfa6a5eaa07acf1b9ac6c34cffc948f3e8d9c730ad539da0b3f19f880",
           "size": 35069,
@@ -87,11 +87,11 @@
       "name": "TerrainChoice",
       "author": "YujiroX2",
       "description": "Pick the terrain for a new game: crossroads, main road only, or the old 2023 terrain.",
-      "source": "https://github.com/YujiroX2/TLD-TerrainChoice",
+      "source": "https://github.com/TLD-RevaMP/TLD-Mods/tree/main/mods/TerrainChoice",
       "versions": [
         {
           "version": "0.4.1",
-          "url": "https://github.com/YujiroX2/TLD-TerrainChoice/releases/download/v0.4.1/TerrainChoice-0.4.1.zip",
+          "url": "https://github.com/TLD-RevaMP/TLD-Mods/releases/download/terrainchoice-v0.4.1/TerrainChoice-0.4.1.zip",
           "file": "BepInEx/plugins/TerrainChoice/TerrainChoice.dll",
           "sha256": "b0d997d782b593627b85fd3919aaf7ffd4394e9040c124f361be652aaadcbaca",
           "size": 27113,

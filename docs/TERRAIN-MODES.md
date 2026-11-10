@@ -96,7 +96,7 @@ code**: the player downloads it once with Steam's console (`download_depot 10171
 RevaMP loads it beside the beta's ([OLD2023-FROM-STEAM.md](OLD2023-FROM-STEAM.md)). Without the files the mode is greyed
 out on the new-game screen. How the old world is put into today's (60 m east of the origin, a second road towards -z,
 the old buildings in the beta's building generator) follows YujiroX2's TerrainChoice mod
-(github.com/YujiroX2/TLD-TerrainChoice, GPL-3.0, the same licence as RevaMP), whose port of the 2023 generator RevaMP
+(github.com/TLD-RevaMP/TLD-Mods, GPL-3.0, the same licence as RevaMP), whose port of the 2023 generator RevaMP
 ran until it could run the original.
 
 - `Old2023/OldBuild.cs`, `OldBuildFiles.cs`: find, check (SHA-256), cache and load the 2023 game files.
