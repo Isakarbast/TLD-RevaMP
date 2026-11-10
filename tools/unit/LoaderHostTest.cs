@@ -262,6 +262,29 @@ static class LoaderHostTest
               loadInMenuProp != null && (bool)loadInMenuProp.GetValue(modInstance) == false);
         recorder.GetField("LoadInMenuOverridden", BindingFlags.Public | BindingFlags.Static).SetValue(null, true);
 
+        Section("DbLoad once per item database, before the menu; the public game's names");
+        Reset();
+        ModHost.Tick();
+        Check("no DbLoad while there is no item database", !GetCalls().Contains("DbLoad"));
+        itemdatabase.s = new itemdatabase();
+        mainscript.s = new mainscript();
+        Reset();
+        ModHost.Tick();
+        var c0 = GetCalls();
+        Check("DbLoad and the older dbLoad are called once the item database exists (LoadInDB)", c0.Contains("DbLoad") && c0.Contains("dbLoad"));
+        Check("DbLoad comes before dbLoad, and both before any OnMenuLoad of that tick",
+              c0.IndexOf("DbLoad") < c0.IndexOf("dbLoad") && (c0.IndexOf("OnMenuLoad") < 0 || c0.IndexOf("dbLoad") < c0.IndexOf("OnMenuLoad")));
+        Check("mainscript.M points at mainscript.s for the mods", ReferenceEquals(mainscript.M, mainscript.s));
+        Check("itemdatabase.d points at itemdatabase.s for the mods", ReferenceEquals(itemdatabase.d, itemdatabase.s));
+        Reset();
+        ModHost.Tick();
+        Check("DbLoad is not called again for the same item database", !GetCalls().Contains("DbLoad"));
+        itemdatabase.s = new itemdatabase();
+        Reset();
+        ModHost.Tick();
+        Check("a new item database (a scene load) gets DbLoad again", GetCalls().Contains("DbLoad"));
+        Check("itemdatabase.d follows the new database", ReferenceEquals(itemdatabase.d, itemdatabase.s));
+
         Console.WriteLine(failures == 0 ? "ALL PASS" : (failures + " FAILURE(S)"));
         try { Directory.Delete(tmp, true); } catch { }
         return failures == 0 ? 0 : 1;

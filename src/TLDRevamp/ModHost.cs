@@ -20,12 +20,19 @@ namespace TLDRevamp
         {
             public object Mod; public string Id, Name, Version, File;
             public MethodInfo OnMenuLoad, OnLoad, OnUnload, Config, Update, FixedUpdate, OnGUI;   // null: not overridden
+            public MethodInfo DbLoad, DbLoadOld;   // with LoadInDB: DbLoad and the older dbLoad, both as TLDLoader calls them
             public string LastError;
         }
 
         private static readonly List<Loaded> Mods = new List<Loaded>();
         private static bool _started, _worldUp, _gameLoadedCalled, _menuCalled, _unloadCalled;
         public static string Info = "not started";
+
+        /// A/B (bridge `set`): false = before 2026-11-10 (no DbLoad; no public-game singleton names for the mods).
+        public static bool DbLoadCalls = true, PublicAliases = true;
+        public static int DbLoadRuns;
+        private static itemdatabase _dbFor;
+        private static object _aliasM, _aliasD, _aliasSd;
 
         public static string ModsDir => Path.Combine(BepInEx.Paths.BepInExRootPath, "TLDLoaderMods");
 
@@ -43,6 +50,7 @@ namespace TLDRevamp
                 var stub = Assembly.LoadFrom(stubPath);
                 var modBase = stub.GetType("TLDLoader.Mod");
                 stub.GetType("TLDLoader.ModLoader").GetField("ConfigRoot").SetValue(null, Path.Combine(BepInEx.Paths.ConfigPath, "TLDLoaderMods"));
+                stub.GetType("TLDLoader.ModLoader").GetField("ModsFolder")?.SetValue(null, ModsDir);   // assets: <ModsDir>/Assets/<ID>
                 var hostLogger = stub.GetType("TLDLoader.HostLogger");
                 foreach (var dll in dlls)
                 {
@@ -76,6 +84,11 @@ namespace TLDRevamp
                             l.Update = Overridden(t, modBase, "Update");
                             l.FixedUpdate = Overridden(t, modBase, "FixedUpdate");
                             l.OnGUI = Overridden(t, modBase, "OnGUI");
+                            if (modBase.GetProperty("LoadInDB") is PropertyInfo inDb && (bool)inDb.GetValue(mod))
+                            {
+                                l.DbLoad = Overridden(t, modBase, "DbLoad");
+                                l.DbLoadOld = Overridden(t, modBase, "dbLoad");
+                            }
                             Mods.Add(l);
                             Plugin.Log.LogInfo($"ModHost: loaded {l.Name} {l.Version} ({l.Id}) from {l.File}");
                         }
@@ -116,6 +129,18 @@ namespace TLDRevamp
         public static void Tick()
         {
             if (Mods.Count == 0) return;
+            PublicNames();
+            // DbLoad: once per item database (a new one comes with each scene load), before a world can place items —
+            // the database is up in the menu already. Mods change the game's item prefabs or add their own there. The
+            // order is the mods' IDs (ordinal), the same on every machine: what one mod does can depend on another's.
+            if (DbLoadCalls && itemdatabase.s != null && itemdatabase.s != _dbFor)
+            {
+                _dbFor = itemdatabase.s;
+                DbLoadRuns++;
+                var order = new List<Loaded>(Mods);
+                order.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+                foreach (var l in order) { Call(l, l.DbLoad, "DbLoad"); Call(l, l.DbLoadOld, "dbLoad"); }
+            }
             // The world's own signal is the PLAYER, not the scene name: the game loads
             // scenes for a restart and for a new game, and the active scene is briefly
             // something else while it does. Keying the unload on the scene would fire
@@ -147,6 +172,23 @@ namespace TLDRevamp
             }
             foreach (var l in Mods) Call(l, l.Update, "Update");
             AutopilotBridge.Tick();
+        }
+
+        /// The public game's names for the singletons (TLDRevamp.Preloader.LoaderAliases adds the fields) pointed at the
+        /// beta's, whenever one of them is a new object. Without the preloader the fields don't exist: nothing to do.
+        private static void PublicNames()
+        {
+            if (!PublicAliases) return;
+            Alias(typeof(mainscript), "M", mainscript.s, ref _aliasM);
+            Alias(typeof(itemdatabase), "d", itemdatabase.s, ref _aliasD);
+            Alias(typeof(savedatascript), "d", savedatascript.s, ref _aliasSd);
+        }
+        private static void Alias(Type type, string name, object now, ref object last)
+        {
+            if (ReferenceEquals(now, last)) return;
+            last = now;
+            try { type.GetField(name, BindingFlags.Public | BindingFlags.Static)?.SetValue(null, now); }
+            catch (Exception e) { Plugin.Log.LogWarning("ModHost: " + type.Name + "." + name + ": " + e.Message); }
         }
 
         /// The game is quitting or the plugin is going away: the world ends without a

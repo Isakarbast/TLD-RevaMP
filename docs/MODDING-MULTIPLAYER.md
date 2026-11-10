@@ -230,8 +230,11 @@ back when the session ends.
 
 ## 7. A converter for existing TLD Loader mods
 
-TLD Revamp already runs TLD Loader mods under BepInEx on the beta (the mod's lifecycle calls, its logger and its
-config folder). Most of those mods were written for single player. A converter would help them into multiplayer
+TLD Revamp already runs TLD Loader mods under BepInEx on the beta (the mod's lifecycle calls including DbLoad, its
+logger, its config and assets folders, LoadAssets, and the public game's singleton names mainscript.M, itemdatabase.d
+and savedatascript.d, which the preloader adds to the game's classes: TLDRevamp.Preloader.LoaderAliases). DbLoad runs
+for every mod with LoadInDB once per item database, in the order of the mods' IDs, so every machine changes and adds
+items the same way. Most of those mods were written for single player. A converter would help them into multiplayer
 without rewriting them:
 
 1. **Scan** a Loader mod's assembly and report what it does that matters in a session: objects it creates,

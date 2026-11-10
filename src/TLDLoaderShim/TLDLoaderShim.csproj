@@ -11,4 +11,21 @@
       <!-- no build-machine paths in the DLL (the PDB path and source paths carry the user name) -->
     <PathMap>$(MSBuildProjectDirectory)=/src/$(MSBuildProjectName)</PathMap>
   </PropertyGroup>
+  <!-- LoadAssets (meshes and textures, asset bundles, .png/.jpg) needs Unity: built in whenever lib/ has it (every real
+       build and release). Without lib/ (CI's docs job builds the loader fixtures on a bare runner) the shim is built
+       without LoadAssets, as before. -->
+  <PropertyGroup Condition="Exists('$(MSBuildThisFileDirectory)../../lib/UnityEngine.AssetBundleModule.dll')">
+    <DefineConstants>$(DefineConstants);TLD_UNITY</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)../../lib/UnityEngine.AssetBundleModule.dll')">
+    <Reference Include="$(MSBuildThisFileDirectory)../../lib/UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="$(MSBuildThisFileDirectory)../../lib/UnityEngine.AssetBundleModule.dll" Private="false" />
+    <Reference Include="$(MSBuildThisFileDirectory)../../lib/UnityEngine.ImageConversionModule.dll" Private="false" />
+    <Reference Include="$(MSBuildThisFileDirectory)../../lib/UnityEngine.PhysicsModule.dll" Private="false" />
+  </ItemGroup>
+  <!-- a lib/ made before LoadAssets (no AssetBundleModule yet) would build a release without it, silently -->
+  <Target Name="LibHasAssetBundles" BeforeTargets="CoreCompile"
+          Condition="Exists('$(MSBuildThisFileDirectory)../../lib/UnityEngine.CoreModule.dll') And !Exists('$(MSBuildThisFileDirectory)../../lib/UnityEngine.AssetBundleModule.dll')">
+    <Error Text="lib/ has no UnityEngine.AssetBundleModule.dll (TLDLoader's LoadAssets needs it): run tools/libs.sh again" />
+  </Target>
 </Project>

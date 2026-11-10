@@ -5,6 +5,8 @@
 // must not contain the game's code, and tools/privacy_scan.py checks for it.
 global using menuhandler = TLDRevamp.Fixtures.TestMenu;
 global using mainscript = TLDRevamp.Fixtures.TestMain;
+global using itemdatabase = TLDRevamp.Fixtures.TestDb;
+global using savedatascript = TLDRevamp.Fixtures.TestSave;
 
 using System;
 using System.Collections.Generic;
@@ -66,7 +68,20 @@ namespace TLDRevamp.Fixtures
     public class TestMain
     {
         public static TestMain s;
+        public static TestMain M;   // the public game's name, as the preloader adds it (LoaderAliases)
         public Player player;
+    }
+
+    /// The item database; a new one per scene load. DbLoad runs once for each.
+    public class TestDb
+    {
+        public static TestDb s;
+        public static TestDb d;
+    }
+
+    public class TestSave
+    {
+        public static TestSave s;
     }
 
     public class Player { }

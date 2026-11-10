@@ -17,6 +17,7 @@ public class RecorderMod : Mod
     public override string Version => "1.2.3";
     public override bool LoadInMenu => LoadInMenuOverridden;
     public override float ConfigScrollHeight => 0f;
+    public override bool LoadInDB => true;
 
     static void Record(string what)
     {
@@ -24,6 +25,8 @@ public class RecorderMod : Mod
         if (ThrowOn == what) throw new System.Exception("the " + what + " call failed on purpose");
     }
 
+    public override void DbLoad() { Record("DbLoad"); }
+    public override void dbLoad() { Record("dbLoad"); }
     public override void OnMenuLoad() { Record("OnMenuLoad"); }
     public override void OnLoad() { Record("OnLoad"); }
     public override void OnUnload() { Record("OnUnload"); }
