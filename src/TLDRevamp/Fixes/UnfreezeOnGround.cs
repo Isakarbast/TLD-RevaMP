@@ -47,9 +47,14 @@ namespace TLDRevamp.Fixes
             }
             int id = __instance.GetInstanceID();
             bool something = nearest < float.MaxValue;
-            if (something && (!Near || nearest <= Reach(root, p) + NearM))
+            // the reach rule for loose items only: one in something (a car's trunk, bolted on) has that something as its
+            // root, and its whole hierarchy's colliders (a car's ~200) were measured for each such item every second —
+            // the streamer's once-a-second hitch grew from ~120 to ~300 ms (DevTest, 2026-11-10)
+            bool loose = __instance.transform.parent == null;
+            if (something && (!Near || !loose || nearest <= Reach(__instance, id, p) + NearM))
             {
                 if (_held.Remove(id)) Released++;
+                _reach.Remove(id);
                 return true;
             }
             if (_held.Count > 4096) _held.Clear();   // ids of items long gone
@@ -63,19 +68,25 @@ namespace TLDRevamp.Fixes
             else if (something && now - since > HoldMaxS)
             {
                 // still out of reach: what it stood on may be gone for good; let go as before
-                _held.Remove(id); TimedOut++;
+                _held.Remove(id); _reach.Remove(id); TimedOut++;
                 return true;
             }
             return false;
         }
 
-        /// From the ray's start (0.5 m above the item's position) down to the item's lowest solid collider.
-        private static float Reach(Transform root, Vector3 p)
+        /// From the ray's start (0.5 m above the item's position) down to the item's lowest solid collider. A frozen item
+        /// doesn't move: measured once while it waits.
+        private static readonly System.Collections.Generic.Dictionary<int, float> _reach = new System.Collections.Generic.Dictionary<int, float>();
+        private static float Reach(tosaveitemscript it, int id, Vector3 p)
         {
-            _cols.Clear(); root.GetComponentsInChildren(false, _cols);
+            if (_reach.TryGetValue(id, out float r)) return r;
+            _cols.Clear(); it.transform.GetComponentsInChildren(false, _cols);
             float bottom = float.MaxValue;
             foreach (var c in _cols) if (c != null && c.enabled && !c.isTrigger && !(c is WheelCollider)) bottom = System.Math.Min(bottom, c.bounds.min.y);
-            return bottom == float.MaxValue ? 0.5f : System.Math.Max(0f, p.y + 0.5f - bottom);
+            r = bottom == float.MaxValue ? 0.5f : System.Math.Max(0f, p.y + 0.5f - bottom);
+            if (_reach.Count > 4096) _reach.Clear();
+            _reach[id] = r;
+            return r;
         }
 
         public static string Stats => "{\"enabled\":" + (Enabled ? "true" : "false") + ",\"near\":" + (Near ? "true" : "false") + ",\"held\":" + Held + ",\"heldFar\":" + HeldFar +

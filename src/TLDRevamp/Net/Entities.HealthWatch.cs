@@ -113,10 +113,24 @@ namespace TLDRevamp.Net
         }
 
         /// One automatic mark (every watch shares it): the state of this machine and, through the host, the others'.
+        /// Once per object and problem in a session, and AutoMarkMax a session: a problem that comes and goes (a magazine
+        /// under the ground, a glovebox's copy off its owner's) was due again each time it came back. The DevTest session
+        /// of 2026-11-10: 62 marks in 25 minutes, 187 MB (each 1.5-4.6 MB, the other players' copies with them, and the
+        /// comparison page written again each time), a hitch each.
+        public static int AutoMarkMax = 10;
+        public static long AutoMarksSkipped;
+        private static readonly HashSet<string> _autoMarked = new HashSet<string>(StringComparer.Ordinal);
+        private static int _autoMarksThisSession;
+        internal static void ResetAutoMarks() { _autoMarked.Clear(); _autoMarksThisSession = 0; }
         internal static bool AutoMark(string note)
         {
             float now = Time.realtimeSinceStartup;
             if (!AutoMarks || now - _autoMarkAt < AutoMarkEveryS) return false;
+            // the subject: what and which problem ("auto: Magazin net 9: Under the ground"), not the details after it
+            int cut = note.IndexOf(" — ", StringComparison.Ordinal);
+            string subject = cut > 0 ? note.Substring(0, cut) : note;
+            if (_autoMarksThisSession >= AutoMarkMax || !_autoMarked.Add(subject)) { AutoMarksSkipped++; return false; }
+            _autoMarksThisSession++;
             _autoMarkAt = now;
             string res = TelemetryMarks.Local(note);
             if (!res.Contains("\"ok\"")) return false;

@@ -247,7 +247,7 @@ namespace TLDRevamp.Net
                 foreach (var go in kv.Value) if (go != null) go.SetActive(true);
             DisabledBuiltIn.Clear();
             HitchReset(wasHost);
-            ByNet.Clear(); Server.Clear(); PendingShare.Clear(); _nextNet = 1; _serverLocked.Clear(); _placed.Clear(); _placedDirty = true;
+            ByNet.Clear(); Server.Clear(); PendingShare.Clear(); _nextNet = 1; _serverLocked.Clear(); _placed.Clear(); _placedDirty = true; ResetAutoMarks();
             // keyed by copies and network ids (which start at 1 again next session). (Known, the server's "sent to player N"
             // sets, needs nothing here: ServerOnJoin starts every joiner with an empty one - rehost.py)
             PhysicalCars.Clear(); _refetchedAt.Clear(); _refetchLater.Clear(); _lostParts.Clear(); BreaksReset();
