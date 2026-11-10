@@ -73,6 +73,14 @@
       "source": "https://github.com/TLD-RevaMP/TLD-Mods/tree/main/mods/MountAnything",
       "versions": [
         {
+          "version": "0.2.2",
+          "url": "https://github.com/TLD-RevaMP/TLD-Mods/releases/download/mountanything-v0.2.2/MountAnything-0.2.2.zip",
+          "file": "BepInEx/plugins/MountAnything/MountAnything.dll",
+          "sha256": "778a2ef41ba41a29303c9b364aa212549764b73ed966d4d3da366a1e56a3e37c",
+          "size": 35753,
+          "revamp": "0.69.1"
+        },
+        {
           "version": "0.2.1",
           "url": "https://github.com/TLD-RevaMP/TLD-Mods/releases/download/mountanything-v0.2.1/MountAnything-0.2.1.zip",
           "file": "BepInEx/plugins/MountAnything/MountAnything.dll",
