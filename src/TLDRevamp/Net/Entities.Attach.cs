@@ -106,8 +106,17 @@ namespace TLDRevamp.Net
         }
 
         /// The entity this object is the root of (its own shared object), or null.
+        /// The shared object whose root is this item. In the placed objects (Entities.Placed), by reference: it runs in the
+        /// game's item streaming for every item in range every second (the freeze hooks, Entities.Proxy), and walking every
+        /// shared object with Unity's == was ~1 ms an item in a world of ~12,000 — a 150-300 ms hitch every second in the
+        /// DevTest session of 2026-11-10. Every object only when one was shared or bound since the list was made.
         private static Ent OwnEntity(tosaveitemscript ts)
         {
+            if (LoopPlacedOnly && !ReferenceEquals(ts, null))
+            {
+                foreach (var e in Placed()) if (ReferenceEquals(e.Root, ts)) return e;
+                if (!_placedDirty && ByNet.Count == _netsSeen) return null;
+            }
             foreach (var e in ByNet.Values) if (e.Root == ts) return e;
             return null;
         }
