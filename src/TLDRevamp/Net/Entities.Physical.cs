@@ -504,12 +504,15 @@ namespace TLDRevamp.Net
         }
 
         /// The copy's and the hit car's bounds no longer overlap (0.3 m apart).
-        private static bool Apart(Ent e)
+        private static bool Apart(Ent e) => e.FreeHit == null || Apart(e.Root != null ? e.Root.transform : null, e.FreeHit);
+
+        /// Two bodies' collider bounds no longer overlap (0.3 m apart); a missing one counts as apart.
+        private static bool Apart(Transform a, Transform b)
         {
-            if (e.FreeHit == null) return true;
+            if (a == null || b == null) return true;
             Bounds A = default, B = default; bool ha = false, hb = false;
-            foreach (var c in e.Root.GetComponentsInChildren<Collider>()) if (!c.isTrigger) { if (ha) A.Encapsulate(c.bounds); else { A = c.bounds; ha = true; } }
-            foreach (var c in e.FreeHit.GetComponentsInChildren<Collider>()) if (!c.isTrigger) { if (hb) B.Encapsulate(c.bounds); else { B = c.bounds; hb = true; } }
+            foreach (var c in a.GetComponentsInChildren<Collider>()) if (!c.isTrigger) { if (ha) A.Encapsulate(c.bounds); else { A = c.bounds; ha = true; } }
+            foreach (var c in b.GetComponentsInChildren<Collider>()) if (!c.isTrigger) { if (hb) B.Encapsulate(c.bounds); else { B = c.bounds; hb = true; } }
             if (!ha || !hb) return true;
             A.Expand(0.6f);
             return !A.Intersects(B);

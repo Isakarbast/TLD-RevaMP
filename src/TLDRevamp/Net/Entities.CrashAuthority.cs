@@ -50,12 +50,48 @@ namespace TLDRevamp.Net
         private sealed class HeldCrash { public Ent E; public Transform Partner; public float Since, CalmSince = -1f; }
         private static readonly List<HeldCrash> _held = new List<HeldCrash>();
 
+        /// A car handed back after a crash (or refused) is not taken again until it has come apart from the body it hit
+        /// (their bounds 0.3 m apart). Before, a car still pressed against it was taken again 1.5–2 s after each return,
+        /// over and over, while its own driver's seat claims were refused during each lease (a car driven against another
+        /// player's parked bus, 2026-11-10). Contact meanwhile is the ordinary physical-copy contact (shoving).
+        public static bool CrashRetakeApart = true;     // A/B: false = before 2026-11-10
+        public static float CrashApartCheckS = 0.25f;   // how often a waiting car's bounds are compared (they walk every collider)
+        public static long CrashRetakesSkipped;
+        private sealed class AfterCrash { public Ent E; public Transform Partner; public float CheckedAt; }
+        private static readonly List<AfterCrash> _after = new List<AfterCrash>();
+
+        private static bool WaitingApart(Ent e)
+        {
+            foreach (var a in _after) if (a.E == e) return true;
+            return false;
+        }
+
+        private static void AfterHeld(HeldCrash h)
+        {
+            if (!CrashRetakeApart || h.Partner == null || WaitingApart(h.E)) return;
+            _after.Add(new AfterCrash { E = h.E, Partner = h.Partner, CheckedAt = Time.time });
+        }
+
+        private static void AfterTick()
+        {
+            float t = Time.time;
+            for (int i = _after.Count - 1; i >= 0; i--)
+            {
+                var a = _after[i];
+                if (!CrashRetakeApart || a.E.Root == null || a.Partner == null) { _after.RemoveAt(i); continue; }
+                if (t - a.CheckedAt < CrashApartCheckS) continue;
+                a.CheckedAt = t;
+                if (Apart(a.E.Root.transform, a.Partner)) _after.RemoveAt(i);
+            }
+        }
+
         /// CopyContact: a hard contact between a physical copy and a car simulated here.
         internal static bool TryTakeCrash(Ent e, Rigidbody mine, float relSpeed)
         {
             if (HitchTrailer(e)) return false;
             if (!CrashAuthority || !e.Proxy || relSpeed < CrashMinRelMps || e.CrashTaking) return false;
             foreach (var h in _held) if (h.E == e) return false;
+            if (CrashRetakeApart && WaitingApart(e)) { CrashRetakesSkipped++; return false; }   // still against what it hit last time
             NetOf(mine.transform.root, out uint partnerNet, out bool partnerProxy);
             if (partnerProxy) return false;
             if (CrashCopyCheck && !CrashGuard.SpeedFits(relSpeed)) return Refuse(e, double.NaN, double.NaN, relSpeed, CrashGuard.TooFast);
@@ -78,10 +114,11 @@ namespace TLDRevamp.Net
         /// FixedTick: hand crashes back once the cars have separated or slowed.
         internal static void CrashHoldTick()
         {
+            AfterTick();
             for (int i = _held.Count - 1; i >= 0; i--)
             {
                 var h = _held[i]; var e = h.E;
-                if (e.Proxy || e.Root == null) { EndHeld(e); _held.RemoveAt(i); continue; }   // refused / lost
+                if (e.Proxy || e.Root == null) { EndHeld(e); AfterHeld(h); _held.RemoveAt(i); continue; }   // refused / lost
                 float t = Time.time;
                 var rb = e.Root.GetComponent<Rigidbody>();
                 var prb = h.Partner != null ? h.Partner.GetComponent<Rigidbody>() : null;
@@ -94,6 +131,7 @@ namespace TLDRevamp.Net
                 ToServer(W, true);
                 CrashReleases++;
                 EndHeld(e);
+                AfterHeld(h);
                 _held.RemoveAt(i);
             }
         }
@@ -192,6 +230,7 @@ namespace TLDRevamp.Net
 
         public static string CrashAuthorityStatus() =>
             "{\"enabled\":" + (CrashAuthority ? "true" : "false") + ",\"claims\":" + CrashClaims + ",\"granted\":" + CrashGranted + ",\"refused\":" + CrashRefused +
-            ",\"staleRefused\":" + CrashStaleRefused + ",\"releases\":" + CrashReleases + ",\"autoReturned\":" + CrashAutoReturned + ",\"held\":" + _held.Count + ",\"last\":" + Json.Str(LastCrash) + "}";
+            ",\"staleRefused\":" + CrashStaleRefused + ",\"releases\":" + CrashReleases + ",\"autoReturned\":" + CrashAutoReturned + ",\"held\":" + _held.Count +
+            ",\"retakeApart\":" + (CrashRetakeApart ? "true" : "false") + ",\"waitingApart\":" + _after.Count + ",\"retakesSkipped\":" + CrashRetakesSkipped + ",\"last\":" + Json.Str(LastCrash) + "}";
     }
 }
