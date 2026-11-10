@@ -30,10 +30,24 @@ public sealed class SourceBuild
         this.run = run ?? Run;
     }
 
+    /// <summary>Git's automatic gc normally carries on in the background after fetch returns, outliving the cache lock, so the
+    /// next fetch or checkout can race it. A gc cut short that way left the user's cache with a commit graph naming a pruned
+    /// commit and indexes without their packs: every fetch failed until the cache was repaired by hand.</summary>
+    public static readonly (string Key, string Value)[] GitConfig = [("gc.autoDetach", "false"), ("maintenance.autoDetach", "false")];
+
     Files.Result Run(string cwd, string exe, string[] args)
     {
         var psi = new ProcessStartInfo(exe) { WorkingDirectory = cwd, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
         foreach (var a in args) psi.ArgumentList.Add(a);
+        if (exe == "git")
+        {
+            psi.Environment["GIT_CONFIG_COUNT"] = GitConfig.Length.ToString();
+            for (int i = 0; i < GitConfig.Length; i++)
+            {
+                psi.Environment["GIT_CONFIG_KEY_" + i] = GitConfig[i].Key;
+                psi.Environment["GIT_CONFIG_VALUE_" + i] = GitConfig[i].Value;
+            }
+        }
         using var p = new Process { StartInfo = psi };
         var output = new List<string>(); var error = new List<string>();
         p.OutputDataReceived += (_, e) => { if (e.Data != null) { lock (output) output.Add(e.Data); log("  " + e.Data); } };
@@ -82,7 +96,73 @@ public sealed class SourceBuild
         }
         if (Exec(Repo, "git", "remote", "get-url", "origin").TrimEnd('/') != Remote)
             throw new UserError("the source cache has another origin: not used");
-        Exec(Repo, "git", "fetch", "--prune", "origin");
+        var r = Invoke(Repo, "git", ["fetch", "--prune", "origin"]);
+        if (r.Code == 0) return;
+        if (Offline.IsMatch(r.Err + "\n" + r.Out))
+            throw new UserError($"git fetch couldn't reach GitHub (exit {r.Code}; see the build log): check the internet connection and retry");
+        log($"Fetch failed (exit {r.Code}): repairing the source cache");
+        log("Recovering source cache: removing git's commit graph, multi-pack index and indexes without their pack");
+        ClearDerivedObjects(Repo);
+        if (Invoke(Repo, "git", ["fetch", "--prune", "origin"]).Code == 0) return;
+        log("Recovering source cache: git fetch --refetch");
+        if (Invoke(Repo, "git", ["fetch", "--refetch", "--prune", "origin"]).Code == 0) return;
+        log("Source cache recovery failed");
+        SwapIn(CloneFresh());
+    }
+
+    static readonly Regex Offline = new(@"Could not resolve host|Failed to connect|Couldn't connect|Connection (timed out|refused|reset)|" +
+        @"Operation timed out|Network is unreachable|No route to host|SSL connect error|returned error: 5\d\d", RegexOptions.IgnoreCase);
+
+    /// <summary>Files git rebuilds by itself: the commit graph, the multi-pack index, and pack files whose .pack is gone.
+    /// A stale one makes git expect objects that aren't there. The packs and loose objects themselves are kept.</summary>
+    public static void ClearDerivedObjects(string repo)
+    {
+        var objects = Path.Combine(repo, ".git", "objects");
+        DeleteFile(Path.Combine(objects, "info", "commit-graph"));
+        DeleteTree(Path.Combine(objects, "info", "commit-graphs"));
+        var pack = Path.Combine(objects, "pack");
+        DeleteFile(Path.Combine(pack, "multi-pack-index"));
+        if (!Directory.Exists(pack)) return;
+        foreach (var f in Directory.GetFiles(pack, "pack-*"))
+            if (Path.GetExtension(f) is ".idx" or ".rev" or ".bitmap" or ".mtimes" or ".promisor" && !File.Exists(Path.ChangeExtension(f, ".pack")))
+                DeleteFile(f);
+    }
+
+    // Git writes its object files read-only, which File.Delete and Directory.Delete refuse on Windows.
+    static void DeleteFile(string f)
+    {
+        if (!File.Exists(f)) return;
+        File.SetAttributes(f, FileAttributes.Normal);
+        File.Delete(f);
+    }
+
+    static void DeleteTree(string dir)
+    {
+        if (!Directory.Exists(dir)) return;
+        foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)) File.SetAttributes(f, FileAttributes.Normal);
+        Directory.Delete(dir, true);
+    }
+
+    string CloneFresh()
+    {
+        var fresh = Repo + ".fresh-" + Guid.NewGuid().ToString("N");
+        log("Cloning fresh source cache into " + fresh);
+        try { Exec(cache, "git", "clone", "--no-checkout", "--origin", "origin", Remote, fresh); }
+        catch { try { DeleteTree(fresh); } catch (Exception e) { log("Couldn't remove the partial clone: " + e.Message); } throw; }
+        return fresh;
+    }
+
+    void SwapIn(string fresh)
+    {
+        var old = Repo + ".old-" + Guid.NewGuid().ToString("N");
+        log("Keeping the old source cache at " + old);
+        Directory.Move(Repo, old);
+        try
+        {
+            log("Swapping fresh source cache into " + Repo);
+            Directory.Move(fresh, Repo);
+        }
+        catch { Directory.Move(old, Repo); throw; }
     }
 
     string Resolve(string reference)
@@ -130,19 +210,9 @@ public sealed class SourceBuild
             CheckoutAt(Repo, sha); return;
         }
         catch (UserError e) { log("Source cache recovery failed: " + e.Message); }
-        var fresh = Repo + ".fresh-" + Guid.NewGuid().ToString("N");
-        log("Cloning fresh source cache into " + fresh);
-        Exec(cache, "git", "clone", "--no-checkout", "--origin", "origin", Remote, fresh);
+        var fresh = CloneFresh();
         CheckoutAt(fresh, sha);
-        var old = Repo + ".old-" + Guid.NewGuid().ToString("N");
-        log("Keeping the old source cache at " + old);
-        Directory.Move(Repo, old);
-        try
-        {
-            log("Swapping fresh source cache into " + Repo);
-            Directory.Move(fresh, Repo);
-        }
-        catch { Directory.Move(old, Repo); throw; }
+        SwapIn(fresh);
     }
 
     public int Newer(CopyInfo c)

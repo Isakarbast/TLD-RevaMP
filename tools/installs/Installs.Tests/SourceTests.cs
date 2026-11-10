@@ -16,12 +16,17 @@ public sealed class SourceTests : IDisposable
     bool failBuild;
     string? missing;
     string sdks = "9.0.316 [sdk]";
-    int checkoutFailures;
-    bool failFresh, failReset, rejectDisable, legacy, buildDirty, checkoutDirty;
+    int checkoutFailures, fetchFailures;
+    string fetchError = "fatal: You are attempting to fetch a088dcebd9ee2d5352060b3cccff1d7805c334a8, which is in the commit graph file but not in the object database.";
+    bool failClone, failFresh, failReset, rejectDisable, legacy, buildDirty, checkoutDirty;
     string? buildCommit, checkoutHead;
     Action? beforeCopy;
     readonly List<string> logs = new();
-    public void Dispose() => Directory.Delete(tmp, true);
+    public void Dispose()
+    {
+        foreach (var f in Directory.EnumerateFiles(tmp, "*", SearchOption.AllDirectories)) File.SetAttributes(f, FileAttributes.Normal);
+        Directory.Delete(tmp, true);
+    }
     string Repo => Path.Combine(tmp, "source", "TLD-RevaMP");
     string Managed => Path.Combine(tmp, "game", "Managed");
     string Core => Path.Combine(tmp, "bep", "core");
@@ -54,9 +59,11 @@ public sealed class SourceTests : IDisposable
         calls.Add((cwd, exe, args));
         if (missing == exe) throw new Win32Exception("not installed");
         string output = "";
+        if (args[0] == "fetch" && fetchFailures-- > 0) return new(128, "", fetchError);
         if (args[0] == "clone")
         {
             var repo = args[^1];
+            if (failClone) { Write(Path.Combine(repo, ".git", "partial")); return new(128, "", "fatal: early EOF"); }
             Directory.CreateDirectory(Path.Combine(repo, ".git"));
             Write(Path.Combine(repo, "src", "TLDRevamp", "Plugin.cs"), "public const string BaseVersion = \"0.69.1\";");
             Write(Path.Combine(repo, "packaging", "approved-mods.txt")); Write(Path.Combine(repo, "COPYING"));
@@ -193,6 +200,94 @@ public sealed class SourceTests : IDisposable
         Assert.Empty(Directory.GetDirectories(Path.GetDirectoryName(Repo)!, "TLD-RevaMP.old-*"));
         Assert.DoesNotContain(calls, x => x.Args[0] == "build");
         Assert.Equal(json, File.ReadAllText(Path.Combine(c.Dir, "copy.json")));
+    }
+
+    string Objects => Path.Combine(Repo, ".git", "objects");
+
+    // The state the user's cache was in: a commit graph naming a pruned commit, a stale multi-pack index, an index without its pack.
+    void DamageObjects()
+    {
+        foreach (var f in new[] {
+            Path.Combine(Objects, "info", "commit-graphs", "commit-graph-chain"), Path.Combine(Objects, "info", "commit-graphs", "graph-1.graph"),
+            Path.Combine(Objects, "info", "commit-graph"), Path.Combine(Objects, "pack", "multi-pack-index"),
+            Path.Combine(Objects, "pack", "pack-gone.idx"), Path.Combine(Objects, "pack", "pack-gone.rev"),
+            Path.Combine(Objects, "pack", "pack-kept.idx"), Path.Combine(Objects, "pack", "pack-kept.pack") })
+            File.SetAttributes(Write(f), FileAttributes.ReadOnly);
+    }
+
+    [Fact]
+    public void FailedFetchClearsStaleCommitGraphAndRetries()
+    {
+        var c = Copy(); var b = Builder(); b.Build(c, Managed, Core); calls.Clear();
+        DamageObjects(); fetchFailures = 1; head = new('b', 40);
+        Assert.True(b.Build(c, Managed, Core));
+        Assert.Equal(new[] { "fetch", "fetch" }, calls.Where(x => x.Args[0] == "fetch").Select(x => x.Args[0]));
+        Assert.False(Directory.Exists(Path.Combine(Objects, "info", "commit-graphs")));
+        Assert.False(File.Exists(Path.Combine(Objects, "info", "commit-graph")));
+        Assert.Equal(new[] { "pack-kept.idx", "pack-kept.pack" }, Directory.GetFiles(Path.Combine(Objects, "pack")).Select(Path.GetFileName).Order());
+        Assert.DoesNotContain(calls, x => x.Args[0] == "clone");
+        Assert.Equal(head, c.Commit!.Sha);
+        Assert.Contains(logs, l => l.Contains("Fetch failed (exit 128)"));
+        Assert.Contains(logs, l => l.Contains("commit graph"));
+    }
+
+    [Fact]
+    public void FetchStillFailingTriesRefetchBeforeCloning()
+    {
+        var c = Copy(); var b = Builder(); b.Build(c, Managed, Core); calls.Clear();
+        fetchFailures = 2;
+        Assert.False(b.Build(c, Managed, Core));
+        Assert.Equal(new[] { "fetch", "--refetch", "--prune", "origin" }, calls.Where(x => x.Args[0] == "fetch").Last().Args);
+        Assert.Equal(3, calls.Count(x => x.Args[0] == "fetch"));
+        Assert.DoesNotContain(calls, x => x.Args[0] == "clone");
+    }
+
+    [Fact]
+    public void UnrepairableFetchSwapsInAFreshCloneAndKeepsTheOldCache()
+    {
+        var c = Copy(); var b = Builder(); b.Build(c, Managed, Core); calls.Clear();
+        Write(Path.Combine(Repo, "keep-me.txt"), "old cache"); fetchFailures = 3; head = new('b', 40);
+        Assert.True(b.Build(c, Managed, Core));
+        var fresh = calls.Single(x => x.Args[0] == "clone").Args[^1];
+        Assert.Equal(Path.GetDirectoryName(Repo), Path.GetDirectoryName(fresh)); Assert.False(Directory.Exists(fresh));
+        var old = Assert.Single(Directory.GetDirectories(Path.GetDirectoryName(Repo)!, "TLD-RevaMP.old-*"));
+        Assert.Equal("old cache", File.ReadAllText(Path.Combine(old, "keep-me.txt")));
+        Assert.False(File.Exists(Path.Combine(Repo, "keep-me.txt")));
+        Assert.True(File.Exists(Path.Combine(Repo, "lib", "BepInEx.dll")));
+        Assert.All(calls.Where(x => x.Args[0] is "checkout" or "build"), x => Assert.Equal(Repo, x.Cwd));
+        Assert.Equal(head, c.Commit!.Sha);
+    }
+
+    [Fact]
+    public void FailedFreshCloneAfterFetchFailureKeepsTheCacheAndLeavesNoPartialClone()
+    {
+        var c = Copy(); var b = Builder(); b.Build(c, Managed, Core); calls.Clear();
+        var json = File.ReadAllText(Path.Combine(c.Dir, "copy.json"));
+        Write(Path.Combine(Repo, "keep-me.txt")); fetchFailures = 3; failClone = true;
+        Assert.Throws<UserError>(() => b.Build(c, Managed, Core, force: true));
+        Assert.True(File.Exists(Path.Combine(Repo, "keep-me.txt")));
+        Assert.Equal(new[] { "TLD-RevaMP" }, Directory.GetDirectories(Path.GetDirectoryName(Repo)!).Select(Path.GetFileName));
+        Assert.DoesNotContain(calls, x => x.Args[0] == "build");
+        Assert.Equal(json, File.ReadAllText(Path.Combine(c.Dir, "copy.json")));
+    }
+
+    [Fact]
+    public void OfflineFetchSaysSoAndLeavesTheCacheAlone()
+    {
+        var c = Copy(); var b = Builder(); b.Build(c, Managed, Core); calls.Clear();
+        DamageObjects(); fetchFailures = 1;
+        fetchError = "fatal: unable to access 'https://github.com/Normal99/TLD-RevaMP/': Could not resolve host: github.com";
+        Assert.Contains("couldn't reach GitHub", Assert.Throws<UserError>(() => b.Newer(c)).Message);
+        Assert.Single(calls, x => x.Args[0] == "fetch");
+        Assert.True(File.Exists(Path.Combine(Objects, "pack", "multi-pack-index")));
+        Assert.DoesNotContain(calls, x => x.Args[0] == "clone");
+    }
+
+    [Fact]
+    public void GitRunsGcInTheForegroundSoItCannotOutliveTheCacheLock()
+    {
+        Assert.Contains(("gc.autoDetach", "false"), SourceBuild.GitConfig);
+        Assert.Contains(("maintenance.autoDetach", "false"), SourceBuild.GitConfig);
     }
 
     [Fact]
