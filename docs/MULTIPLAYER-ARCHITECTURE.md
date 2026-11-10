@@ -327,6 +327,12 @@ items spawned differently, "black shiny cars without anything on them".
 - **Mounted objects go with what they're on** (`Entities.HandoffKeepsMounted`): the distance hand-off skips an object
   attached to another shared object; `CascadeOwner` gives it the new owner of what it's on. Handed off by where it was
   last seen, the client's rims went to the host while the client's car (in a crash lease) stayed the client's.
+- **Per-frame loops walk the placed objects only** (2026-11-10, `Entities.LoopPlacedOnly`, `Entities.Placed()`,
+  `tools/perfmp.py`): a world's shared objects pile up as players go places and stay, nearly all stored away far off
+  (the DevTest world: ~12,000, about 25 placed). Each per-frame loop walked all of them, and the host's frame took
+  11 ms of the mod's (35 ms frames in the session, 2 physics steps a frame). `Placed()` is built once a frame, binds what
+  the game placed since, and drops the destroyed item an object stored away pointed at; the loops walk it. Measured
+  on that world, standing beside the second player: FixedTick 5.3 → 1.8 ms a frame, Mp.Tick 4.5 → 1.8.
 - **A member that came off keeps its collisions** (2026-11-08, `Entities.LodKeepsPartsOff`, `tools/partlod.py`): it
   stays in its car's item list (marked in `Split`), and the collider LOD, which switches a far car copy's parts'
   colliders off, switched its colliders off too. A wheel thrown off in a crash and simulated by the machine that had

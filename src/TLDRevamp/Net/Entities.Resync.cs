@@ -28,7 +28,7 @@ namespace TLDRevamp.Net
         /// One shared capture allowance; rotate the first entity so a busy car cannot monopolize the spare time.
         private static void ResyncFrameTick(float dt)
         {
-            _resyncOrder.Clear(); _resyncOrder.AddRange(ByNet.Values); _resyncFrameMs = 0; _resyncFrameWorked = false;
+            _resyncOrder.Clear(); _resyncOrder.AddRange(Placed()); _resyncFrameMs = 0; _resyncFrameWorked = false;
             int n = _resyncOrder.Count;
             if (n == 0) return;
             _resyncFirst %= n;

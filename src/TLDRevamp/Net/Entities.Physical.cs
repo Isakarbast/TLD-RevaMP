@@ -77,7 +77,7 @@ namespace TLDRevamp.Net
                 _localCars.Clear();
                 // players' cars simulated here (our shared cars; the one we sit in) — not a scene-wide search: that grows
                 // with the world and every player count (a parked world car hit by a copy stays the game's own business)
-                foreach (var o in ByNet.Values)
+                foreach (var o in Placed())
                     if (!o.Proxy && o.Root != null && o.PartIndex < 0 && o.Root.car != null && o.Root.car.RB != null && !o.Root.car.RB.isKinematic) _localCars.Add(o.Root.car);
                 var mine = mainscript.s != null && mainscript.s.player != null ? mainscript.s.player.Car : null;
                 if (mine != null && mine.RB != null && !mine.RB.isKinematic && !IsProxy(mine) && !_localCars.Contains(mine)) _localCars.Add(mine);
@@ -220,7 +220,7 @@ namespace TLDRevamp.Net
         private static void BodyMotionTick(float dt)
         {
             double now = Time.realtimeSinceStartupAsDouble;
-            foreach (var e in ByNet.Values)
+            foreach (var e in Placed())
             {
                 if (!e.Proxy || e.Physical || e.Root == null || e.Ip == null || !e.Ip.Ready) { if (e.MovedByBody && (!e.Proxy || e.Root == null)) e.MovedByBody = false; continue; }
                 if (RidesBolted(e)) continue;
@@ -291,7 +291,7 @@ namespace TLDRevamp.Net
             if (Time.time - _lodAt < 0.25f) return;
             _lodAt = Time.time;
             var pl = mainscript.s != null && mainscript.s.player != null ? mainscript.s.player.transform.position : Vector3.zero;
-            foreach (var e in ByNet.Values)
+            foreach (var e in Placed())
             {
                 if (e.Root == null || e.PartIndex >= 0 || e.Root.car == null) continue;
                 bool want;

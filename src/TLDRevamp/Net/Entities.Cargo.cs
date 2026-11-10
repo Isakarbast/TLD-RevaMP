@@ -239,7 +239,7 @@ namespace TLDRevamp.Net
         {
             _cargoTick++;
             if (CargoClaims && _localCars.Count > 0) CargoNearScan(dt);
-            foreach (var e in ByNet.Values)   // out of every zone (or ours, or the rule off): collisions back
+            foreach (var e in Placed())   // out of every zone (or ours, or the rule off): collisions back
                 if (e.CargoGhost && (e.CargoGhostTick != _cargoTick || !e.Proxy || !CargoGhosts)) { e.CargoGhost = false; ShowCarriedCollisions(e); }
         }
 
@@ -390,7 +390,7 @@ namespace TLDRevamp.Net
         private static void RefreshOwnCars()
         {
             _ownCars.Clear();
-            foreach (var o in ByNet.Values)
+            foreach (var o in Placed())
                 if (!o.Proxy && o.Root != null && o.PartIndex < 0 && o.Root.car != null && o.Root.gameObject.activeInHierarchy) _ownCars.Add(o.Root.car);
         }
 

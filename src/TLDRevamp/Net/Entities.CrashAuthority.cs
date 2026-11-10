@@ -176,10 +176,14 @@ namespace TLDRevamp.Net
             CascadeOwner(se);
         }
 
-        /// Host, per frame: a crash lease nobody handed back (the crash machine left, a lost release) returns anyway.
+        /// Host, twice a second: a crash lease nobody handed back (the crash machine left, a lost release) returns anyway.
+        /// Not every physics step: it walks every shared object, 0.3 ms a frame in a world of ~12,000 (tools/perfmp.py).
+        private static float _crashTickAt = -1f;
         internal static void ServerCrashTick()
         {
             float now = Time.realtimeSinceStartup;
+            if (now - _crashTickAt < 0.5f) return;
+            _crashTickAt = now;
             foreach (var se in Server.Values)
                 if (se.CrashReturnTo >= 0 && now > se.CrashUntil) { ReturnCrash(se); CrashAutoReturned++; }
         }

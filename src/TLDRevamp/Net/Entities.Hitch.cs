@@ -485,7 +485,7 @@ namespace TLDRevamp.Net
             ServerHitchTick();
             HitchCommandTick();
             HitchInitialTick();
-            foreach (var tr in ByNet.Values)
+            foreach (var tr in Placed())
             {
                 if (!HitchTrailer(tr)) continue;
                 var at = tr.Root.attachable;
@@ -536,7 +536,7 @@ namespace TLDRevamp.Net
 
         private static void HitchInitialTick()
         {
-            foreach (var tr in ByNet.Values)
+            foreach (var tr in Placed())
             {
                 if (tr.Proxy || tr.HitchAuthorityOwner != tr.OwnerId || !HitchTrailer(tr)) continue;
                 var at = tr.Root.attachable; var car = HitchCar(at);
@@ -548,7 +548,7 @@ namespace TLDRevamp.Net
 
         private static void HitchPhysicsTelemetry()
         {
-            foreach (var e in ByNet.Values)
+            foreach (var e in Placed())
             {
                 if (e.Proxy || e.Root == null) continue;
                 var car = HitchTrailer(e) ? HitchCar(e.Root.attachable) : null;

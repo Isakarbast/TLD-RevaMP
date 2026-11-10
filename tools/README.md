@@ -376,6 +376,8 @@ synthetic headers; tests also create report zips and corrupt inputs in temporary
   (`--old`: members of the car's group, as before).
 - `tools/handlayer.py` (two players, the host's game): a lamp in the right hand stays on the hand's layer after the
   game's VR switch (`mainscript.SetVR(false)`, the settings refresh); `--drive` then drives the car past 65 km/h.
+- `tools/perfmp.py` (two players, `TLD_PLAYSAVE_DIR` = a world save): where a hosted session's frame goes, by the mod's own
+  steps (script timers), with the per-frame loops over placed objects and over every shared object.
 - `tools/partlod.py` (two players): a wheel that came off a car, simulated on the host while the car is the joiner's
   copy 70 m away, stays on the ground, whether it came off before or after the car's parts' colliders went off (`--old`:
   the collider LOD switches its colliders off with the car's, as before). `--bot`: one game, a player bot takes the car

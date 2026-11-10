@@ -30,7 +30,7 @@ namespace TLDRevamp.Net
         private static void RefreshJointed()
         {
             _jointed.Clear();
-            foreach (var e in ByNet.Values)
+            foreach (var e in Placed())
             {
                 var at = e.Root != null ? e.Root.attachable : null;
                 if (at != null && at.attached && !at.parentAtAttach && at.J is ConfigurableJoint && !HitchTrailer(e)) _jointed.Add(e);

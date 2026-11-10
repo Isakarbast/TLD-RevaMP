@@ -124,7 +124,7 @@ namespace TLDRevamp.Net
             if (TelemetryAllOwnedPhysics)
             {
                 int n = 0;
-                foreach (var e in ByNet.Values)
+                foreach (var e in Placed())
                 {
                     if (e.Proxy || e.Root == null || e.Root.RB == null) continue;
                     if (n++ >= TelemetryPhysicsLimit) { TelemetryPhysicsSkipped++; continue; }

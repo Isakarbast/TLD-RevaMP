@@ -64,6 +64,7 @@ namespace TLDRevamp.Net
         private static Ent OwnEntity(tosaveitemscript it) { foreach (var e in ByNet.Values) if (e.Root == it) return e; return null; }
         private static Ent EditEntityOf(tosaveitemscript it) => OwnEntity(it);
         private static bool Resolve(Ent e) => e.Root != null;
+        private static List<Ent> Placed() => new List<Ent>(ByNet.Values);   // Entities.Placed: every object here is placed
         private static bool AtObject(int from, SEnt e) => Near;
         private static HitchFakes.Record EditItemRecord(SEnt e, int idx) => new HitchFakes.Record();
         private static bool Finite(Vector3d v) => double.IsFinite(v.x) && double.IsFinite(v.y) && double.IsFinite(v.z);

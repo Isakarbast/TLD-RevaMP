@@ -23,7 +23,7 @@ namespace TLDRevamp.Net
         private static void ItemNearTick(float dt)
         {
             if (!ItemClaims || !InSession) return;
-            foreach (var e in ByNet.Values)
+            foreach (var e in Placed())
             {
                 var rb = MovingItemBody(e);
                 if (rb == null) continue;

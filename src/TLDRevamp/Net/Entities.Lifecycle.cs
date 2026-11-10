@@ -56,7 +56,9 @@ namespace TLDRevamp.Net
                 if (byPlayer) RequestMemberGone(__instance);   // a part of someone else's: its owner deletes it
                 foreach (var e in ByNet.Values)
                 {
-                    if (e.Root != __instance) continue;   // children/parts ride their group; only roots are entities
+                    // children/parts ride their group; only roots are entities. By reference: Unity's != asks the engine
+                    // whether a destroyed item is gone, for each of a big world's ~12,000 objects at every item it streams out
+                    if (!ReferenceEquals(e.Root, __instance)) continue;
                     if (byPlayer && (e.Proxy || e.OwnerId != MyId))
                     {
                         // the local player deleted another player's object: a deletion, as the owner's would be
