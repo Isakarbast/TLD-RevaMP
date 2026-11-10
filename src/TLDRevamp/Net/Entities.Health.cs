@@ -135,6 +135,13 @@ namespace TLDRevamp.Net
         /// A copy against its owner's last pose here. `local` (its recent events) may be null: the background watch.
         private static void CheckPosition(Ent e, ObjectPanelState local, CheckAdd Add)
         {
+            // a part fitted to a car (or bolted to its parent) sends no poses of its own: its last one is from before it was
+            // fitted, minutes old and anywhere (a bus tank "3956 m off", a glovebox "884 m off" while drawn right in the car)
+            if (HealthSkipFitted && e.Proxy && (OverlayBolted(e) || AttachedCarPart(e)))
+            {
+                Add(0, "Position", "Rides its car or parent: no poses of its own to compare.");
+                return;
+            }
             if (e.Proxy && OverlaySample(e, out var pose, out var rot))
             {
                 var frame = OverlayFrame(e);
@@ -157,15 +164,17 @@ namespace TLDRevamp.Net
             _pwCols.Clear(); e.Root.GetComponentsInChildren(true, _pwCols);
             int all = _pwCols.Count, on = 0, heldLayer = 0;
             foreach (var c in _pwCols) { if (c == null) continue; if (c.enabled && c.gameObject.activeInHierarchy) on++; if (c.gameObject.layer == mainscript.pickedUpLayer) heldLayer++; }
-            bool inHand = pl != null && e.Root.P != null && pl.pickedUp == e.Root.P;
+            bool inHand = InLocalHands(pl, e);
+            bool worn = HealthSkipWorn && (e.WornBy >= 0 || e.SentWornSlot >= 0 || LocalWornSlot(e.Root) >= 0);   // the game takes a worn item's body away
+            bool keptFrozen = HealthSkipFrozen && (e.Root.buried || Fixes.UnfreezeOnGround.Holding(e.Root));       // kinematic on purpose until it has ground under it
             string body = rb == null ? "no rigidbody" : (rb.isKinematic ? "kinematic" : "dynamic") + (rb.detectCollisions ? "" : ", collisions off");
-            string flags = (e.Held ? " held" : "") + (e.Stored ? " stored" : "") + (e.ReleaseGhost ? " release-ghost" : "") + (e.CargoGhost ? " cargo-ghost" : "") + (e.Physical ? " physical-copy" : "") + (e.PartsColOff ? " part-colliders-off" : "");
+            string flags = (e.Held ? " held" : "") + (e.Stored ? " stored" : "") + (worn ? " worn" : "") + (keptFrozen ? " kept-frozen" : "") + (e.ReleaseGhost ? " release-ghost" : "") + (e.CargoGhost ? " cargo-ghost" : "") + (e.Physical ? " physical-copy" : "") + (e.PartsColOff ? " part-colliders-off" : "");
             string bodyText = "Colliders " + on + "/" + all + " on · " + body + (flags.Length > 0 ? " · mod flags:" + flags : "");
             var bodyProblems = new List<string>();
-            if (all > 0 && on == 0 && !e.Stored) bodyProblems.Add("every collider is off, so nothing can touch or target it");
+            if (all > 0 && on == 0 && !e.Stored && !worn) bodyProblems.Add("every collider is off, so nothing can touch or target it");
             if (heldLayer > 0 && !inHand && !e.Held) bodyProblems.Add(heldLayer + " colliders on the held-item layer while nobody holds it: the crosshair passes through them");
-            if (rb != null && !rb.detectCollisions && !e.Held && !e.Stored && !e.ReleaseGhost && !e.CargoGhost && !inHand) bodyProblems.Add("collisions are off without a reason the mod knows (not held, stored or a ghost)");
-            if (rb != null && !e.Proxy && rb.isKinematic && !e.Stored && e.Root.attachable != null && !e.Root.attachable.attached && !inHand && e.Root.car == null) bodyProblems.Add("ours but kinematic and loose: it won't fall or be pushed");
+            if (rb != null && !rb.detectCollisions && !e.Held && !e.Stored && !e.ReleaseGhost && !e.CargoGhost && !inHand && !worn) bodyProblems.Add("collisions are off without a reason the mod knows (not held, stored or a ghost)");
+            if (rb != null && !e.Proxy && rb.isKinematic && !e.Stored && e.Root.attachable != null && !e.Root.attachable.attached && !inHand && !worn && !keptFrozen && e.Root.car == null) bodyProblems.Add("ours but kinematic and loose: it won't fall or be pushed");
             if (rb != null && e.Proxy && !rb.isKinematic && !e.Physical && !e.CrashTaking) bodyProblems.Add("a copy with a dynamic body outside a crash: it will drift from its owner's poses");
             if (bodyProblems.Count > 0) Add(2, "Body", bodyText + ". " + string.Join("; ", bodyProblems) + ".", HowOf(local, "owner-", "physlock-", "attach-", "detach-", "part-", "handover-"), HealthWatchRules.Body);
             else Add(0, "Body", bodyText);

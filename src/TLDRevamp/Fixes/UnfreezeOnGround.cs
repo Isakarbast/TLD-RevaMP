@@ -30,6 +30,9 @@ namespace TLDRevamp.Fixes
         private static readonly System.Collections.Generic.Dictionary<int, float> _held = new System.Collections.Generic.Dictionary<int, float>();
         private static readonly System.Collections.Generic.List<Collider> _cols = new System.Collections.Generic.List<Collider>();
 
+        /// This item is being kept frozen here (nothing within reach under it yet): kinematic on purpose (health checks).
+        internal static bool Holding(tosaveitemscript t) => t != null && _held.ContainsKey(t.GetInstanceID());
+
         [HarmonyPrefix, HarmonyPriority(Priority.Low)]
         private static bool Prefix(tosaveitemscript __instance)
         {

@@ -25,7 +25,16 @@ namespace TLDRevamp.Net
         private static bool Loose(Ent e, fpscontroller pl) =>
             e.Root != null && e.Root.gameObject.activeInHierarchy && e.Root.P != null && e.Root.car == null
             && (e.Root.attachable == null || !e.Root.attachable.attached) && !e.Held && !e.Stored && !e.ReleaseGhost && !e.CargoGhost
-            && pl.pickedUp != e.Root.P;
+            && !InLocalHands(pl, e);
+
+        /// A/B (bridge `set`), the health checks' false alarms of 2026-11-10 (false = before): a part fitted to a car compared
+        /// with its last pose from before it was fitted; a lamp held in hand while seated (fpscontroller.inHandP, not
+        /// pickedUp) "can't be picked up"; a worn hat's missing body; an item UnfreezeOnGround keeps frozen "kinematic".
+        public static bool HealthSkipFitted = true, HealthSkipInHand = true, HealthSkipWorn = true, HealthSkipFrozen = true;
+
+        /// In the local player's hands: picked up, or held in hand (a lamp while seated: inHandP).
+        private static bool InLocalHands(fpscontroller pl, Ent e) =>
+            pl != null && e.Root != null && e.Root.P != null && (pl.pickedUp == e.Root.P || HealthSkipInHand && pl.inHandP == e.Root.P);
 
         private static ItemReachInfo ItemReach(Ent e, fpscontroller pl, WatchedPart w)
         {
